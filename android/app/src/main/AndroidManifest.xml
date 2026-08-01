@@ -6,6 +6,7 @@
     <!-- Izin Bluetooth khusus untuk Android versi 12 ke atas -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="smart_kasir"
