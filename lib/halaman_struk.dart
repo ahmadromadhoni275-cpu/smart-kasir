@@ -72,6 +72,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
     setState(() => isLoading = false);
   }
 
+  // MENGAMBIL NO WA SUPERADMIN DARI SERVER SECARA DINAMIS
   Future<void> _ambilWaSuperadmin() async {
     try {
       final response = await http.get(
@@ -191,15 +192,11 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
     pesan += "--------------------------------------\n\n";
 
-    pesan +=
-        "Terima kasih banyak telah berbelanja di *${namaToko.toUpperCase()}*! 😊\n";
-    pesan +=
-        "Kepercayaan Anda sangat berarti bagi kami. Kami tunggu kedatangannya kembali ya!\n\n";
-    pesan +=
-        "✨ _Struk digital ini dicetak menggunakan Aplikasi *Smart Kasir*._\n";
-    pesan +=
-        "_Ingin usaha atau toko Anda tampil lebih rapi dan modern seperti ini?_\n";
-    pesan += "_Yuk, ngobrol santai dengan tim kami di WA: *$waSuperadmin*_ 😉";
+    pesan += "Terima kasih telah berbelanja di *${namaToko.toUpperCase()}*! 😊\n\n";
+    
+    // --- TEKS PROMOSI WA SINGKAT & MENARIK ---
+    pesan += "🚀 _Kasir rapi, omset meroket bersama *Smart Kasir*_!\n";
+    pesan += "_Buat toko Anda makin profesional. Hubungi admin kami di WA: *$waSuperadmin*_ 😉";
 
     String textEncoded = Uri.encodeComponent(pesan);
     final Uri waUrl = Uri.parse("https://wa.me/?text=$textEncoded");
@@ -224,33 +221,27 @@ class _HalamanStrukState extends State<HalamanStruk> {
   }
 
   // --- FUNGSI CETAK FISIK MENGGUNAKAN BLUETOOTH THERMAL UNIVERSAL ---
-
   Future<void> _cetakStrukFisik() async {
-    // 1. PELINDUNG UNTUK WEB
     if (kIsWeb) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Cetak fisik tidak bisa dilakukan di Web. Harap instal aplikasi di HP Android.'),
+          content: Text('Cetak fisik tidak bisa dilakukan di Web. Harap instal aplikasi di HP Android.'),
           backgroundColor: Colors.orange,
         ));
       }
       return;
     }
 
-    // 2. PELINDUNG UNTUK IOS (IPHONE/IPAD)
     if (Platform.isIOS) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Printer kasir umumnya tidak didukung di iOS karena batasan Apple. Gunakan Android.'),
+          content: Text('Printer kasir umumnya tidak didukung di iOS karena batasan Apple. Gunakan Android.'),
           backgroundColor: Colors.orange,
         ));
       }
       return;
     }
 
-    // 3. JIKA LULUS CEK (Berarti ini dijalankan di HP Android), LANJUTKAN CETAK
     try {
       bool isConnected = await PrintBluetoothThermal.connectionStatus;
 
@@ -262,42 +253,27 @@ class _HalamanStrukState extends State<HalamanStruk> {
         int tunaiVal = _parseInt(widget.uangDiterima);
         int kembaliVal = _parseInt(widget.uangKembalian);
 
-        // GENERATE BYTES ESC/POS (Mendukung kertas 58mm)
         final profile = await CapabilityProfile.load();
         final generator = Generator(PaperSize.mm58, profile);
         List<int> bytes = [];
 
         // Header Toko
         bytes += generator.text(namaToko.toUpperCase(),
-            styles: const PosStyles(
-                align: PosAlign.center,
-                bold: true,
-                height: PosTextSize.size2,
-                width: PosTextSize.size2));
-        bytes += generator.text(alamatToko,
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("WA: $waToko",
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
+            styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2));
+        bytes += generator.text(alamatToko, styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("WA: $waToko", styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
         // Info Transaksi
         bytes += generator.row([
           PosColumn(text: "No: ${widget.noStruk}", width: 6),
-          PosColumn(
-              text: "Tgl: ${widget.tanggal}",
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: "Tgl: ${widget.tanggal}", width: 6, styles: const PosStyles(align: PosAlign.right)),
         ]);
         bytes += generator.row([
           PosColumn(text: "Kasir: $namaPetugas", width: 6),
-          PosColumn(
-              text: "Bayar: ${widget.metodePembayaran}",
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: "Bayar: ${widget.metodePembayaran}", width: 6, styles: const PosStyles(align: PosAlign.right)),
         ]);
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
         // CETAK DAFTAR BARANG
         for (var item in widget.keranjang) {
@@ -310,112 +286,74 @@ class _HalamanStrukState extends State<HalamanStruk> {
             itemSub = itemHarga * itemQty;
           }
 
-          bytes += generator.text(namaItem,
-              styles: const PosStyles(align: PosAlign.left));
+          bytes += generator.text(namaItem, styles: const PosStyles(align: PosAlign.left));
           bytes += generator.row([
             PosColumn(text: "$itemQty x ${_formatRp(itemHarga)}", width: 6),
-            PosColumn(
-                text: _formatRp(itemSub),
-                width: 6,
-                styles: const PosStyles(align: PosAlign.right)),
+            PosColumn(text: _formatRp(itemSub), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
         }
 
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
         // Rincian Biaya
         bytes += generator.row([
           PosColumn(text: "Subtotal", width: 6),
-          PosColumn(
-              text: _formatRp(subtotalVal),
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: _formatRp(subtotalVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
         ]);
 
         if (jasaVal > 0) {
           bytes += generator.row([
             PosColumn(text: "Biaya Jasa", width: 6),
-            PosColumn(
-                text: _formatRp(jasaVal),
-                width: 6,
-                styles: const PosStyles(align: PosAlign.right)),
+            PosColumn(text: _formatRp(jasaVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
         }
         if (ppnVal > 0) {
           bytes += generator.row([
             PosColumn(text: "PPN Otomatis", width: 6),
-            PosColumn(
-                text: _formatRp(ppnVal),
-                width: 6,
-                styles: const PosStyles(align: PosAlign.right)),
+            PosColumn(text: _formatRp(ppnVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
         }
 
         // TOTAL BELANJA
         bytes += generator.row([
-          PosColumn(
-              text: "TOTAL",
-              width: 6,
-              styles: const PosStyles(bold: true, width: PosTextSize.size2)),
-          PosColumn(
-              text: _formatRp(totalVal),
-              width: 6,
-              styles: const PosStyles(
-                  align: PosAlign.right, bold: true, width: PosTextSize.size2)),
+          PosColumn(text: "TOTAL", width: 6, styles: const PosStyles(bold: true, width: PosTextSize.size2)),
+          PosColumn(text: _formatRp(totalVal), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true, width: PosTextSize.size2)),
         ]);
 
         if (widget.metodePembayaran == 'Tunai') {
           bytes += generator.row([
             PosColumn(text: "Tunai", width: 6),
-            PosColumn(
-                text: _formatRp(tunaiVal),
-                width: 6,
-                styles: const PosStyles(align: PosAlign.right)),
+            PosColumn(text: _formatRp(tunaiVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
           bytes += generator.row([
             PosColumn(text: "Kembali", width: 6),
-            PosColumn(
-                text: _formatRp(kembaliVal),
-                width: 6,
-                styles: const PosStyles(align: PosAlign.right)),
+            PosColumn(text: _formatRp(kembaliVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
         } else {
-          bytes += generator.text("Pembayaran Non-Tunai:",
-              styles: const PosStyles(align: PosAlign.left));
-          bytes += generator.text("$namaBank - $rekeningBank",
-              styles: const PosStyles(align: PosAlign.left));
-          bytes += generator.text("A/N: $atasNama",
-              styles: const PosStyles(align: PosAlign.left));
+          bytes += generator.text("Pembayaran Non-Tunai:", styles: const PosStyles(align: PosAlign.left));
+          bytes += generator.text("$namaBank - $rekeningBank", styles: const PosStyles(align: PosAlign.left));
+          bytes += generator.text("A/N: $atasNama", styles: const PosStyles(align: PosAlign.left));
         }
 
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-        // --- TEKS PROMOSI ---
-        bytes += generator.text("Terima kasih banyak telah",
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("berbelanja di ${namaToko.toUpperCase()}! :-)",
-            styles: const PosStyles(align: PosAlign.center));
+        // --- TEKS PROMOSI CETAK FISIK ---
         bytes += generator.feed(1);
-        bytes += generator.text("Struk ini dicetak menggunakan",
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("Aplikasi Smart Kasir",
-            styles: const PosStyles(align: PosAlign.center, bold: true));
-        bytes += generator.text("Ingin usaha lebih modern?",
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("Hubungi WA: $waSuperadmin",
-            styles: const PosStyles(align: PosAlign.center));
-
-        // Spasi Kertas agar tidak terpotong mesin
+        bytes += generator.text("Terima kasih telah berbelanja", styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("di ${namaToko.toUpperCase()}! :-)", styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.feed(1);
+        bytes += generator.text("---", styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("Kasir rapi, omset meroket", styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("bersama SMART KASIR!", styles: const PosStyles(align: PosAlign.center, bold: true));
+        bytes += generator.text("Buat tokomu makin pro,", styles: const PosStyles(align: PosAlign.center));
+        bytes += generator.text("Hub Admin WA: $waSuperadmin", styles: const PosStyles(align: PosAlign.center));
+        
         bytes += generator.feed(2);
 
-        // KIRIIM DATA MENTAH KE PRINTER
         await PrintBluetoothThermal.writeBytes(bytes);
       } else {
-        // JIKA PRINTER BELUM TERHUBUNG, TAMPILKAN DAFTAR PRINTER
-        List<BluetoothInfo> devices =
-            await PrintBluetoothThermal.pairedBluetooths;
+        // DIALOG JIKA PRINTER BELUM KONEK
+        List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
 
         if (mounted) {
           showDialog(
@@ -423,8 +361,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
             builder: (context) {
               return AlertDialog(
                 title: const Text('Pilih Printer Bluetooth',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 content: SizedBox(
                   height: 300,
                   width: 300,
@@ -437,46 +374,34 @@ class _HalamanStrukState extends State<HalamanStruk> {
                           itemCount: devices.length,
                           itemBuilder: (context, index) {
                             return ListTile(
-                              leading: const Icon(Icons.print,
-                                  color: Colors.blueAccent),
+                              leading: const Icon(Icons.print, color: Colors.blueAccent),
                               title: Text(devices[index].name),
                               subtitle: Text(devices[index].macAdress),
                               onTap: () async {
-                                Navigator.pop(
-                                    context); // Tutup dialog list printer
-
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(SnackBar(
-                                  content: Text(
-                                      'Menghubungkan ke ${devices[index].name}...'),
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text('Menghubungkan ke ${devices[index].name}...'),
                                   backgroundColor: Colors.orange,
                                 ));
 
                                 try {
-                                  // Menghubungkan menggunakan Mac Address
-                                  bool terhubung =
-                                      await PrintBluetoothThermal.connect(
-                                          macPrinterAddress:
-                                              devices[index].macAdress);
+                                  bool terhubung = await PrintBluetoothThermal.connect(
+                                      macPrinterAddress: devices[index].macAdress);
 
                                   if (terhubung) {
-                                    _cetakStrukFisik(); // Panggil ulang untuk cetak setelah sukses konek
+                                    _cetakStrukFisik();
                                   } else {
                                     if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(const SnackBar(
-                                        content: Text(
-                                            'Gagal terhubung ke printer. Pastikan printer menyala.'),
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                        content: Text('Gagal terhubung ke printer. Pastikan printer menyala.'),
                                         backgroundColor: Colors.red,
                                       ));
                                     }
                                   }
                                 } catch (e) {
                                   if (mounted) {
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(const SnackBar(
-                                      content: Text(
-                                          'Koneksi gagal. Cek ulang bluetooth.'),
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                      content: Text('Koneksi gagal. Cek ulang bluetooth.'),
                                       backgroundColor: Colors.red,
                                     ));
                                   }
@@ -489,8 +414,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Batal',
-                        style: TextStyle(color: Colors.red)),
+                    child: const Text('Batal', style: TextStyle(color: Colors.red)),
                   )
                 ],
               );

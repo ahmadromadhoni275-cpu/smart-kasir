@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'halaman_struk.dart';
 import 'halaman_riwayat.dart';
+import 'halaman_printer.dart'; // Menghubungkan ke halaman printer
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
@@ -14,7 +15,6 @@ class HalamanKasir extends StatefulWidget {
 }
 
 class _HalamanKasirState extends State<HalamanKasir> {
-  // URL telah disesuaikan ke hosting AnymHost Anda
   final String baseUrl = 'https://smartkasir.shop/api';
 
   String namaToko = "Smart Kasir";
@@ -23,8 +23,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   String userRole = 'kasir';
 
   bool isLocked = false;
-
-  // --- PENYIMPAN STATUS FITUR JASA ---
   bool isFiturJasaAktif = true;
 
   List data = [];
@@ -51,7 +49,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
       idKasirAktif = prefs.getInt('user_id') ?? 1;
       userRole = prefs.getString('role') ?? 'kasir';
       namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
-      // MENGAMBIL STATUS SAKELAR JASA DARI MEMORI HP
       isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
     });
 
@@ -77,7 +74,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         }
       }
     } catch (e) {
-      debugPrint('Error cek masa aktif & PPN: $e');
+      debugPrint('Error cek masa aktif: $e');
     }
 
     if (!isLocked) {
@@ -127,6 +124,23 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
   }
 
+  // FUNGSI BARU: Mengurangi item dari keranjang
+  void kurangiDariKeranjang(Map<String, dynamic> produk) {
+    setState(() {
+      int index = keranjang.indexWhere((item) => item['id'] == produk['id']);
+      if (index != -1) {
+        if (keranjang[index]['qty'] > 1) {
+          keranjang[index]['qty'] -= 1;
+          int harga = int.tryParse(produk['harga'].toString()) ?? 0;
+          keranjang[index]['subtotal'] = keranjang[index]['qty'] * harga;
+        } else {
+          // Hapus dari keranjang jika qty menjadi 0
+          keranjang.removeAt(index);
+        }
+      }
+    });
+  }
+
   int getSubtotal() {
     int total = 0;
     for (var item in keranjang) {
@@ -158,8 +172,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
   }
 
-  Future<void> prosesTransaksiPusat(BuildContext dialogContext, String metode,
-      int uangBayar, int kembalian) async {
+  Future<void> prosesTransaksiPusat(
+      BuildContext dialogContext, String metode, int uangBayar, int kembalian) async {
     final url = Uri.parse('$baseUrl/simpanTransaksi');
 
     int finalPpnNominal = getPpnNominal();
@@ -217,7 +231,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
         headers: {
           'Content-Type': 'application/json; charset=UTF-8',
           'Accept': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
         },
         body: json.encode(payloadJson),
       );
@@ -271,7 +284,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
         }
       }
     } catch (e) {
-      debugPrint("Error API Kasir: $e");
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Terjadi kesalahan koneksi!'),
@@ -434,8 +446,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             itemCount: keranjang.length,
                             itemBuilder: (context, i) {
                               var item = keranjang[i];
-                              int h =
-                                  int.tryParse(item['harga'].toString()) ?? 0;
+                              int h = int.tryParse(item['harga'].toString()) ?? 0;
                               int q = int.tryParse(item['qty'].toString()) ?? 0;
                               int sub = h * q;
 
@@ -444,7 +455,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                 title: Text(item['nama'] ?? 'Produk',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold)),
-                                subtitle: Text('Rp $h x $q'),
+                                subtitle: Text('Rp $h / item'),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -452,24 +463,42 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                         style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             color: Colors.blueAccent)),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete,
-                                          color: Colors.red, size: 20),
-                                      onPressed: () {
+                                    const SizedBox(width: 15),
+                                    // Kontrol Plus Minus di dalam Modal
+                                    InkWell(
+                                      onTap: () {
                                         setModalState(() {
-                                          keranjang.removeAt(i);
+                                          if (keranjang[i]['qty'] > 1) {
+                                            keranjang[i]['qty'] -= 1;
+                                            keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
+                                          } else {
+                                            keranjang.removeAt(i);
+                                          }
+                                        });
+                                        setState(() {}); // Segarkan layar utama juga
+                                      },
+                                      child: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 28),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      child: Text('$q', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    ),
+                                    InkWell(
+                                      onTap: () {
+                                        setModalState(() {
+                                          keranjang[i]['qty'] += 1;
+                                          keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
                                         });
                                         setState(() {});
                                       },
-                                    )
+                                      child: const Icon(Icons.add_circle_outline, color: Colors.green, size: 28),
+                                    ),
                                   ],
                                 ),
                               );
                             },
                           ),
                   ),
-
-                  // --- MUNCULKAN INPUT JASA MANUAL HANYA JIKA SAKELAR ON ---
                   if (isFiturJasaAktif) ...[
                     const Divider(thickness: 2),
                     const Text('Layanan Tambahan / Jasa (Opsional)',
@@ -485,7 +514,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                           child: TextField(
                             controller: namaJasaCtrl,
                             decoration: InputDecoration(
-                              hintText: 'Nama Jasa (Bila ada)',
+                              hintText: 'Nama Jasa',
                               isDense: true,
                               contentPadding: const EdgeInsets.symmetric(
                                   vertical: 10, horizontal: 10),
@@ -518,7 +547,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     ),
                     const SizedBox(height: 10),
                   ],
-
                   const Divider(),
                   if (persenPpn > 0)
                     Padding(
@@ -579,7 +607,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   Widget _buildLayarTerkunci() {
     bool isAdmin = userRole == 'admin' || userRole == 'superadmin';
-
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(30.0),
@@ -598,24 +625,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.grey, fontSize: 14),
             ),
-            const SizedBox(height: 30),
-            if (isAdmin)
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 30, vertical: 15),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20))),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Mengarahkan ke halaman langganan...')));
-                },
-                icon: const Icon(Icons.payment, color: Colors.white),
-                label: const Text('Perpanjang Sekarang',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              )
           ],
         ),
       ),
@@ -624,16 +633,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   @override
   Widget build(BuildContext context) {
-    // --- PENYARINGAN DAFTAR HANYA UNTUK BARANG FISIK ---
     List dataTersaring = data.where((produk) {
       bool cocokKataKunci = produk['nama']
           .toString()
           .toLowerCase()
           .contains(kataKunci.toLowerCase());
-
-      // Amankan agar data Jasa lawas (jika masih tersimpan di DB) tidak muncul
       bool isBarang = produk['jenis'] != 'jasa';
-
       return cocokKataKunci && isBarang;
     }).toList();
 
@@ -653,6 +658,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bluetooth_connected),
+            tooltip: 'Pengaturan Printer',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HalamanPrinter()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.receipt_long),
             tooltip: 'Riwayat Transaksi',
@@ -706,8 +721,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                 .indexWhere((k) => k['id'] == produk['id']);
                             if (idxK != -1) {
                               qtyDiKeranjang = int.tryParse(
-                                      keranjang[idxK]['qty'].toString()) ??
-                                  0;
+                                      keranjang[idxK]['qty'].toString()) ?? 0;
                             }
 
                             return Card(
@@ -715,51 +729,83 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               margin: const EdgeInsets.only(bottom: 12),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(15)),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20, vertical: 10),
-                                title: Text(produk['nama'] ?? 'Produk',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16)),
-                                subtitle:
-                                    Text('Sisa Stok: ${produk['stok'] ?? 0}'),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 15, vertical: 15),
+                                child: Row(
                                   children: [
-                                    Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        if (qtyDiKeranjang > 0)
-                                          Text('$qtyDiKeranjang x',
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(produk['nama'] ?? 'Produk',
                                               style: const TextStyle(
-                                                  color: Colors.orange,
                                                   fontWeight: FontWeight.bold,
-                                                  fontSize: 13)),
-                                        Text('Rp ${produk['harga'] ?? 0}',
-                                            style: const TextStyle(
-                                                color: Colors.green,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15)),
-                                      ],
-                                    ),
-                                    const SizedBox(width: 15),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                          color: Colors.blueAccent,
-                                          borderRadius:
-                                              BorderRadius.circular(8)),
-                                      child: IconButton(
-                                        icon: const Icon(
-                                            Icons.add_shopping_cart,
-                                            color: Colors.white),
-                                        onPressed: () =>
-                                            tambahKeKeranjang(produk),
+                                                  fontSize: 16)),
+                                          const SizedBox(height: 5),
+                                          Text('Rp ${produk['harga'] ?? 0}',
+                                              style: const TextStyle(
+                                                  color: Colors.green,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 15)),
+                                          const SizedBox(height: 5),
+                                          Text('Sisa Stok: ${produk['stok'] ?? 0}',
+                                              style: const TextStyle(
+                                                  color: Colors.grey,
+                                                  fontSize: 12)),
+                                        ],
                                       ),
                                     ),
+                                    // UI KONTROL TAMBAH & KURANG ALA SHOPEE
+                                    if (qtyDiKeranjang > 0)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          InkWell(
+                                            onTap: () =>
+                                                kurangiDariKeranjang(produk),
+                                            child: const Icon(
+                                                Icons.remove_circle,
+                                                color: Colors.redAccent,
+                                                size: 32),
+                                          ),
+                                          Container(
+                                            width: 35,
+                                            alignment: Alignment.center,
+                                            child: Text('$qtyDiKeranjang',
+                                                style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 18)),
+                                          ),
+                                          InkWell(
+                                            onTap: () =>
+                                                tambahKeKeranjang(produk),
+                                            child: const Icon(Icons.add_circle,
+                                                color: Colors.blueAccent,
+                                                size: 32),
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blueAccent,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 8),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8)),
+                                        ),
+                                        onPressed: () =>
+                                            tambahKeKeranjang(produk),
+                                        icon: const Icon(Icons.add_shopping_cart,
+                                            size: 18),
+                                        label: const Text('Tambah',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold)),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -783,8 +829,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
                           blurRadius: 10,
                           offset: const Offset(0, -3))
                     ],
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(25)),
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(25)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
