@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "601651809899",
+    "project_id": "smart-kasir-366ab",
+    "storage_bucket": "smart-kasir-366ab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:601651809899:android:09624f0ff2b5c08a0aab2e",
+        "android_client_info": {
+          "package_name": "com.smartkasir.app.smart_kasir"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVE_nxWVS_i2_hHKzF-do81Sa4iXXWwfI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
