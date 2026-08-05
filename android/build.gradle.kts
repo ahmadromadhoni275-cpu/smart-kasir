@@ -26,25 +26,22 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
-// =========================================================
-// MESIN PEMAKSA: Diletakkan SEBELUM evaluasi dimulai
-// =========================================================
 subprojects {
     afterEvaluate {
         val ext = project.extensions.findByName("android")
         if (ext != null) {
             try {
-                ext.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(ext, 34)
+                // --- PAKSA SEMUA PLUGIN NAIK KE 36 ---
+                ext.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(ext, 36)
             } catch (e: Exception) {
                 try {
-                    ext.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(ext, 34)
+                    ext.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(ext, 36)
                 } catch (e2: Exception) { }
             }
         }
     }
 }
 
-// Baris pemicu evaluasi diletakkan di paling bawah
 subprojects {
     project.evaluationDependsOn(":app")
 }
