@@ -11,7 +11,7 @@ import 'halaman_login.dart';
 import 'halaman_beranda.dart';
 import 'halaman_kasir.dart';
 import 'halaman_produk.dart';
-import 'halaman_pegawai.dart'; // Tambahan halaman pegawai
+import 'halaman_pegawai.dart'; 
 import 'halaman_pengaturan.dart';
 
 // ===================================================================
@@ -42,13 +42,13 @@ void main() async {
     // 2. Mengatur ikon aplikasi untuk notifikasi
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    
+        
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
-    await flutterLocalNotificationsPlugin.initialize(
-  initializationSettings: initializationSettings,
-);
+    
+    // MENGGUNAKAN ARGUMEN POSISIONAL SESUAI VERSI PLUGIN ANDA
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
     // 3. Meminta Izin Notifikasi (Wajib untuk Android 13+ dan iOS)
     FirebaseMessaging messaging = FirebaseMessaging.instance;
@@ -60,7 +60,6 @@ void main() async {
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       debugPrint('Izin notifikasi diberikan oleh pengguna.');
-      
       // Mengambil FCM Token (Ibarat "Alamat Rumah" HP ini untuk dikirimi pesan)
       String? token = await messaging.getToken();
       debugPrint('====================================');
@@ -75,22 +74,23 @@ void main() async {
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
 
-      flutterLocalNotificationsPlugin.show(
-  id: notification.hashCode,
-  title: notification.title,
-  body: notification.body,
-  notificationDetails: const NotificationDetails(
-    android: AndroidNotificationDetails(
-      'smart_kasir_channel',
-      'Notifikasi Penting',
-      channelDescription: 'Channel khusus untuk notifikasi transaksi',
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    ),
-  ),
-);
-
+      // KONDISI IF UNTUK MENCEGAH ERROR "POTENTIALLY NULL"
+      if (notification != null && android != null) {
+        flutterLocalNotificationsPlugin.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'smart_kasir_channel',
+              'Notifikasi Penting',
+              channelDescription: 'Channel khusus untuk notifikasi transaksi',
+              importance: Importance.max,
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+            ),
+          ),
+        );
       }
     });
   } catch (e) {
@@ -141,11 +141,11 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
 
   // Daftar halaman yang akan ditampilkan saat tab diklik (Urutan Indeks)
   final List<Widget> _daftarHalaman = [
-    const HalamanBeranda(),     // Indeks 0
-    const HalamanKasir(),       // Indeks 1
-    const HalamanProduk(),      // Indeks 2
-    const HalamanPegawai(),     // Indeks 3 - Tambahan halaman pegawai
-    const HalamanPengaturan(),  // Indeks 4
+    const HalamanBeranda(),      // Indeks 0
+    const HalamanKasir(),        // Indeks 1
+    const HalamanProduk(),       // Indeks 2
+    const HalamanPegawai(),      // Indeks 3
+    const HalamanPengaturan(),   // Indeks 4
   ];
 
   void _ketukTab(int indeks) {
@@ -182,7 +182,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
             label: 'Produk',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people), // Ikon untuk Pegawai
+            icon: Icon(Icons.people),
             label: 'Pegawai',
           ),
           BottomNavigationBarItem(
