@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    // Tambahkan baris plugin google-services di sini
     id("com.google.gms.google-services")
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -11,6 +10,9 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // --- FITUR DESUGARING DIAKTIFKAN DI SINI ---
+        isCoreLibraryDesugaringEnabled = true
+        
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -38,4 +40,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// --- MESIN PENERJEMAH DESUGARING DITAMBAHKAN DI SINI ---
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
