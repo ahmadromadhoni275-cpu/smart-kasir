@@ -46,7 +46,9 @@ void main() async {
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    await flutterLocalNotificationsPlugin.initialize(
+  initializationSettings: initializationSettings,
+);
 
     // 3. Meminta Izin Notifikasi (Wajib untuk Android 13+ dan iOS)
     FirebaseMessaging messaging = FirebaseMessaging.instance;
@@ -73,22 +75,22 @@ void main() async {
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
 
-      if (notification != null && android != null) {
-        flutterLocalNotificationsPlugin.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'smart_kasir_channel', // ID Channel bebas
-              'Notifikasi Penting', // Nama Channel yang muncul di pengaturan HP
-              channelDescription: 'Channel khusus untuk notifikasi transaksi',
-              importance: Importance.max,
-              priority: Priority.high,
-              icon: '@mipmap/ic_launcher',
-            ),
-          ),
-        );
+      flutterLocalNotificationsPlugin.show(
+  id: notification.hashCode,
+  title: notification.title,
+  body: notification.body,
+  notificationDetails: const NotificationDetails(
+    android: AndroidNotificationDetails(
+      'smart_kasir_channel',
+      'Notifikasi Penting',
+      channelDescription: 'Channel khusus untuk notifikasi transaksi',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    ),
+  ),
+);
+
       }
     });
   } catch (e) {
