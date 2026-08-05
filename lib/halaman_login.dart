@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-// TAMBAHKAN INI: Memanggil main.dart karena KerangkaNavigasi ada di sana
+// --- TAMBAHAN IMPORT FIREBASE ---
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+// Memanggil main.dart karena KerangkaNavigasi ada di sana
 import 'main.dart';
 import 'halaman_registrasi.dart';
 
@@ -60,6 +63,32 @@ class _HalamanLoginState extends State<HalamanLogin> {
         await prefs.setString('username', user['username']);
         await prefs.setString('role', user['role']);
         await prefs.setBool('is_logged_in', true);
+
+        // ========================================================
+        // FITUR BARU: MENGIRIM FCM TOKEN KE SERVER SETELAH LOGIN
+        // ========================================================
+        try {
+          // 1. Ambil Token dari mesin HP
+          String? fcmToken = await FirebaseMessaging.instance.getToken();
+          
+          // 2. Jika token berhasil didapat, kirim ke CodeIgniter
+          if (fcmToken != null) {
+            await http.post(
+              Uri.parse('$baseUrl/update-fcm-token'),
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: json.encode({
+                'user_id': user['id'],
+                'fcm_token': fcmToken,
+              }),
+            );
+            debugPrint("Token berhasil dikirim ke server: $fcmToken");
+          }
+        } catch (e) {
+          debugPrint("Gagal mengambil/mengirim FCM Token: $e");
+        }
+        // ========================================================
 
         // ARAHKAN KE KERANGKA NAVIGASI (MENU BAWAH)
         if (mounted) {
