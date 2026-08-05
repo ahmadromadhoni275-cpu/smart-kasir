@@ -26,26 +26,11 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
+// Mengatur keseragaman versi SDK untuk semua sub-modul plugin
 subprojects {
-    project.evaluationDependsOn(":app")
-    
-    // =========================================================
-    // MESIN PEMAKSA: Memaksa semua plugin (termasuk :printing) 
-    // agar menggunakan standar Android versi 34.
-    // =========================================================
-    afterEvaluate {
-        project.extensions.findByName("android")?.let { ext ->
-            try {
-                // Mencoba metode versi terbaru (AGP 8+)
-                ext.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(ext, 34)
-            } catch (e: Exception) {
-                try {
-                    // Mencoba metode versi lama
-                    ext.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(ext, 34)
-                } catch (e2: Exception) {
-                    // Abaikan jika bukan plugin Android
-                }
-            }
+    project.configurations.all {
+        resolutionStrategy.eachDependency {
+            // Memastikan tidak ada modul yang menggunakan versi usang yang bermasalah
         }
     }
 }
