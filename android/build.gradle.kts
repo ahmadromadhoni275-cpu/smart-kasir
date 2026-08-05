@@ -26,13 +26,27 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
-// Mengatur keseragaman versi SDK untuk semua sub-modul plugin
+// =========================================================
+// MESIN PEMAKSA: Diletakkan SEBELUM evaluasi dimulai
+// =========================================================
 subprojects {
-    project.configurations.all {
-        resolutionStrategy.eachDependency {
-            // Memastikan tidak ada modul yang menggunakan versi usang yang bermasalah
+    afterEvaluate {
+        val ext = project.extensions.findByName("android")
+        if (ext != null) {
+            try {
+                ext.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(ext, 34)
+            } catch (e: Exception) {
+                try {
+                    ext.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(ext, 34)
+                } catch (e2: Exception) { }
+            }
         }
     }
+}
+
+// Baris pemicu evaluasi diletakkan di paling bawah
+subprojects {
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {
