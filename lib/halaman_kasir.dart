@@ -300,7 +300,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 tanggal: DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
                 metodePembayaran: metode == 'tunai' ? 'Tunai' : 'Non-Tunai',
                 // Opsional: Jika HalamanStruk Anda sudah dimodifikasi untuk menerima no_meja:
-                // noMeja: isFiturMejaAktif ? noMejaCtrl.text : null,
+                noMeja: isFiturMejaAktif ? noMejaCtrl.text : null,
               ),
             ),
           );

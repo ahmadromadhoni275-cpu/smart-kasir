@@ -55,28 +55,51 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
+  // --- MENGUBAH STATUS JASA (ON/OFF) BESERTA NOTIFIKASINYA ---
   Future<void> _toggleFiturJasa(bool nilaiBaru) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('fitur_jasa_aktif', nilaiBaru);
-    setState(() => _isFiturJasaAktif = nilaiBaru);
+    setState(() {
+      _isFiturJasaAktif = nilaiBaru;
+    });
+
+    tampilkanNotifikasiTengah(
+        'Berhasil!',
+        'Kolom input Jasa manual di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.',
+        true);
   }
 
+  // --- MENGUBAH STATUS MEJA (ON/OFF) BESERTA NOTIFIKASINYA ---
   Future<void> _toggleFiturMeja(bool nilaiBaru) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('fitur_meja_aktif', nilaiBaru);
-    setState(() => _isFiturMejaAktif = nilaiBaru);
+    setState(() {
+      _isFiturMejaAktif = nilaiBaru;
+    });
+
+    tampilkanNotifikasiTengah(
+        'Berhasil!',
+        'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.',
+        true);
   }
 
+  // --- FUNGSI SCAN BARCODE KAMERA ---
   Future<void> mulaiScanBarcode(TextEditingController targetController) async {
     try {
-      String hasilScan = await FlutterBarcodeScanner.scanBarcode('#ff6600', 'Batal', true, ScanMode.BARCODE);
+      String hasilScan = await FlutterBarcodeScanner.scanBarcode(
+        '#ff6600', // Warna garis laser
+        'Batal',   // Teks tombol batal
+        true,      // Tampilkan ikon flash
+        ScanMode.BARCODE,
+      );
+
       if (hasilScan != '-1') {
         setState(() {
           targetController.text = hasilScan;
         });
       }
     } catch (e) {
-      debugPrint('Error: $e');
+      debugPrint('Error saat scanning barcode: $e');
     }
   }
 
@@ -87,6 +110,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
         setState(() {
+          // Hanya mengambil data yang berjenis 'barang'
           List semuaData = responseData['data'] ?? [];
           dataProduk = semuaData.where((item) => item['jenis'] != 'jasa').toList();
           isLoading = false;
@@ -95,31 +119,72 @@ class _HalamanProdukState extends State<HalamanProduk> {
         setState(() => isLoading = false);
       }
     } catch (e) {
+      debugPrint("Error Ambil Data: $e");
       setState(() => isLoading = false);
     }
   }
 
+  // --- NOTIFIKASI POP-UP ASLI ANDA ---
   void tampilkanNotifikasiTengah(String judul, String pesan, bool sukses) {
     showDialog(
       context: context,
       builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
           child: Container(
             padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.rectangle,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: const [
+                BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 10,
+                    offset: Offset(0, 10))
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(sukses ? Icons.check_circle : Icons.error_outline, color: sukses ? Colors.green : Colors.red, size: 60),
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: sukses
+                        ? Colors.green.withAlpha(50)
+                        : Colors.red.withAlpha(50),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    sukses ? Icons.check_circle : Icons.error_outline,
+                    color: sukses ? Colors.green : Colors.red,
+                    size: 60,
+                  ),
+                ),
                 const SizedBox(height: 20),
-                Text(judul, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(judul,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
-                Text(pesan, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                Text(pesan,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: Colors.grey)),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: sukses ? Colors.green : Colors.red),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Tutup', style: TextStyle(color: Colors.white)),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: sukses ? Colors.green : Colors.red,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12)),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Tutup',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
                 )
               ],
             ),
@@ -139,7 +204,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       'jenis': 'barang',
       'harga': harga,
       'stok': stok,
-      'kategori_id': kategoriId, // Mengirim ID Kategori/Divisi Printer
+      'kategori_id': kategoriId, // Mengirim ID Kategori
     };
 
     try {
@@ -149,12 +214,18 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         await ambilDataProduk();
-        if (mounted) tampilkanNotifikasiTengah('Berhasil!', 'Data barang berhasil disimpan.', true);
+        if (mounted) {
+          tampilkanNotifikasiTengah('Berhasil!', 'Data barang berhasil disimpan.', true);
+        }
       } else {
-        if (mounted) tampilkanNotifikasiTengah('Gagal!', 'Server menolak (Error ${response.statusCode}).', false);
+        if (mounted) {
+          tampilkanNotifikasiTengah('Gagal!', 'Server menolak (Error ${response.statusCode}).', false);
+        }
       }
     } catch (e) {
-      if (mounted) tampilkanNotifikasiTengah('Error Jaringan', 'Terjadi kesalahan: $e', false);
+      if (mounted) {
+        tampilkanNotifikasiTengah('Error Jaringan', 'Terjadi kesalahan: $e', false);
+      }
     }
   }
 
@@ -163,10 +234,12 @@ class _HalamanProdukState extends State<HalamanProduk> {
       final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: {'ngrok-skip-browser-warning': 'true'});
       if (response.statusCode == 200) {
         await ambilDataProduk();
-        if (mounted) tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
+        if (mounted) {
+          tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
+        }
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error Hapus: $e");
     }
   }
 
@@ -204,7 +277,15 @@ class _HalamanProdukState extends State<HalamanProduk> {
                       decoration: InputDecoration(
                         labelText: 'Kode Barang / Barcode',
                         prefixIcon: const Icon(Icons.qr_code),
-                        suffixIcon: IconButton(icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), onPressed: () => mulaiScanBarcode(kodeCtrl)),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
+                          onPressed: () {
+                            // Gunakan fungsi scan yang sudah dirangkai
+                            mulaiScanBarcode(kodeCtrl).then((_) {
+                              setModalState(() {}); // Segarkan input setelah scan
+                            });
+                          }
+                        ),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                       ),
                     ),
@@ -217,7 +298,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     
                     // =======================================================
                     // SMART HIDING: Dropdown Divisi Kategori Printer
-                    // (Hanya muncul jika admin sudah membuat kategori di menu Kelola Kategori)
+                    // (Hanya muncul jika admin sudah membuat kategori)
                     // =======================================================
                     if (daftarKategori.isNotEmpty) ...[
                       const SizedBox(height: 15),
@@ -295,7 +376,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const HalamanKategori()),
-                ).then((_) => ambilDaftarKategori()); // Refresh saat kembali
+                ).then((_) => ambilDaftarKategori()); // Refresh daftar setelah kembali
               },
             ),
         ],
@@ -303,6 +384,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       body: Column(
         children: [
           if (isAdmin) ...[
+            // CARD SAKELAR JASA
             Card(
               margin: const EdgeInsets.only(top: 15, left: 15, right: 15),
               elevation: 0,
@@ -310,12 +392,13 @@ class _HalamanProdukState extends State<HalamanProduk> {
               child: SwitchListTile(
                 activeColor: Colors.green,
                 title: const Text('Fitur Input Jasa Kasir', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(_isFiturJasaAktif ? 'Aktif' : 'Nonaktif'),
+                subtitle: Text(_isFiturJasaAktif ? 'Aktif (Muncul di layar kasir)' : 'Nonaktif (Disembunyikan)'),
                 secondary: const Icon(Icons.handyman, color: Colors.purple),
                 value: _isFiturJasaAktif,
                 onChanged: _toggleFiturJasa,
               ),
             ),
+            // CARD SAKELAR NO MEJA
             Card(
               margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 5),
               elevation: 0,
@@ -323,7 +406,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
               child: SwitchListTile(
                 activeColor: Colors.blue,
                 title: const Text('Fitur No Meja', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(_isFiturMejaAktif ? 'Aktif' : 'Nonaktif'),
+                subtitle: Text(_isFiturMejaAktif ? 'Aktif (Muncul di layar kasir)' : 'Nonaktif (Disembunyikan)'),
                 secondary: const Icon(Icons.table_restaurant, color: Colors.orange),
                 value: _isFiturMejaAktif,
                 onChanged: _toggleFiturMeja,
