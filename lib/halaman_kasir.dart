@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart'; // Tambahan Scanner
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart'; 
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
@@ -26,13 +26,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   bool isLocked = false;
   bool isFiturJasaAktif = true;
-  bool isFiturMejaAktif = false; // Status Fitur Meja
+  bool isFiturMejaAktif = false; 
 
   List data = [];
   bool isLoading = true;
   String kataKunci = "";
   TextEditingController pencarianController = TextEditingController();
-  TextEditingController noMejaCtrl = TextEditingController(); // Controller No Meja
+  TextEditingController noMejaCtrl = TextEditingController(); 
 
   List<Map<String, dynamic>> keranjang = [];
 
@@ -54,7 +54,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       userRole = prefs.getString('role') ?? 'kasir';
       namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
       isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
-      isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false; // Muat Status Meja
+      isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false;
     });
 
     try {
@@ -109,7 +109,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
-  // FUNGSI BARU: Scan Barcode Kamera
   Future<void> mulaiScanBarcode() async {
     try {
       String hasilScan = await FlutterBarcodeScanner.scanBarcode(
@@ -145,6 +144,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
           'harga': harga,
           'qty': 1,
           'subtotal': harga,
+          'kategori_id': produk['kategori_id'], // Diperlukan untuk multi-printer di struk
         });
       }
     });
@@ -193,12 +193,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
       keranjang.clear();
       namaJasaCtrl.clear();
       nominalJasaCtrl.clear();
-      noMejaCtrl.clear(); // Bersihkan juga no meja
+      noMejaCtrl.clear(); 
     });
   }
 
+  // --- FUNGSI PROSES TRANSAKSI DENGAN PARAMETER NAMA PELANGGAN (KASBON) ---
   Future<void> prosesTransaksiPusat(
-      BuildContext dialogContext, String metode, int uangBayar, int kembalian) async {
+      BuildContext dialogContext, String metode, int uangBayar, int kembalian, String namaPelanggan) async {
+    
     final url = Uri.parse('$baseUrl/simpanTransaksi');
 
     int finalPpnNominal = getPpnNominal();
@@ -216,6 +218,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         'harga': h,
         'qty': q,
         'subtotal': h * q,
+        'kategori_id': item['kategori_id'], // Kirim kategori_id untuk HalamanStruk
       });
     }
 
@@ -228,6 +231,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         'harga': nominalJasa,
         'qty': 1,
         'subtotal': nominalJasa,
+        'kategori_id': null,
       });
     }
 
@@ -240,7 +244,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
       "uang_bayar": uangBayar,
       "kembalian": kembalian,
       "metode_pembayaran": metode,
-      // TAMBAHAN: Kirim No Meja jika fitur aktif dan diisi
+      // NAMA PELANGGAN UNTUK KASBON
+      "nama_pelanggan": metode == 'kasbon' ? namaPelanggan : null, 
       "no_meja": isFiturMejaAktif && noMejaCtrl.text.isNotEmpty ? noMejaCtrl.text : null,
       "items": finalDetailBelanja
           .map((item) => {
@@ -284,7 +289,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
         });
 
         if (context.mounted) {
-          // Navigasi ke struk (Pastikan HalamanStruk sudah menerima noMeja jika diperlukan)
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -298,8 +302,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 uangKembalian: kembalian,
                 noStruk: 'INV-${DateTime.now().millisecondsSinceEpoch}',
                 tanggal: DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
-                metodePembayaran: metode == 'tunai' ? 'Tunai' : 'Non-Tunai',
-                // Opsional: Jika HalamanStruk Anda sudah dimodifikasi untuk menerima no_meja:
+                metodePembayaran: metode == 'tunai' ? 'Tunai' : (metode == 'kasbon' ? 'Kasbon/Hutang' : 'Non-Tunai'),
                 noMeja: isFiturMejaAktif ? noMejaCtrl.text : null,
               ),
             ),
@@ -325,6 +328,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   void tampilkanDialogPembayaran() {
     String metodePilih = 'tunai';
     TextEditingController uangBayarCtrl = TextEditingController();
+    TextEditingController namaPelangganCtrl = TextEditingController(); 
     int kembalian = 0;
     int total = getGrandTotal();
     bool isProsesAPI = false;
@@ -337,82 +341,118 @@ class _HalamanKasirState extends State<HalamanKasir> {
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Proses Pembayaran'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: metodePilih,
-                    decoration:
-                        const InputDecoration(labelText: 'Metode Pembayaran'),
-                    items: const [
-                      DropdownMenuItem(
-                          value: 'tunai', child: Text('Uang Tunai')),
-                      DropdownMenuItem(
-                          value: 'non_tunai',
-                          child: Text('Non-Tunai (QRIS / Rekening)')),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: metodePilih,
+                      decoration: const InputDecoration(labelText: 'Metode Pembayaran'),
+                      items: const [
+                        DropdownMenuItem(value: 'tunai', child: Text('Uang Tunai')),
+                        DropdownMenuItem(value: 'non_tunai', child: Text('Non-Tunai (QRIS / Rekening)')),
+                        DropdownMenuItem(value: 'kasbon', child: Text('Kasbon / Catatan Hutang')), 
+                      ],
+                      onChanged: isProsesAPI
+                          ? null
+                          : (val) {
+                              setDialogState(() {
+                                metodePilih = val!;
+                                if (metodePilih == 'non_tunai') {
+                                  uangBayarCtrl.text = total.toString();
+                                  kembalian = 0;
+                                } else if (metodePilih == 'kasbon') {
+                                  uangBayarCtrl.text = '0';
+                                  kembalian = 0;
+                                } else {
+                                  uangBayarCtrl.clear();
+                                  kembalian = 0;
+                                }
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 15),
+
+                    // KONDISI JIKA METODE KASBON DIPILIH
+                    if (metodePilih == 'kasbon') ...[
+                      TextField(
+                        controller: namaPelangganCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Nama Pelanggan / Peminjam',
+                          hintText: 'Cth: Bpk. Budi / Bu Ani',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 15),
                     ],
-                    onChanged: isProsesAPI
-                        ? null
-                        : (val) {
+
+                    // KONDISI JIKA METODE TUNAI DIPILIH
+                    if (metodePilih == 'tunai') ...[
+                      TextField(
+                        controller: uangBayarCtrl,
+                        keyboardType: TextInputType.number,
+                        enabled: !isProsesAPI,
+                        decoration: const InputDecoration(
+                            labelText: 'Uang Diterima (Rp)',
+                            border: OutlineInputBorder()),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            int uang = int.tryParse(val) ?? 0;
+                            kembalian = uang - total;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      // --- TOMBOL "UANG PAS" ---
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ActionChip(
+                          backgroundColor: Colors.blue[50],
+                          label: const Text('⚡ Uang Pas', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                          onPressed: () {
                             setDialogState(() {
-                              metodePilih = val!;
-                              if (metodePilih == 'non_tunai') {
-                                uangBayarCtrl.text = total.toString();
-                                kembalian = 0;
-                              } else {
-                                uangBayarCtrl.clear();
-                                kembalian = 0;
-                              }
+                              uangBayarCtrl.text = total.toString();
+                              kembalian = 0;
                             });
                           },
-                  ),
-                  const SizedBox(height: 15),
-                  if (metodePilih == 'tunai')
-                    TextField(
-                      controller: uangBayarCtrl,
-                      keyboardType: TextInputType.number,
-                      enabled: !isProsesAPI,
-                      decoration: const InputDecoration(
-                          labelText: 'Uang Diterima (Rp)',
-                          border: OutlineInputBorder()),
-                      onChanged: (val) {
-                        setDialogState(() {
-                          int uang = int.tryParse(val) ?? 0;
-                          kembalian = uang - total;
-                        });
-                      },
-                    ),
-                  const SizedBox(height: 15),
-                  if (metodePilih == 'tunai')
-                    Text(
-                      kembalian < 0
-                          ? 'Uang Kurang: Rp ${kembalian.abs()}'
-                          : 'Kembalian: Rp $kembalian',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: kembalian < 0 ? Colors.red : Colors.green),
-                    ),
-                ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    if (metodePilih == 'tunai')
+                      Text(
+                        kembalian < 0
+                            ? 'Uang Kurang: Rp ${kembalian.abs()}'
+                            : 'Kembalian: Rp $kembalian',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: kembalian < 0 ? Colors.red : Colors.green),
+                      ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
-                    onPressed:
-                        isProsesAPI ? null : () => Navigator.pop(dialogContext),
+                    onPressed: isProsesAPI ? null : () => Navigator.pop(dialogContext),
                     child: const Text('Batal')),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
                   onPressed: isProsesAPI
                       ? null
                       : () async {
-                          int uangBayar = int.tryParse(uangBayarCtrl.text) ?? 0;
+                          if (metodePilih == 'kasbon' && namaPelangganCtrl.text.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Nama pelanggan wajib diisi untuk kasbon!'), backgroundColor: Colors.red));
+                            return;
+                          }
+
+                          int uangBayar = metodePilih == 'kasbon' ? 0 : (int.tryParse(uangBayarCtrl.text) ?? 0);
                           if (metodePilih == 'tunai' && uangBayar < total) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content:
-                                        Text('Uang bayar tidak mencukupi!'),
-                                    backgroundColor: Colors.red));
+                                const SnackBar(content: Text('Uang bayar tidak mencukupi!'), backgroundColor: Colors.red));
                             return;
                           }
 
@@ -420,8 +460,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             isProsesAPI = true;
                           });
 
+                          // --- PEMANGGILAN FUNGSI DENGAN DATA KASBON ---
                           await prosesTransaksiPusat(
-                              dialogContext, metodePilih, uangBayar, kembalian);
+                              dialogContext, metodePilih, uangBayar, kembalian, namaPelangganCtrl.text);
 
                           if (dialogContext.mounted) {
                             setDialogState(() {
@@ -433,11 +474,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2.5),
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                         )
-                      : const Text('Bayar Sekarang',
-                          style: TextStyle(color: Colors.white)),
+                      : const Text('Bayar / Simpan', style: TextStyle(color: Colors.white)),
                 )
               ],
             );
@@ -540,10 +579,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             },
                           ),
                   ),
-
-                  // ============================================
-                  // TAMPILAN INPUT NO MEJA (Jika Fitur Aktif)
-                  // ============================================
+                  
                   if (isFiturMejaAktif) ...[
                     const Divider(thickness: 2),
                     const Text('Informasi Pemesanan',
@@ -705,14 +741,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   @override
   Widget build(BuildContext context) {
-    // FILTER PENCARIAN (Membaca Nama dan Barcode/Kode Barang)
     List dataTersaring = data.where((produk) {
       String cari = kataKunci.toLowerCase();
       bool cocokNama = produk['nama'].toString().toLowerCase().contains(cari);
       bool cocokKode = produk['kode_barang'] != null && 
                        produk['kode_barang'].toString().toLowerCase().contains(cari);
       bool isBarang = produk['jenis'] != 'jasa';
-      
       return (cocokNama || cocokKode) && isBarang;
     }).toList();
 
@@ -768,7 +802,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         kataKunci = nilai;
                       });
                     },
-                    // onSubmitted berguna jika kasir memakai alat scanner tembak fisik (USB/Bluetooth)
                     onSubmitted: (nilai) {
                       setState(() {
                         kataKunci = nilai;
@@ -777,7 +810,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     decoration: InputDecoration(
                       hintText: 'Cari barang / Scan Barcode...',
                       prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                      // TOMBOL SCANNER KAMERA
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent),
                         onPressed: mulaiScanBarcode,
