@@ -303,22 +303,32 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
         if (jasaVal > 0) {
           bytes += generator.row([
-            PosColumn(text: "Biaya Jasa", width: 6),
+            PosColumn(text: "Biaya", width: 6),
             PosColumn(text: _formatRp(jasaVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
         }
         if (ppnVal > 0) {
           bytes += generator.row([
-            PosColumn(text: "PPN Otomatis", width: 6),
+            PosColumn(text: "PPN", width: 6),
             PosColumn(text: _formatRp(ppnVal), width: 6, styles: const PosStyles(align: PosAlign.right)),
           ]);
         }
 
         // TOTAL BELANJA
         bytes += generator.row([
-          PosColumn(text: "TOTAL", width: 6, styles: const PosStyles(bold: true, width: PosTextSize.size2)),
-          PosColumn(text: _formatRp(totalVal), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true, width: PosTextSize.size2)),
-        ]);
+  PosColumn(
+    text: 'TOTAL',
+    width: 6,
+    // Hapus pengaturan size2, cukup gunakan bold: true agar tebal tapi ukurannya standar
+    styles: const PosStyles(bold: true), 
+  ),
+  PosColumn(
+    text: 'Rp $totalBelanja',
+    width: 6,
+    // Sama, hapus size2, sisakan tebal dan rata kanan
+    styles: const PosStyles(bold: true, align: PosAlign.right), 
+  ),
+]);
 
         if (widget.metodePembayaran == 'Tunai') {
           bytes += generator.row([

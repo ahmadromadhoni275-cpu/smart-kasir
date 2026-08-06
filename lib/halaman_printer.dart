@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HalamanPrinter extends StatefulWidget {
   const HalamanPrinter({super.key});
@@ -19,6 +20,23 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     cekKoneksi();
   }
 
+  // Fungsi untuk meminta izin sistem Android
+  Future<bool> _mintaIzinBluetooth() async {
+    // Memunculkan pop-up izin Bluetooth dan Lokasi sekaligus
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    // Mengecek apakah pengguna menekan "Izinkan"
+    if (statuses[Permission.bluetoothConnect]!.isGranted) {
+      return true; // Izin diberikan
+    } else {
+      return false; // Izin ditolak
+    }
+  }
+
   // Mengecek apakah sebelumnya sudah ada printer yang terhubung
   Future<void> cekKoneksi() async {
     try {
@@ -33,10 +51,28 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
 
   // Mencari perangkat Bluetooth yang sudah dipasangkan (paired) di HP
   Future<void> cariPerangkat() async {
+    // 1. Panggil pop-up izin terlebih dahulu sebelum mencari
+    bool diizinkan = await _mintaIzinBluetooth();
+
+    if (!diizinkan) {
+      // Jika pengguna menolak izin, munculkan pesan peringatan di bawah layar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Izin Bluetooth dan Lokasi diperlukan untuk mencari printer!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return; // Berhentikan fungsi sampai di sini jika tidak ada izin
+    }
+
+    // 2. Jika izin diberikan, jalankan proses pencarian printer
     setState(() {
       isScanning = true;
       daftarPerangkat.clear();
     });
+
     try {
       final List<BluetoothInfo> list = await PrintBluetoothThermal.pairedBluetooths;
       setState(() {
@@ -45,6 +81,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     } catch (e) {
       debugPrint("Error mencari bluetooth: $e");
     }
+
     setState(() {
       isScanning = false;
     });
@@ -100,8 +137,8 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
             onPressed: isScanning ? null : cariPerangkat,
-            icon: isScanning 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+            icon: isScanning
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.search),
             label: Text(isScanning ? 'Mencari...' : 'Cari Printer Terpasang'),
           ),
@@ -109,7 +146,11 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
           const Divider(),
           Expanded(
             child: daftarPerangkat.isEmpty && !isScanning
-                ? const Center(child: Text('Tidak ada perangkat ditemukan.\nPastikan printer sudah di-Pairing di pengaturan Bluetooth HP.', textAlign: TextAlign.center))
+                ? const Center(
+                    child: Text(
+                    'Tidak ada perangkat ditemukan.\nPastikan printer sudah di-Pairing di pengaturan Bluetooth HP.',
+                    textAlign: TextAlign.center,
+                  ))
                 : ListView.builder(
                     itemCount: daftarPerangkat.length,
                     itemBuilder: (context, index) {
