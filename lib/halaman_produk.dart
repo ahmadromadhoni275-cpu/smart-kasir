@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart'; // Tambahan Tahap 2
 
 class HalamanProduk extends StatefulWidget {
   const HalamanProduk({super.key});
@@ -13,13 +14,13 @@ class HalamanProduk extends StatefulWidget {
 class _HalamanProdukState extends State<HalamanProduk> {
   // URL telah disesuaikan ke hosting AnymHost Anda
   final String baseUrl = 'https://smartkasir.shop/api/produk';
-  
   List dataProduk = [];
   String _userRole = 'kasir';
   bool isLoading = true;
 
-  // --- STATUS SAKELAR JASA ---
+  // --- STATUS SAKELAR (JASA & MEJA) ---
   bool _isFiturJasaAktif = true;
+  bool _isFiturMejaAktif = false; // Tambahan Tahap 1
 
   @override
   void initState() {
@@ -32,8 +33,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userRole = prefs.getString('role') ?? 'kasir';
-      // Mengambil status Jasa dari memori HP (Default: true/ON)
+      // Mengambil status dari memori HP
       _isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
+      _isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false; // Tambahan Tahap 1
     });
   }
 
@@ -49,6 +51,40 @@ class _HalamanProdukState extends State<HalamanProduk> {
         'Berhasil!',
         'Kolom input Jasa manual di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.',
         true);
+  }
+
+  // --- MENGUBAH STATUS MEJA (ON/OFF) - Tambahan Tahap 1 ---
+  Future<void> _toggleFiturMeja(bool nilaiBaru) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('fitur_meja_aktif', nilaiBaru);
+    setState(() {
+      _isFiturMejaAktif = nilaiBaru;
+    });
+
+    tampilkanNotifikasiTengah(
+        'Berhasil!',
+        'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.',
+        true);
+  }
+
+  // --- FUNGSI SCAN BARCODE KAMEARA - Tambahan Tahap 2 ---
+  Future<void> mulaiScanBarcode(TextEditingController targetController) async {
+    try {
+      String hasilScan = await FlutterBarcodeScanner.scanBarcode(
+        '#ff6600', // Warna garis laser
+        'Batal',   // Teks tombol batal
+        true,      // Tampilkan ikon flash
+        ScanMode.BARCODE,
+      );
+
+      if (hasilScan != '-1') {
+        setState(() {
+          targetController.text = hasilScan;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error saat scanning barcode: $e');
+    }
   }
 
   Future<void> ambilDataProduk() async {
@@ -256,13 +292,21 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     style: const TextStyle(
                         fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
+                
+                // --- INTEGRASI TAHAP 2 (Scanner Barcode di Form) ---
                 TextField(
                     controller: kodeCtrl,
                     decoration: InputDecoration(
-                        labelText: 'Kode Barang',
+                        labelText: 'Kode Barang / Barcode',
                         prefixIcon: const Icon(Icons.qr_code),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.camera_alt, color: Colors.blueAccent),
+                          onPressed: () => mulaiScanBarcode(kodeCtrl),
+                        ),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(15)))),
+                // ---------------------------------------------------
+                
                 const SizedBox(height: 15),
                 TextField(
                     controller: namaCtrl,
@@ -342,10 +386,10 @@ class _HalamanProdukState extends State<HalamanProduk> {
       ),
       body: Column(
         children: [
-          // --- PANEL PENGATURAN JASA (HANYA UNTUK ADMIN) ---
-          if (isAdmin)
+          // --- PANEL PENGATURAN (JASA & MEJA) (HANYA UNTUK ADMIN) ---
+          if (isAdmin) ...[
             Card(
-              margin: const EdgeInsets.all(15),
+              margin: const EdgeInsets.only(top: 15, left: 15, right: 15),
               elevation: 0,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
@@ -362,6 +406,27 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 onChanged: _toggleFiturJasa,
               ),
             ),
+            
+            // --- TAHAP 1 (Sakelar No Meja) ---
+            Card(
+              margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 5),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  side: BorderSide(color: Colors.grey.shade300)),
+              child: SwitchListTile(
+                activeColor: Colors.blue,
+                title: const Text('Fitur No Meja',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(_isFiturMejaAktif
+                    ? 'Aktif (Muncul di layar kasir)'
+                    : 'Nonaktif (Disembunyikan)'),
+                secondary: const Icon(Icons.table_restaurant, color: Colors.orange),
+                value: _isFiturMejaAktif,
+                onChanged: _toggleFiturMeja,
+              ),
+            ),
+          ],
 
           Expanded(
             child: isLoading

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'halaman_struk.dart';
-import 'halaman_riwayat.dart';
-import 'halaman_printer.dart'; // Menghubungkan ke halaman printer
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart'; // Tambahan Scanner
 import 'dart:convert';
 import 'package:intl/intl.dart';
+
+import 'halaman_struk.dart';
+import 'halaman_riwayat.dart';
+import 'halaman_printer.dart'; 
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -24,11 +26,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   bool isLocked = false;
   bool isFiturJasaAktif = true;
+  bool isFiturMejaAktif = false; // Status Fitur Meja
 
   List data = [];
   bool isLoading = true;
   String kataKunci = "";
   TextEditingController pencarianController = TextEditingController();
+  TextEditingController noMejaCtrl = TextEditingController(); // Controller No Meja
 
   List<Map<String, dynamic>> keranjang = [];
 
@@ -50,6 +54,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       userRole = prefs.getString('role') ?? 'kasir';
       namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
       isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
+      isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false; // Muat Status Meja
     });
 
     try {
@@ -104,6 +109,27 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
+  // FUNGSI BARU: Scan Barcode Kamera
+  Future<void> mulaiScanBarcode() async {
+    try {
+      String hasilScan = await FlutterBarcodeScanner.scanBarcode(
+        '#ff6600',
+        'Batal',
+        true,
+        ScanMode.BARCODE,
+      );
+
+      if (hasilScan != '-1') {
+        setState(() {
+          pencarianController.text = hasilScan;
+          kataKunci = hasilScan;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error saat scanning barcode: $e');
+    }
+  }
+
   void tambahKeKeranjang(Map<String, dynamic> produk) {
     setState(() {
       int index = keranjang.indexWhere((item) => item['id'] == produk['id']);
@@ -124,7 +150,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
   }
 
-  // FUNGSI BARU: Mengurangi item dari keranjang
   void kurangiDariKeranjang(Map<String, dynamic> produk) {
     setState(() {
       int index = keranjang.indexWhere((item) => item['id'] == produk['id']);
@@ -134,7 +159,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
           int harga = int.tryParse(produk['harga'].toString()) ?? 0;
           keranjang[index]['subtotal'] = keranjang[index]['qty'] * harga;
         } else {
-          // Hapus dari keranjang jika qty menjadi 0
           keranjang.removeAt(index);
         }
       }
@@ -169,6 +193,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       keranjang.clear();
       namaJasaCtrl.clear();
       nominalJasaCtrl.clear();
+      noMejaCtrl.clear(); // Bersihkan juga no meja
     });
   }
 
@@ -215,6 +240,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
       "uang_bayar": uangBayar,
       "kembalian": kembalian,
       "metode_pembayaran": metode,
+      // TAMBAHAN: Kirim No Meja jika fitur aktif dan diisi
+      "no_meja": isFiturMejaAktif && noMejaCtrl.text.isNotEmpty ? noMejaCtrl.text : null,
       "items": finalDetailBelanja
           .map((item) => {
                 "product_id": int.tryParse(item['id'].toString()) ?? 0,
@@ -257,6 +284,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         });
 
         if (context.mounted) {
+          // Navigasi ke struk (Pastikan HalamanStruk sudah menerima noMeja jika diperlukan)
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -271,6 +299,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 noStruk: 'INV-${DateTime.now().millisecondsSinceEpoch}',
                 tanggal: DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
                 metodePembayaran: metode == 'tunai' ? 'Tunai' : 'Non-Tunai',
+                // Opsional: Jika HalamanStruk Anda sudah dimodifikasi untuk menerima no_meja:
+                // noMeja: isFiturMejaAktif ? noMejaCtrl.text : null,
               ),
             ),
           );
@@ -464,34 +494,45 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                             fontWeight: FontWeight.bold,
                                             color: Colors.blueAccent)),
                                     const SizedBox(width: 15),
-                                    // Kontrol Plus Minus di dalam Modal
                                     InkWell(
                                       onTap: () {
                                         setModalState(() {
                                           if (keranjang[i]['qty'] > 1) {
                                             keranjang[i]['qty'] -= 1;
-                                            keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
+                                            keranjang[i]['subtotal'] =
+                                                keranjang[i]['qty'] * h;
                                           } else {
                                             keranjang.removeAt(i);
                                           }
                                         });
-                                        setState(() {}); // Segarkan layar utama juga
+                                        setState(() {}); 
                                       },
-                                      child: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 28),
+                                      child: const Icon(
+                                          Icons.remove_circle_outline,
+                                          color: Colors.redAccent,
+                                          size: 28),
                                     ),
                                     Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                                      child: Text('$q', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10),
+                                      child: Text('$q',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16)),
                                     ),
                                     InkWell(
                                       onTap: () {
                                         setModalState(() {
                                           keranjang[i]['qty'] += 1;
-                                          keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
+                                          keranjang[i]['subtotal'] =
+                                              keranjang[i]['qty'] * h;
                                         });
                                         setState(() {});
                                       },
-                                      child: const Icon(Icons.add_circle_outline, color: Colors.green, size: 28),
+                                      child: const Icon(
+                                          Icons.add_circle_outline,
+                                          color: Colors.green,
+                                          size: 28),
                                     ),
                                   ],
                                 ),
@@ -499,6 +540,37 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             },
                           ),
                   ),
+
+                  // ============================================
+                  // TAMPILAN INPUT NO MEJA (Jika Fitur Aktif)
+                  // ============================================
+                  if (isFiturMejaAktif) ...[
+                    const Divider(thickness: 2),
+                    const Text('Informasi Pemesanan',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.black54)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: noMejaCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Nomor Meja (Cth: VIP 1 / Meja 05)',
+                        prefixIcon: const Icon(Icons.table_restaurant, color: Colors.orange),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 10),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onChanged: (val) {
+                        setModalState(() {});
+                        setState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+
                   if (isFiturJasaAktif) ...[
                     const Divider(thickness: 2),
                     const Text('Layanan Tambahan / Jasa (Opsional)',
@@ -633,13 +705,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   @override
   Widget build(BuildContext context) {
+    // FILTER PENCARIAN (Membaca Nama dan Barcode/Kode Barang)
     List dataTersaring = data.where((produk) {
-      bool cocokKataKunci = produk['nama']
-          .toString()
-          .toLowerCase()
-          .contains(kataKunci.toLowerCase());
+      String cari = kataKunci.toLowerCase();
+      bool cocokNama = produk['nama'].toString().toLowerCase().contains(cari);
+      bool cocokKode = produk['kode_barang'] != null && 
+                       produk['kode_barang'].toString().toLowerCase().contains(cari);
       bool isBarang = produk['jenis'] != 'jasa';
-      return cocokKataKunci && isBarang;
+      
+      return (cocokNama || cocokKode) && isBarang;
     }).toList();
 
     return Scaffold(
@@ -694,12 +768,23 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         kataKunci = nilai;
                       });
                     },
+                    // onSubmitted berguna jika kasir memakai alat scanner tembak fisik (USB/Bluetooth)
+                    onSubmitted: (nilai) {
+                      setState(() {
+                        kataKunci = nilai;
+                      });
+                    },
                     decoration: InputDecoration(
-                      hintText: 'Cari nama barang...',
+                      hintText: 'Cari barang / Scan Barcode...',
                       prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                      // TOMBOL SCANNER KAMERA
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent),
+                        onPressed: mulaiScanBarcode,
+                      ),
                       filled: true,
                       fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 15),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none),
@@ -757,7 +842,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                         ],
                                       ),
                                     ),
-                                    // UI KONTROL TAMBAH & KURANG ALA SHOPEE
                                     if (qtyDiKeranjang > 0)
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
