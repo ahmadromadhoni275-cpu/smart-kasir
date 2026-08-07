@@ -37,12 +37,10 @@ void main() async {
 
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-        
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
-    
-    // Sintaks versi 17.0.0
+
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
     FirebaseMessaging messaging = FirebaseMessaging.instance;
@@ -63,7 +61,6 @@ void main() async {
       AndroidNotification? android = message.notification?.android;
 
       if (notification != null && android != null) {
-        // Sintaks versi 17.0.0
         flutterLocalNotificationsPlugin.show(
           notification.hashCode,
           notification.title,
@@ -107,24 +104,34 @@ class AplikasiKasir extends StatelessWidget {
 }
 
 // ===================================================================
-// KERANGKA NAVIGASI (BOTTOM NAVIGATION BAR)
+// KERANGKA NAVIGASI DINAMIS (BERDASARKAN ROLE ADMIN / KASIR)
 // ===================================================================
 class KerangkaNavigasi extends StatefulWidget {
   const KerangkaNavigasi({super.key});
+
   @override
   State<KerangkaNavigasi> createState() => _KerangkaNavigasiState();
 }
 
 class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   int _indeksDipilih = 0;
+  String _roleUser = 'kasir';
+  bool _isLoadingRole = true;
 
-  final List<Widget> _daftarHalaman = [
-    const HalamanBeranda(),      
-    const HalamanKasir(),        
-    const HalamanProduk(),       
-    const HalamanPegawai(),      
-    const HalamanPengaturan(),   
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _cekRolePengguna();
+  }
+
+  // Ambil data role dari SharedPreferences saat kerangka dimuat
+  Future<void> _cekRolePengguna() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _roleUser = prefs.getString('role') ?? 'kasir';
+      _isLoadingRole = false;
+    });
+  }
 
   void _ketukTab(int indeks) {
     setState(() {
@@ -134,22 +141,61 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
 
   @override
   Widget build(BuildContext context) {
+    // Jika masih memuat role, tampilkan loading sebentar
+    if (_isLoadingRole) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Tentukan daftar halaman & navbar berdasarkan apakah dia 'admin' atau 'kasir'
+    bool isAdmin = (_roleUser == 'admin');
+
+    // List Halaman: Jika Admin (5 menu), Jika Kasir (3 menu: Beranda, Kasir, Produk)
+    final List<Widget> daftarHalaman = isAdmin
+        ? [
+            const HalamanBeranda(),
+            const HalamanKasir(),
+            const HalamanProduk(),
+            const HalamanPegawai(),
+            const HalamanPengaturan(),
+          ]
+        : [
+            const HalamanBeranda(),
+            const HalamanKasir(),
+            const HalamanProduk(), // Kasir bisa akses produk (untuk lihat & search)
+          ];
+
+    // List Item Navbar
+    final List<BottomNavigationBarItem> daftarNavbarItem = isAdmin
+        ? [
+            const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Beranda'),
+            const BottomNavigationBarItem(icon: Icon(Icons.point_of_sale), label: 'Kasir'),
+            const BottomNavigationBarItem(icon: Icon(Icons.inventory_2), label: 'Produk'),
+            const BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Pegawai'),
+            const BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Pengaturan'),
+          ]
+        : [
+            const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Beranda'),
+            const BottomNavigationBarItem(icon: Icon(Icons.point_of_sale), label: 'Kasir'),
+            const BottomNavigationBarItem(icon: Icon(Icons.inventory_2), label: 'Produk'),
+          ];
+
+    // Pastikan index tidak out of bound jika berpindah akun
+    if (_indeksDipilih >= daftarHalaman.length) {
+      _indeksDipilih = 0;
+    }
+
     return Scaffold(
-      body: _daftarHalaman[_indeksDipilih],
+      body: daftarHalaman[_indeksDipilih],
       bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed, 
+        type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
         selectedItemColor: Colors.blueAccent,
         unselectedItemColor: Colors.grey,
         currentIndex: _indeksDipilih,
         onTap: _ketukTab,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Beranda'),
-          BottomNavigationBarItem(icon: Icon(Icons.point_of_sale), label: 'Kasir'),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory_2), label: 'Produk'),
-          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Pegawai'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Pengaturan'),
-        ],
+        items: daftarNavbarItem,
       ),
     );
   }
