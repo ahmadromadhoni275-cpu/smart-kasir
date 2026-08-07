@@ -129,22 +129,50 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
+  // =======================================================
+  // FITUR BARU: VALIDASI STOK SAAT TAMBAH KE KERANJANG
+  // =======================================================
   void tambahKeKeranjang(Map<String, dynamic> produk) {
+    int stokTersedia = int.tryParse(produk['stok'].toString()) ?? 0;
+
     setState(() {
       int index = keranjang.indexWhere((item) => item['id'] == produk['id']);
       int harga = int.tryParse(produk['harga'].toString()) ?? 0;
 
       if (index != -1) {
+        // Cegah penambahan jika melampaui sisa stok
+        if (keranjang[index]['qty'] >= stokTersedia) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Stok ${produk['nama']} tidak mencukupi! Sisa stok hanya: $stokTersedia'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 1),
+            ),
+          );
+          return; // Berhenti di sini
+        }
         keranjang[index]['qty'] += 1;
         keranjang[index]['subtotal'] = keranjang[index]['qty'] * harga;
       } else {
+        // Cegah input barang baru ke keranjang jika stoknya memang 0
+        if (stokTersedia < 1) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal! Stok ${produk['nama']} saat ini habis.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 1),
+            ),
+          );
+          return; // Berhenti di sini
+        }
         keranjang.add({
           'id': produk['id'],
           'nama': produk['nama'] ?? 'Produk',
           'harga': harga,
           'qty': 1,
           'subtotal': harga,
-          'kategori_id': produk['kategori_id'], // Diperlukan untuk multi-printer di struk
+          'kategori_id': produk['kategori_id'], 
+          'stok_maksimal': stokTersedia, // Simpan batas maksimal stok di memori keranjang
         });
       }
     });
@@ -197,10 +225,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
   }
 
-  // --- FUNGSI PROSES TRANSAKSI DENGAN PARAMETER NAMA PELANGGAN (KASBON) ---
   Future<void> prosesTransaksiPusat(
       BuildContext dialogContext, String metode, int uangBayar, int kembalian, String namaPelanggan) async {
-    
     final url = Uri.parse('$baseUrl/simpanTransaksi');
 
     int finalPpnNominal = getPpnNominal();
@@ -218,7 +244,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         'harga': h,
         'qty': q,
         'subtotal': h * q,
-        'kategori_id': item['kategori_id'], // Kirim kategori_id untuk HalamanStruk
+        'kategori_id': item['kategori_id'], 
       });
     }
 
@@ -244,7 +270,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
       "uang_bayar": uangBayar,
       "kembalian": kembalian,
       "metode_pembayaran": metode,
-      // NAMA PELANGGAN UNTUK KASBON
       "nama_pelanggan": metode == 'kasbon' ? namaPelanggan : null, 
       "no_meja": isFiturMejaAktif && noMejaCtrl.text.isNotEmpty ? noMejaCtrl.text : null,
       "items": finalDetailBelanja
@@ -373,7 +398,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     ),
                     const SizedBox(height: 15),
 
-                    // KONDISI JIKA METODE KASBON DIPILIH
                     if (metodePilih == 'kasbon') ...[
                       TextField(
                         controller: namaPelangganCtrl,
@@ -386,7 +410,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       const SizedBox(height: 15),
                     ],
 
-                    // KONDISI JIKA METODE TUNAI DIPILIH
                     if (metodePilih == 'tunai') ...[
                       TextField(
                         controller: uangBayarCtrl,
@@ -403,8 +426,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         },
                       ),
                       const SizedBox(height: 8),
-
-                      // --- TOMBOL "UANG PAS" ---
                       Align(
                         alignment: Alignment.centerRight,
                         child: ActionChip(
@@ -460,7 +481,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             isProsesAPI = true;
                           });
 
-                          // --- PEMANGGILAN FUNGSI DENGAN DATA KASBON ---
                           await prosesTransaksiPusat(
                               dialogContext, metodePilih, uangBayar, kembalian, namaPelangganCtrl.text);
 
@@ -517,6 +537,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               var item = keranjang[i];
                               int h = int.tryParse(item['harga'].toString()) ?? 0;
                               int q = int.tryParse(item['qty'].toString()) ?? 0;
+                              int maxStok = item['stok_maksimal'] ?? 0; // Tarik data batas stok
                               int sub = h * q;
 
                               return ListTile(
@@ -561,6 +582,20 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                     ),
                                     InkWell(
                                       onTap: () {
+                                        // ===========================================
+                                        // VALIDASI STOK DI DALAM MODAL KERANJANG
+                                        // ===========================================
+                                        if (keranjang[i]['qty'] >= maxStok) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Maksimal stok tercapai! Sisa stok hanya: $maxStok'),
+                                              backgroundColor: Colors.red,
+                                              duration: const Duration(seconds: 1),
+                                            ),
+                                          );
+                                          return;
+                                        }
+
                                         setModalState(() {
                                           keranjang[i]['qty'] += 1;
                                           keranjang[i]['subtotal'] =
@@ -579,7 +614,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             },
                           ),
                   ),
-                  
                   if (isFiturMejaAktif) ...[
                     const Divider(thickness: 2),
                     const Text('Informasi Pemesanan',
