@@ -44,7 +44,44 @@ class _HalamanKasirState extends State<HalamanKasir> {
   void initState() {
     super.initState();
     _muatDataPenggunaDanToko();
+    _muatKeranjangLokal(); // <-- Panggil pemulihan keranjang saat aplikasi dibuka
   }
+
+  // =======================================================
+  // FITUR BARU: AUTO-SAVE DAN PEMULIHAN KERANJANG
+  // =======================================================
+  Future<void> _simpanKeranjangLokal() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Ubah list keranjang menjadi string JSON
+    String keranjangJson = json.encode(keranjang);
+    await prefs.setString('keranjang_sementara', keranjangJson);
+    await prefs.setString('no_meja_sementara', noMejaCtrl.text);
+    await prefs.setString('jasa_nama_sementara', namaJasaCtrl.text);
+    await prefs.setString('jasa_nominal_sementara', nominalJasaCtrl.text);
+  }
+
+  Future<void> _muatKeranjangLokal() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? keranjangJson = prefs.getString('keranjang_sementara');
+    
+    if (keranjangJson != null && keranjangJson.isNotEmpty) {
+      try {
+        List<dynamic> decoded = json.decode(keranjangJson);
+        setState(() {
+          keranjang = decoded.map((item) => Map<String, dynamic>.from(item)).toList();
+        });
+      } catch (e) {
+        debugPrint('Gagal memuat keranjang lokal: $e');
+      }
+    }
+
+    setState(() {
+      noMejaCtrl.text = prefs.getString('no_meja_sementara') ?? '';
+      namaJasaCtrl.text = prefs.getString('jasa_nama_sementara') ?? '';
+      nominalJasaCtrl.text = prefs.getString('jasa_nominal_sementara') ?? '';
+    });
+  }
+  // =======================================================
 
   Future<void> _muatDataPenggunaDanToko() async {
     final prefs = await SharedPreferences.getInstance();
@@ -129,9 +166,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
-  // =======================================================
-  // FITUR BARU: VALIDASI STOK SAAT TAMBAH KE KERANJANG
-  // =======================================================
   void tambahKeKeranjang(Map<String, dynamic> produk) {
     int stokTersedia = int.tryParse(produk['stok'].toString()) ?? 0;
 
@@ -140,7 +174,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
       int harga = int.tryParse(produk['harga'].toString()) ?? 0;
 
       if (index != -1) {
-        // Cegah penambahan jika melampaui sisa stok
         if (keranjang[index]['qty'] >= stokTersedia) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -149,12 +182,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
               duration: const Duration(seconds: 1),
             ),
           );
-          return; // Berhenti di sini
+          return;
         }
         keranjang[index]['qty'] += 1;
         keranjang[index]['subtotal'] = keranjang[index]['qty'] * harga;
       } else {
-        // Cegah input barang baru ke keranjang jika stoknya memang 0
         if (stokTersedia < 1) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -163,7 +195,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
               duration: const Duration(seconds: 1),
             ),
           );
-          return; // Berhenti di sini
+          return;
         }
         keranjang.add({
           'id': produk['id'],
@@ -172,10 +204,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
           'qty': 1,
           'subtotal': harga,
           'kategori_id': produk['kategori_id'], 
-          'stok_maksimal': stokTersedia, // Simpan batas maksimal stok di memori keranjang
+          'stok_maksimal': stokTersedia, 
         });
       }
     });
+    _simpanKeranjangLokal(); // <-- Auto-save setiap ada penambahan
   }
 
   void kurangiDariKeranjang(Map<String, dynamic> produk) {
@@ -191,6 +224,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         }
       }
     });
+    _simpanKeranjangLokal(); // <-- Auto-save setiap ada pengurangan
   }
 
   int getSubtotal() {
@@ -223,6 +257,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       nominalJasaCtrl.clear();
       noMejaCtrl.clear(); 
     });
+    _simpanKeranjangLokal(); // <-- Bersihkan juga data di memori
   }
 
   Future<void> prosesTransaksiPusat(
@@ -522,9 +557,21 @@ class _HalamanKasirState extends State<HalamanKasir> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Rincian Belanja",
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Rincian Belanja",
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          kosongkanKeranjang();
+                        }, 
+                        icon: const Icon(Icons.delete_sweep, color: Colors.red), 
+                        label: const Text('Kosongkan', style: TextStyle(color: Colors.red))
+                      )
+                    ],
+                  ),
                   const Divider(),
                   Expanded(
                     child: keranjang.isEmpty
@@ -537,7 +584,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               var item = keranjang[i];
                               int h = int.tryParse(item['harga'].toString()) ?? 0;
                               int q = int.tryParse(item['qty'].toString()) ?? 0;
-                              int maxStok = item['stok_maksimal'] ?? 0; // Tarik data batas stok
+                              int maxStok = item['stok_maksimal'] ?? 0; 
                               int sub = h * q;
 
                               return ListTile(
@@ -566,6 +613,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                           }
                                         });
                                         setState(() {}); 
+                                        _simpanKeranjangLokal(); // Auto-save saat diubah
                                       },
                                       child: const Icon(
                                           Icons.remove_circle_outline,
@@ -582,9 +630,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                     ),
                                     InkWell(
                                       onTap: () {
-                                        // ===========================================
-                                        // VALIDASI STOK DI DALAM MODAL KERANJANG
-                                        // ===========================================
                                         if (keranjang[i]['qty'] >= maxStok) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
@@ -602,6 +647,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                               keranjang[i]['qty'] * h;
                                         });
                                         setState(() {});
+                                        _simpanKeranjangLokal(); // Auto-save saat diubah
                                       },
                                       child: const Icon(
                                           Icons.add_circle_outline,
@@ -636,6 +682,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       onChanged: (val) {
                         setModalState(() {});
                         setState(() {});
+                        _simpanKeranjangLokal(); // Simpan saat kasir mengetik meja
                       },
                     ),
                     const SizedBox(height: 10),
@@ -663,6 +710,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8)),
                             ),
+                            onChanged: (val) => _simpanKeranjangLokal(),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -682,6 +730,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             onChanged: (val) {
                               setModalState(() {});
                               setState(() {});
+                              _simpanKeranjangLokal();
                             },
                           ),
                         ),
