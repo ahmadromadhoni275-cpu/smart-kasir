@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'halaman_login.dart'; 
 import 'halaman_struk.dart'; 
+import 'halaman_shift.dart'; 
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform, Socket; // Ditambah Socket untuk WiFi/LAN
@@ -940,6 +941,24 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                     ],
                   ),
                   const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15))),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const HalamanShift()),
+                      );
+                    },
+                    icon: const Icon(Icons.lock_clock, color: Colors.white),
+                    label: const Text('Manajemen Uang Shift (Buka/Tutup Laci)',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 15),
 
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
