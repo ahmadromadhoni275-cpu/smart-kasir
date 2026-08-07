@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'dart:io';
 
 class HalamanPrinter extends StatefulWidget {
   const HalamanPrinter({super.key});
@@ -13,292 +12,176 @@ class HalamanPrinter extends StatefulWidget {
 }
 
 class _HalamanPrinterState extends State<HalamanPrinter> {
-  final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
-  
-  List daftarKategori = [];
-  bool isLoading = true;
-  
-  // Variabel untuk proses pencarian Bluetooth
-  List<BluetoothInfo> daftarPerangkat = [];
-  bool isScanning = false;
+  // Status Printer Bluetooth
+  String macPrinterTersimpan = '';
+  String namaPrinterTersimpan = '';
+  bool isBluetoothConnected = false;
+  List<BluetoothInfo> perangkatBluetooth = [];
+  bool isMencariBluetooth = false;
 
-  // Penampung pengaturan (key: id_slot, value: {tipe, alamat})
-  Map<String, Map<String, String>> pengaturanPrinter = {};
+  // Status Printer WiFi / LAN
+  TextEditingController ipPrinterCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _inisialisasiData();
+    _muatPengaturanPrinter();
   }
 
-  Future<void> _inisialisasiData() async {
-    await ambilDaftarKategori();
-    await muatPengaturanLokal();
+  // ==============================================================
+  // 1. MUAT PENGATURAN DARI MEMORI HP
+  // ==============================================================
+  Future<void> _muatPengaturanPrinter() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      macPrinterTersimpan = prefs.getString('mac_printer') ?? '';
+      namaPrinterTersimpan = prefs.getString('nama_printer') ?? 'Belum ada printer';
+      ipPrinterCtrl.text = prefs.getString('ip_printer') ?? '';
+    });
+    
+    // Cek apakah bluetooth masih terhubung
+    bool terhubung = await PrintBluetoothThermal.connectionStatus;
+    setState(() {
+      isBluetoothConnected = terhubung;
+    });
   }
 
-  // 1. Mengambil Kategori Dinamis dari Server
-  Future<void> ambilDaftarKategori() async {
+  // ==============================================================
+  // 2. FUNGSI PRINTER BLUETOOTH (Untuk Kasir Utama)
+  // ==============================================================
+  Future<void> _cariPerangkatBluetooth() async {
+    setState(() {
+      isMencariBluetooth = true;
+    });
+    
     try {
-      final response = await http.get(Uri.parse(kategoriUrl), headers: {'ngrok-skip-browser-warning': 'true'});
-      if (response.statusCode == 200) {
-        final res = json.decode(response.body);
-        setState(() {
-          daftarKategori = res['data'] ?? [];
-        });
+      List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
+      setState(() {
+        perangkatBluetooth = devices;
+        isMencariBluetooth = false;
+      });
+      if (devices.isEmpty) {
+        _tampilPesan('Tidak ada perangkat bluetooth tersambung di HP ini.', Colors.orange);
       }
     } catch (e) {
-      debugPrint("Error Kategori: $e");
+      setState(() { isMencariBluetooth = false; });
+      _tampilPesan('Gagal mencari bluetooth. Pastikan Bluetooth HP menyala.', Colors.red);
     }
   }
 
-  // 2. Memuat Pengaturan Printer yang Tersimpan di HP
-  Future<void> muatPengaturanLokal() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Muat untuk Printer Utama (Kasir)
-    pengaturanPrinter['utama'] = {
-      'tipe': prefs.getString('printer_tipe_utama') ?? 'bluetooth',
-      'alamat': prefs.getString('printer_alamat_utama') ?? '',
-    };
+  Future<void> _hubungkanBluetooth(String mac, String nama) async {
+    _tampilLoading('Menghubungkan ke $nama...');
+    try {
+      bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
+      Navigator.pop(context); // Tutup loading
 
-    // Muat untuk masing-masing Kategori Dinamis
-    for (var kat in daftarKategori) {
-      String idKat = kat['id'].toString();
-      pengaturanPrinter[idKat] = {
-        'tipe': prefs.getString('printer_tipe_cat_$idKat') ?? 'bluetooth',
-        'alamat': prefs.getString('printer_alamat_cat_$idKat') ?? '',
-      };
-    }
+      if (terhubung) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('mac_printer', mac);
+        await prefs.setString('nama_printer', nama);
 
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  // 3. Menyimpan Pengaturan ke Memori HP
-  Future<void> simpanPengaturan(String idSlot, String tipe, String alamat) async {
-    final prefs = await SharedPreferences.getInstance();
-    String keySuffix = idSlot == 'utama' ? 'utama' : 'cat_$idSlot';
-    
-    await prefs.setString('printer_tipe_$keySuffix', tipe);
-    await prefs.setString('printer_alamat_$keySuffix', alamat);
-
-    setState(() {
-      pengaturanPrinter[idSlot] = {'tipe': tipe, 'alamat': alamat};
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaturan printer berhasil disimpan!'), backgroundColor: Colors.green),
-      );
-    }
-  }
-
-  // --- FUNGSI BLUETOOTH BAWAAN ANDA ---
-  Future<bool> _mintaIzinBluetooth() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.location,
-    ].request();
-
-    return statuses[Permission.bluetoothConnect]!.isGranted;
-  }
-
-  Future<void> cariPerangkatBluetooth(String idSlot) async {
-    bool diizinkan = await _mintaIzinBluetooth();
-    if (!diizinkan) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Izin Bluetooth ditolak!'), backgroundColor: Colors.red),
-        );
+        setState(() {
+          isBluetoothConnected = true;
+          macPrinterTersimpan = mac;
+          namaPrinterTersimpan = nama;
+        });
+        _tampilPesan('Berhasil terhubung ke $nama', Colors.green);
+      } else {
+        _tampilPesan('Gagal terhubung. Pastikan printer menyala.', Colors.red);
       }
+    } catch (e) {
+      Navigator.pop(context); // Tutup loading
+      _tampilPesan('Error koneksi bluetooth.', Colors.red);
+    }
+  }
+
+  Future<void> _tesPrintBluetooth() async {
+    if (!isBluetoothConnected) {
+      _tampilPesan('Printer bluetooth belum terhubung!', Colors.red);
       return;
     }
 
-    setState(() {
-      isScanning = true;
-      daftarPerangkat.clear();
-    });
-
-    // Menampilkan Bottom Sheet Pencarian
-    if (mounted) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setModalState) {
-              // Jalankan pencarian di latar belakang saat sheet terbuka
-              if (isScanning && daftarPerangkat.isEmpty) {
-                PrintBluetoothThermal.pairedBluetooths.then((list) {
-                  setModalState(() {
-                    daftarPerangkat = list;
-                    isScanning = false;
-                  });
-                });
-              }
-
-              return Container(
-                height: MediaQuery.of(context).size.height * 0.6,
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const Text('Pilih Printer Bluetooth', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const Divider(),
-                    Expanded(
-                      child: isScanning
-                          ? const Center(child: CircularProgressIndicator())
-                          : daftarPerangkat.isEmpty
-                              ? const Center(child: Text('Tidak ada perangkat Bluetooth ditemukan.'))
-                              : ListView.builder(
-                                  itemCount: daftarPerangkat.length,
-                                  itemBuilder: (context, index) {
-                                    var device = daftarPerangkat[index];
-                                    return ListTile(
-                                      leading: const Icon(Icons.bluetooth, color: Colors.blue),
-                                      title: Text(device.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                      subtitle: Text(device.macAdress),
-                                      trailing: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                        onPressed: () {
-                                          Navigator.pop(context); // Tutup Sheet
-                                          simpanPengaturan(idSlot, 'bluetooth', device.macAdress);
-                                          ujiKoneksiBluetooth(device.macAdress); // Uji tes koneksi
-                                        },
-                                        child: const Text('Pilih', style: TextStyle(color: Colors.white)),
-                                      ),
-                                    );
-                                  },
-                                ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ).whenComplete(() {
-        setState(() => isScanning = false);
-      });
-    }
-  }
-
-  // Fungsi khusus untuk tes koneksi Bluetooth langsung
-  Future<void> ujiKoneksiBluetooth(String mac) async {
     try {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menguji koneksi printer...'), backgroundColor: Colors.orange));
-      }
-      final bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(terhubung ? 'Berhasil terhubung ke printer!' : 'Gagal menghubungkan ke printer.'),
-            backgroundColor: terhubung ? Colors.green : Colors.red,
-          ),
-        );
-      }
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = [];
+
+      bytes += generator.text("TES PRINTER BLUETOOTH", styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text("Koneksi Sukses!", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Smart Kasir System", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(2);
+
+      await PrintBluetoothThermal.writeBytes(bytes);
+      _tampilPesan('Cetak tes berhasil!', Colors.green);
     } catch (e) {
-      debugPrint("Gagal tes koneksi: $e");
+      _tampilPesan('Gagal mencetak. Error: $e', Colors.red);
     }
   }
 
-  // --- WIDGET SLOT PRINTER CERDAS ---
-  Widget _buildSlotPrinter(String idSlot, String namaSlot) {
-    Map<String, String> config = pengaturanPrinter[idSlot] ?? {'tipe': 'bluetooth', 'alamat': ''};
-    String tipeKoneksi = config['tipe']!;
-    String alamat = config['alamat']!;
-    
-    TextEditingController ipCtrl = TextEditingController(text: tipeKoneksi == 'wifi' ? alamat : '');
+  // ==============================================================
+  // 3. FUNGSI PRINTER WIFI/LAN (Untuk Dapur / Bar / Rekap Jarak Jauh)
+  // ==============================================================
+  Future<void> _simpanIpWifi() async {
+    if (ipPrinterCtrl.text.isEmpty) {
+      _tampilPesan('IP Printer tidak boleh kosong', Colors.red);
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ip_printer', ipPrinterCtrl.text);
+    _tampilPesan('IP Printer Jaringan Berhasil Disimpan', Colors.green);
+  }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 15),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        leading: CircleAvatar(
-          backgroundColor: tipeKoneksi == 'bluetooth' ? Colors.blueAccent : Colors.teal,
-          child: Icon(tipeKoneksi == 'bluetooth' ? Icons.bluetooth : Icons.wifi, color: Colors.white),
+  Future<void> _tesPrintWifi() async {
+    String ip = ipPrinterCtrl.text;
+    if (ip.isEmpty) {
+      _tampilPesan('Simpan IP Printer terlebih dahulu!', Colors.red);
+      return;
+    }
+
+    _tampilLoading('Mengirim perintah ke $ip...');
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = [];
+
+      bytes += generator.text("TES PRINTER WIFI / LAN", styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text("Koneksi Jaringan Sukses!", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("IP: $ip", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(2);
+
+      // Kirim via Socket LAN
+      final socket = await Socket.connect(ip, 9100, timeout: const Duration(seconds: 5));
+      socket.add(bytes);
+      socket.destroy();
+
+      Navigator.pop(context); // Tutup loading
+      _tampilPesan('Cetak tes jaringan berhasil!', Colors.green);
+    } catch (e) {
+      Navigator.pop(context); // Tutup loading
+      _tampilPesan('Gagal terhubung ke IP. Cek koneksi WiFi/LAN.', Colors.red);
+    }
+  }
+
+  // ==============================================================
+  // UTILS
+  // ==============================================================
+  void _tampilPesan(String pesan, Color warna) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan), backgroundColor: warna));
+  }
+
+  void _tampilLoading(String pesan) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 20),
+            Expanded(child: Text(pesan)),
+          ],
         ),
-        title: Text(namaSlot, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        subtitle: Text(alamat.isEmpty ? 'Belum dikonfigurasi' : 'Tersimpan: $alamat', style: TextStyle(color: alamat.isEmpty ? Colors.red : Colors.grey)),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Pilih Tipe Koneksi:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: RadioListTile<String>(
-                        title: const Text('Bluetooth', style: TextStyle(fontSize: 14)),
-                        value: 'bluetooth',
-                        groupValue: tipeKoneksi,
-                        activeColor: Colors.blueAccent,
-                        contentPadding: EdgeInsets.zero,
-                        onChanged: (val) => simpanPengaturan(idSlot, val!, ''), // Reset alamat saat ganti tipe
-                      ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<String>(
-                        title: const Text('LAN / Wi-Fi', style: TextStyle(fontSize: 14)),
-                        value: 'wifi',
-                        groupValue: tipeKoneksi,
-                        activeColor: Colors.teal,
-                        contentPadding: EdgeInsets.zero,
-                        onChanged: (val) => simpanPengaturan(idSlot, val!, ''),
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                
-                // PANEL KONTROL BERDASARKAN TIPE
-                if (tipeKoneksi == 'bluetooth') ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
-                      onPressed: () => cariPerangkatBluetooth(idSlot),
-                      icon: const Icon(Icons.search),
-                      label: const Text('Cari & Pilih Printer Bluetooth'),
-                    ),
-                  ),
-                ] else ...[
-                  TextField(
-                    controller: ipCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Masukkan IP Address Printer',
-                      hintText: 'Contoh: 192.168.1.200',
-                      prefixIcon: const Icon(Icons.router),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
-                      onPressed: () {
-                        if (ipCtrl.text.isNotEmpty) {
-                          simpanPengaturan(idSlot, 'wifi', ipCtrl.text);
-                        }
-                      },
-                      icon: const Icon(Icons.save),
-                      label: const Text('Simpan Konfigurasi IP Jaringan'),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          )
-        ],
       ),
     );
   }
@@ -308,31 +191,182 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Pengaturan Multi-Printer', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Pengaturan Printer', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(15),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 15),
-                  child: Text('Atur perangkat cetak untuk masing-masing divisi. Pastikan printer dalam keadaan menyala.', 
-                  style: TextStyle(color: Colors.grey)),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            
+            // ===============================================
+            // KARTU 1: PRINTER BLUETOOTH (STRUK KASIR)
+            // ===============================================
+            const Text('Printer Utama (Bluetooth)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.bluetooth_connected, size: 40, color: isBluetoothConnected ? Colors.green : Colors.grey),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Status Koneksi:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                              Text(isBluetoothConnected ? 'Terhubung' : 'Tidak Terhubung', 
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isBluetoothConnected ? Colors.green : Colors.red)),
+                              Text(namaPrinterTersimpan, style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 12)
+                            ),
+                            onPressed: _cariPerangkatBluetooth,
+                            icon: const Icon(Icons.search, color: Colors.white, size: 18),
+                            label: const Text('Cari Printer', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isBluetoothConnected ? Colors.green : Colors.grey,
+                              padding: const EdgeInsets.symmetric(vertical: 12)
+                            ),
+                            onPressed: isBluetoothConnected ? _tesPrintBluetooth : null,
+                            icon: const Icon(Icons.print, color: Colors.white, size: 18),
+                            label: const Text('Tes Print', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (isMencariBluetooth)
+                       const Padding(
+                         padding: EdgeInsets.only(top: 20),
+                         child: Center(child: CircularProgressIndicator()),
+                       ),
+
+                    if (perangkatBluetooth.isNotEmpty) ...[
+                      const Divider(height: 30),
+                      const Text('Perangkat Ditemukan (Pilih untuk menyambung):', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 10),
+                      Container(
+                        height: 150,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(10)
+                        ),
+                        child: ListView.builder(
+                          itemCount: perangkatBluetooth.length,
+                          itemBuilder: (context, index) {
+                            return ListTile(
+                              leading: const Icon(Icons.print, color: Colors.black54),
+                              title: Text(perangkatBluetooth[index].name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              subtitle: Text(perangkatBluetooth[index].macAdress, style: const TextStyle(fontSize: 10)),
+                              trailing: const Icon(Icons.link, color: Colors.blueAccent),
+                              onTap: () => _hubungkanBluetooth(perangkatBluetooth[index].macAdress, perangkatBluetooth[index].name),
+                            );
+                          },
+                        ),
+                      )
+                    ]
+                  ],
                 ),
-                
-                // 1. SLOT PRINTER KASIR (SELALU ADA)
-                _buildSlotPrinter('utama', 'Printer Kasir (Struk Umum)'),
-                
-                // 2. SLOT PRINTER KATEGORI/DIVISI DINAMIS
-                for (var kat in daftarKategori)
-                  _buildSlotPrinter(kat['id'].toString(), 'Printer Divisi: ${kat['nama_kategori']}'),
-                  
-                const SizedBox(height: 30),
-              ],
+              ),
             ),
+            
+            const SizedBox(height: 30),
+
+            // ===============================================
+            // KARTU 2: PRINTER WIFI / LAN (DAPUR / BAR)
+            // ===============================================
+            const Text('Printer Jaringan (WiFi / LAN)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const Text('Biasanya digunakan untuk cetak struk Dapur atau Jarak Jauh', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: ipPrinterCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Alamat IP Printer (Contoh: 192.168.1.100)',
+                        prefixIcon: const Icon(Icons.wifi, color: Colors.teal),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              padding: const EdgeInsets.symmetric(vertical: 12)
+                            ),
+                            onPressed: _simpanIpWifi,
+                            icon: const Icon(Icons.save, color: Colors.white, size: 18),
+                            label: const Text('Simpan IP', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              padding: const EdgeInsets.symmetric(vertical: 12)
+                            ),
+                            onPressed: _tesPrintWifi,
+                            icon: const Icon(Icons.print, color: Colors.white, size: 18),
+                            label: const Text('Tes Print LAN', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 30),
+            Center(
+              child: Text('Data printer tersimpan di perangkat ini.\nBeda HP Kasir, beda pengaturan printer.', 
+                textAlign: TextAlign.center, 
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontStyle: FontStyle.italic)),
+            )
+          ],
+        ),
+      ),
     );
   }
 }
