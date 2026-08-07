@@ -17,17 +17,23 @@ class HalamanShift extends StatefulWidget {
 
 class _HalamanShiftState extends State<HalamanShift> {
   final String baseUrl = 'https://smartkasir.shop/api';
-  
   bool isLoading = false;
-  bool isShiftBuka = false;
   
+  // Variabel Sesi User & Toko
+  int tokoId = 1;
+  int userId = 1;
+  String namaKasir = 'Kasir';
+
+  // Variabel Data Shift
+  bool isShiftBuka = false;
+  int shiftId = 0; // Didapat dari database saat shift aktif
   int modalAwal = 0;
   String waktuBuka = '';
-  
-  // Data dari API Rekap
+
+  // Data dari API Rekap Harian
   int totalTunaiSistem = 0;
-  int totalNonTunaiSistem = 0; // Tambahan untuk info Non-Tunai
-  
+  int totalNonTunaiSistem = 0;
+
   // Controller Input
   TextEditingController modalAwalCtrl = TextEditingController();
   TextEditingController uangFisikCtrl = TextEditingController();
@@ -36,63 +42,122 @@ class _HalamanShiftState extends State<HalamanShift> {
   @override
   void initState() {
     super.initState();
-    _cekStatusShift();
+    _inisialisasiData();
   }
 
-  Future<void> _cekStatusShift() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      isShiftBuka = prefs.getBool('shift_is_open') ?? false;
-      modalAwal = prefs.getInt('shift_modal_awal') ?? 0;
-      waktuBuka = prefs.getString('shift_waktu_buka') ?? '';
-    });
-
-    if (isShiftBuka) {
-      _tarikTunaiSistem();
-    }
-  }
-
-  Future<void> _tarikTunaiSistem() async {
+  // 1. Ambil ID User dan Toko yang sedang login
+  Future<void> _inisialisasiData() async {
     setState(() => isLoading = true);
+    final prefs = await SharedPreferences.getInstance();
+    
+    tokoId = prefs.getInt('toko_id') ?? 1;
+    userId = prefs.getInt('user_id') ?? 1;
+    namaKasir = prefs.getString('username') ?? 'Kasir';
+
+    await _cekStatusShiftApi();
+  }
+
+  // 2. Cek ke Database (API) apakah user ini punya shift yang sedang berjalan
+  Future<void> _cekStatusShiftApi() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/shift/status/$tokoId/$userId'),
+          headers: {'ngrok-skip-browser-warning': 'true'});
+          
+      if (response.statusCode == 200) {
+        final res = json.decode(response.body);
+        
+        if (res['status'] == true && res['data'] != null) {
+          // Shift sedang berjalan
+          setState(() {
+            isShiftBuka = true;
+            shiftId = int.parse(res['data']['id'].toString());
+            modalAwal = int.parse(res['data']['modal_awal'].toString());
+            
+            // Format waktu dari database ke format cantik
+            DateTime parsedDate = DateTime.parse(res['data']['waktu_buka']);
+            waktuBuka = DateFormat('dd MMM yyyy, HH:mm').format(parsedDate);
+          });
+          
+          // Karena shift buka, tarik juga data total pendapatan hari ini
+          await _tarikTunaiSistem();
+        } else {
+          // Tidak ada shift aktif
+          setState(() {
+            isShiftBuka = false;
+            shiftId = 0;
+            modalAwal = 0;
+            waktuBuka = '';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error cek status shift: $e');
+    }
+    setState(() => isLoading = false);
+  }
+
+  // 3. Tarik omset / rekap uang hari ini
+  Future<void> _tarikTunaiSistem() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/rekap'),
           headers: {'ngrok-skip-browser-warning': 'true'});
-      
+          
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final totals = data['totals'];
         setState(() {
           totalTunaiSistem = int.tryParse(totals['tunai'].toString() == 'null' ? '0' : totals['tunai'].toString()) ?? 0;
-          // Menarik data Non-Tunai dari server
           totalNonTunaiSistem = int.tryParse(totals['non_tunai'].toString() == 'null' ? '0' : totals['non_tunai'].toString()) ?? 0;
         });
       }
     } catch (e) {
       debugPrint('Error get rekap tunai: $e');
     }
-    setState(() => isLoading = false);
   }
 
+  // 4. POST: Kirim data buka shift ke API
   Future<void> _prosesBukaShift() async {
+    if (modalAwalCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Modal awal tidak boleh kosong!'), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => isLoading = true);
     int inputModal = int.tryParse(modalAwalCtrl.text) ?? 0;
-    
-    final prefs = await SharedPreferences.getInstance();
-    String waktuSekarang = DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now());
 
-    await prefs.setBool('shift_is_open', true);
-    await prefs.setInt('shift_modal_awal', inputModal);
-    await prefs.setString('shift_waktu_buka', waktuSekarang);
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/shift/buka'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'toko_id': tokoId,
+          'user_id': userId,
+          'modal_awal': inputModal
+        })
+      );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Shift Kasir Berhasil Dibuka!'), backgroundColor: Colors.green),
-    );
-
-    _cekStatusShift();
+      final res = json.decode(response.body);
+      
+      if (response.statusCode == 201 && res['status'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Shift Kasir Berhasil Dibuka!'), backgroundColor: Colors.green),
+        );
+        modalAwalCtrl.clear();
+        await _cekStatusShiftApi(); // Refresh halaman agar masuk ke mode Tutup Shift
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Gagal membuka shift'), backgroundColor: Colors.red));
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error server saat membuka shift'), backgroundColor: Colors.red));
+    }
   }
 
+  // 5. Validasi sebelum hitung dan tutup
   void _konfirmasiTutupShift() {
     int uangFisik = int.tryParse(uangFisikCtrl.text) ?? 0;
-    int uangSeharusnya = modalAwal + totalTunaiSistem; // NON-TUNAI TIDAK IKUT DIHITUNG DI LACI
+    int uangSeharusnya = modalAwal + totalTunaiSistem; 
     int selisih = uangFisik - uangSeharusnya;
 
     showDialog(
@@ -122,11 +187,10 @@ class _HalamanShiftState extends State<HalamanShift> {
               )
             ),
             const SizedBox(height: 10),
-            // Info Tambahan Non-Tunai (Agar kasir tahu tetap tercatat)
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
-              child: Text('Info: Ada transaksi Non-Tunai (QRIS/Transfer) sebesar ${_formatRp(totalNonTunaiSistem)} yang langsung masuk ke rekening.', 
+              child: Text('Info: Ada transaksi Non-Tunai sebesar ${_formatRp(totalNonTunaiSistem)} yang langsung masuk ke rekening.', 
                 style: const TextStyle(fontSize: 10, color: Colors.purple, fontStyle: FontStyle.italic)),
             )
           ],
@@ -140,7 +204,7 @@ class _HalamanShiftState extends State<HalamanShift> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () {
               Navigator.pop(context);
-              _cetakLaporanShift(uangFisik, uangSeharusnya, selisih);
+              _prosesTutupShift(uangFisik, uangSeharusnya, selisih);
             },
             child: const Text('Tutup & Cetak', style: TextStyle(color: Colors.white)),
           )
@@ -149,14 +213,57 @@ class _HalamanShiftState extends State<HalamanShift> {
     );
   }
 
-  Future<void> _cetakLaporanShift(int uangFisik, int uangSeharusnya, int selisih) async {
+  // 6. POST: Kirim data tutup shift ke API, jika berhasil baru cetak Struk
+  Future<void> _prosesTutupShift(int uangFisik, int uangSeharusnya, int selisih) async {
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
 
+    String catatan = catatanShiftCtrl.text.isEmpty ? '-' : catatanShiftCtrl.text;
+
+    try {
+      // A. Simpan Data ke Database Server
+      final response = await http.post(
+        Uri.parse('$baseUrl/shift/tutup'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'shift_id': shiftId,
+          'total_tunai_sistem': totalTunaiSistem,
+          'total_non_tunai_sistem': totalNonTunaiSistem,
+          'uang_fisik': uangFisik,
+          'selisih': selisih,
+          'catatan': catatan
+        })
+      );
+
+      final res = json.decode(response.body);
+
+      if (response.statusCode == 200 && res['status'] == true) {
+        // B. Jika Sukses Simpan ke Database, Mulai Mencetak Struk
+        await _cetakStrukShift(uangFisik, uangSeharusnya, selisih, catatan);
+        
+        uangFisikCtrl.clear();
+        catatanShiftCtrl.clear();
+
+        if (mounted) Navigator.pop(context); // Tutup Loading
+        
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift Berhasil Ditutup & Tersimpan di Sistem!'), backgroundColor: Colors.green));
+        
+        // Refresh Halaman (Akan kembali ke form Buka Shift)
+        await _cekStatusShiftApi();
+      } else {
+        if (mounted) Navigator.pop(context); // Tutup Loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Gagal menutup shift'), backgroundColor: Colors.red));
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error jaringan saat menutup shift'), backgroundColor: Colors.red));
+    }
+  }
+
+  // 7. Logika Cetak Printer
+  Future<void> _cetakStrukShift(int uangFisik, int uangSeharusnya, int selisih, String catatan) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       String waktuTutup = DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now());
-      String catatan = catatanShiftCtrl.text.isEmpty ? '-' : catatanShiftCtrl.text;
-      String namaKasir = prefs.getString('username') ?? 'Kasir';
       String ipPrinter = prefs.getString('ip_printer') ?? '';
       String macPrinter = prefs.getString('mac_printer') ?? '';
 
@@ -173,12 +280,9 @@ class _HalamanShiftState extends State<HalamanShift> {
       
       bytes += generator.row([PosColumn(text: "Modal Awal", width: 6), PosColumn(text: _formatRp(modalAwal), width: 6, styles: const PosStyles(align: PosAlign.right))]);
       bytes += generator.row([PosColumn(text: "Tunai Masuk", width: 6), PosColumn(text: _formatRp(totalTunaiSistem), width: 6, styles: const PosStyles(align: PosAlign.right))]);
-      
-      // Tambahan cetak Non-Tunai
       bytes += generator.row([PosColumn(text: "Non-Tunai", width: 6), PosColumn(text: _formatRp(totalNonTunaiSistem), width: 6, styles: const PosStyles(align: PosAlign.right))]);
       
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      
       bytes += generator.row([PosColumn(text: "Sistem (Harus)", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRp(uangSeharusnya), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
       bytes += generator.row([PosColumn(text: "Fisik (Laci)", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRp(uangFisik), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
@@ -191,6 +295,7 @@ class _HalamanShiftState extends State<HalamanShift> {
       bytes += generator.text(catatan, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.feed(2);
 
+      // --- Coba cetak ke Bluetooth, lalu LAN ---
       bool terhubungBluetooth = await PrintBluetoothThermal.connectionStatus;
       if (terhubungBluetooth) {
         await PrintBluetoothThermal.writeBytes(bytes);
@@ -202,22 +307,8 @@ class _HalamanShiftState extends State<HalamanShift> {
         socket.add(bytes);
         socket.destroy();
       }
-
-      await prefs.remove('shift_is_open');
-      await prefs.remove('shift_modal_awal');
-      await prefs.remove('shift_waktu_buka');
-      
-      uangFisikCtrl.clear();
-      catatanShiftCtrl.clear();
-
-      if (mounted) Navigator.pop(context); 
-      _cekStatusShift(); 
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift Berhasil Ditutup & Dicetak!'), backgroundColor: Colors.green));
-      
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error Cetak: $e'), backgroundColor: Colors.red));
+      debugPrint("Gagal cetak fisik: $e");
     }
   }
 
@@ -276,13 +367,7 @@ class _HalamanShiftState extends State<HalamanShift> {
               backgroundColor: Colors.blueAccent,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
             ),
-            onPressed: () {
-              if (modalAwalCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nominal modal awal tidak boleh kosong!'), backgroundColor: Colors.red));
-                return;
-              }
-              _prosesBukaShift();
-            },
+            onPressed: _prosesBukaShift,
             child: const Text('Buka Shift Sekarang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
           ),
         )
@@ -345,7 +430,6 @@ class _HalamanShiftState extends State<HalamanShift> {
                     ],
                   ),
                   const SizedBox(height: 5),
-                  // INFO NON-TUNAI TAMPIL DI SINI
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
