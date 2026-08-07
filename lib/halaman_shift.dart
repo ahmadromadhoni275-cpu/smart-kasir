@@ -26,6 +26,7 @@ class _HalamanShiftState extends State<HalamanShift> {
   
   // Data dari API Rekap
   int totalTunaiSistem = 0;
+  int totalNonTunaiSistem = 0; // Tambahan untuk info Non-Tunai
   
   // Controller Input
   TextEditingController modalAwalCtrl = TextEditingController();
@@ -38,9 +39,6 @@ class _HalamanShiftState extends State<HalamanShift> {
     _cekStatusShift();
   }
 
-  // ==========================================================
-  // 1. CEK STATUS SHIFT DI MEMORI LOKAL
-  // ==========================================================
   Future<void> _cekStatusShift() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -54,9 +52,6 @@ class _HalamanShiftState extends State<HalamanShift> {
     }
   }
 
-  // ==========================================================
-  // 2. TARIK DATA TOTAL TUNAI DARI SERVER
-  // ==========================================================
   Future<void> _tarikTunaiSistem() async {
     setState(() => isLoading = true);
     try {
@@ -68,6 +63,8 @@ class _HalamanShiftState extends State<HalamanShift> {
         final totals = data['totals'];
         setState(() {
           totalTunaiSistem = int.tryParse(totals['tunai'].toString() == 'null' ? '0' : totals['tunai'].toString()) ?? 0;
+          // Menarik data Non-Tunai dari server
+          totalNonTunaiSistem = int.tryParse(totals['non_tunai'].toString() == 'null' ? '0' : totals['non_tunai'].toString()) ?? 0;
         });
       }
     } catch (e) {
@@ -76,9 +73,6 @@ class _HalamanShiftState extends State<HalamanShift> {
     setState(() => isLoading = false);
   }
 
-  // ==========================================================
-  // 3. FUNGSI BUKA SHIFT
-  // ==========================================================
   Future<void> _prosesBukaShift() async {
     int inputModal = int.tryParse(modalAwalCtrl.text) ?? 0;
     
@@ -96,12 +90,9 @@ class _HalamanShiftState extends State<HalamanShift> {
     _cekStatusShift();
   }
 
-  // ==========================================================
-  // 4. FUNGSI TUTUP SHIFT (Hitung Uang Fisik vs Sistem)
-  // ==========================================================
   void _konfirmasiTutupShift() {
     int uangFisik = int.tryParse(uangFisikCtrl.text) ?? 0;
-    int uangSeharusnya = modalAwal + totalTunaiSistem;
+    int uangSeharusnya = modalAwal + totalTunaiSistem; // NON-TUNAI TIDAK IKUT DIHITUNG DI LACI
     int selisih = uangFisik - uangSeharusnya;
 
     showDialog(
@@ -130,6 +121,14 @@ class _HalamanShiftState extends State<HalamanShift> {
                 color: selisih == 0 ? Colors.green : Colors.red
               )
             ),
+            const SizedBox(height: 10),
+            // Info Tambahan Non-Tunai (Agar kasir tahu tetap tercatat)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
+              child: Text('Info: Ada transaksi Non-Tunai (QRIS/Transfer) sebesar ${_formatRp(totalNonTunaiSistem)} yang langsung masuk ke rekening.', 
+                style: const TextStyle(fontSize: 10, color: Colors.purple, fontStyle: FontStyle.italic)),
+            )
           ],
         ),
         actions: [
@@ -143,16 +142,13 @@ class _HalamanShiftState extends State<HalamanShift> {
               Navigator.pop(context);
               _cetakLaporanShift(uangFisik, uangSeharusnya, selisih);
             },
-            child: const Text('Tutup & Cetak Laporan', style: TextStyle(color: Colors.white)),
+            child: const Text('Tutup & Cetak', style: TextStyle(color: Colors.white)),
           )
         ],
       ),
     );
   }
 
-  // ==========================================================
-  // 5. CETAK LAPORAN SHIFT (Bluetooth & LAN) + HAPUS SESI SHIFT
-  // ==========================================================
   Future<void> _cetakLaporanShift(int uangFisik, int uangSeharusnya, int selisih) async {
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
 
@@ -168,7 +164,6 @@ class _HalamanShiftState extends State<HalamanShift> {
       final generator = Generator(PaperSize.mm58, profile);
       List<int> bytes = [];
 
-      // --- LAYOUT STRUK SHIFT ---
       bytes += generator.text("LAPORAN TUTUP SHIFT", styles: const PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.text("Kasir: $namaKasir", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
@@ -178,6 +173,10 @@ class _HalamanShiftState extends State<HalamanShift> {
       
       bytes += generator.row([PosColumn(text: "Modal Awal", width: 6), PosColumn(text: _formatRp(modalAwal), width: 6, styles: const PosStyles(align: PosAlign.right))]);
       bytes += generator.row([PosColumn(text: "Tunai Masuk", width: 6), PosColumn(text: _formatRp(totalTunaiSistem), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+      
+      // Tambahan cetak Non-Tunai
+      bytes += generator.row([PosColumn(text: "Non-Tunai", width: 6), PosColumn(text: _formatRp(totalNonTunaiSistem), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+      
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
       
       bytes += generator.row([PosColumn(text: "Sistem (Harus)", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRp(uangSeharusnya), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
@@ -192,7 +191,6 @@ class _HalamanShiftState extends State<HalamanShift> {
       bytes += generator.text(catatan, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.feed(2);
 
-      // --- LOGIKA MENCETAK (Coba Bluetooth, jika gagal coba LAN) ---
       bool terhubungBluetooth = await PrintBluetoothThermal.connectionStatus;
       if (terhubungBluetooth) {
         await PrintBluetoothThermal.writeBytes(bytes);
@@ -205,7 +203,6 @@ class _HalamanShiftState extends State<HalamanShift> {
         socket.destroy();
       }
 
-      // --- BERSIHKAN SESI SHIFT ---
       await prefs.remove('shift_is_open');
       await prefs.remove('shift_modal_awal');
       await prefs.remove('shift_waktu_buka');
@@ -213,8 +210,8 @@ class _HalamanShiftState extends State<HalamanShift> {
       uangFisikCtrl.clear();
       catatanShiftCtrl.clear();
 
-      if (mounted) Navigator.pop(context); // Tutup Loading
-      _cekStatusShift(); // Refresh Halaman (Akan kembali ke form Buka Shift)
+      if (mounted) Navigator.pop(context); 
+      _cekStatusShift(); 
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift Berhasil Ditutup & Dicetak!'), backgroundColor: Colors.green));
       
@@ -247,7 +244,6 @@ class _HalamanShiftState extends State<HalamanShift> {
     );
   }
 
-  // TAMPILAN JIKA SHIFT BELUM DIBUKA
   Widget _buildFormBukaShift() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -294,7 +290,6 @@ class _HalamanShiftState extends State<HalamanShift> {
     );
   }
 
-  // TAMPILAN JIKA SHIFT SEDANG BERJALAN
   Widget _buildFormTutupShift() {
     return SingleChildScrollView(
       child: Column(
@@ -345,15 +340,24 @@ class _HalamanShiftState extends State<HalamanShift> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Penjualan Tunai Masuk:'),
-                      Text(_formatRp(totalTunaiSistem), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Penjualan Tunai Laci:'),
+                      Text(_formatRp(totalTunaiSistem), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  // INFO NON-TUNAI TAMPIL DI SINI
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Non-Tunai (Ke Rekening):', style: TextStyle(color: Colors.grey)),
+                      Text(_formatRp(totalNonTunaiSistem), style: const TextStyle(color: Colors.grey)),
                     ],
                   ),
                   const Divider(thickness: 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total Uang Seharusnya:', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                      const Text('Target Uang Fisik Laci:', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
                       Text(_formatRp(modalAwal + totalTunaiSistem), style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 18)),
                     ],
                   ),
