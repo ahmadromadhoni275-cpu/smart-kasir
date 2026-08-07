@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Tambahan untuk memori sesi
+import 'package:shared_preferences/shared_preferences.dart'; 
 import 'dart:convert';
-import 'halaman_login.dart'; // Tambahan untuk arah logout
-import 'halaman_struk.dart'; // Tambahan untuk cetak ulang struk
+import 'halaman_login.dart'; 
+import 'halaman_struk.dart'; 
 
-// --- IMPOR PACKAGE BLUETOOTH & PELINDUNG PLATFORM ---
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, Socket; // Ditambah Socket untuk WiFi/LAN
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:url_launcher/url_launcher.dart'; // Ditambah untuk Share WA
 
 class HalamanBeranda extends StatefulWidget {
   const HalamanBeranda({super.key});
@@ -22,7 +22,6 @@ class HalamanBeranda extends StatefulWidget {
 int sisaHariMasaAktif = 30; // Default (Aman)
 
 class _HalamanBerandaState extends State<HalamanBeranda> {
-  // URL telah diubah ke hosting utama
   final String baseUrl = 'https://smartkasir.shop/api';
   bool isLoading = true;
 
@@ -37,7 +36,11 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   String username = 'Kasir';
   String role = 'kasir';
   int tokoId = 1;
+  int idKasirAktif = 1; 
   bool isTokoLengkap = true;
+
+  // Controller Catatan Pribadi
+  TextEditingController catatanPribadiCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -46,19 +49,33 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     ambilDataDashboard();
   }
 
-  // --- MENGAMBIL NAMA & ROLE DARI MEMORI ---
   Future<void> _muatDataPengguna() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       username = prefs.getString('username') ?? 'Kasir';
       role = prefs.getString('role') ?? 'kasir';
       tokoId = prefs.getInt('toko_id') ?? 1;
+      idKasirAktif = prefs.getInt('user_id') ?? 1;
     });
-    // Panggil fungsi cek kelengkapan setelah toko_id didapatkan
+    
     _cekKelengkapanToko();
+    _muatCatatanPribadi(); 
   }
 
-  // --- CEK KELENGKAPAN DATA REKENING & QRIS TOKO ---
+  Future<void> _muatCatatanPribadi() async {
+    final prefs = await SharedPreferences.getInstance();
+    String kunciCatatan = 'catatan_${role}_$idKasirAktif'; 
+    setState(() {
+      catatanPribadiCtrl.text = prefs.getString(kunciCatatan) ?? '';
+    });
+  }
+
+  Future<void> _simpanCatatanPribadi() async {
+    final prefs = await SharedPreferences.getInstance();
+    String kunciCatatan = 'catatan_${role}_$idKasirAktif';
+    await prefs.setString(kunciCatatan, catatanPribadiCtrl.text);
+  }
+
   Future<void> _cekKelengkapanToko() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/toko/$tokoId'),
@@ -81,7 +98,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     }
   }
 
-  // --- FUNGSI LOGOUT ---
   void _konfirmasiLogout() {
     showDialog(
       context: context,
@@ -98,13 +114,12 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.clear(); // Menghapus semua data sesi di HP
+              await prefs.clear(); 
               if (mounted) {
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const HalamanLogin()),
-                  (route) =>
-                      false, // Hapus tumpukan riwayat halaman (tidak bisa di-back)
+                  (route) => false, 
                 );
               }
             },
@@ -124,7 +139,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
           headers: {'ngrok-skip-browser-warning': 'true'});
       if (response.statusCode == 200) {
         final Map<String, dynamic> res = json.decode(response.body);
-        // --- LOGIKA HITUNG MUNDUR MASA AKTIF ---
+        
         final toko = res['toko'];
         if (toko != null && toko['masa_aktif'] != null) {
           DateTime masaAktif = DateTime.parse(toko['masa_aktif']);
@@ -163,7 +178,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     }
   }
 
-  // --- KARTU METRIK ANTI-RUSAK (FITTEDBOX) ---
   Widget kartuMetrik(String judul, String nilai, IconData ikon, Color warnaIkon,
       {Color? warnaBackgroundCard}) {
     return Expanded(
@@ -218,7 +232,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     );
   }
 
-  // --- DIALOG PILIHAN CETAK (STRUK PANJANG VS REKAP) ---
   void _pilihMenuCetak() {
     showModalBottomSheet(
       context: context,
@@ -259,10 +272,10 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
               leading: const CircleAvatar(
                   backgroundColor: Colors.green,
                   child: Icon(Icons.assessment, color: Colors.white)),
-              title: const Text('Cetak Laporan Rekap Harian',
+              title: const Text('Buka Laporan Rekap Harian',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle:
-                  const Text('Ringkasan omset, total jasa, dan PPN shift ini'),
+                  const Text('Ringkasan omset, total jasa, catatan & PPN shift ini'),
               onTap: () {
                 Navigator.pop(context);
                 cetakRekapHarian();
@@ -274,24 +287,84 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     );
   }
 
-  // --- FUNGSI KHUSUS CETAK FISIK LAPORAN REKAP HARIAN ---
-  Future<void> _cetakLaporanRekapFisik(Map<String, dynamic> dataLaporan) async {
-    if (kIsWeb) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content:
-                Text('Cetak fisik tidak didukung di Web. Gunakan Android.'),
-            backgroundColor: Colors.orange));
-      }
-      return;
+  // =======================================================================
+  // FUNGSI PEMBUAT STRUK REKAP (Dipakai Bersama untuk Bluetooth & WiFi)
+  // Memastikan ukuran 58mm pas dan tidak ada nominal bug.
+  // =======================================================================
+  List<int> _buatStrukRekapBytes(Map<String, dynamic> dataLaporan, Generator generator) {
+    List<int> bytes = [];
+    final toko = dataLaporan['toko'];
+    final superadmin = dataLaporan['superadmin'];
+    final items = dataLaporan['items'] ?? [];
+    final totals = dataLaporan['totals'];
+    String keteranganTambahan = dataLaporan['keterangan_tambahan'] ?? '';
+
+    String namaToko = toko != null ? toko['nama_toko'] : 'Toko Saya';
+    String alamatToko = toko != null ? toko['alamat'] : '-';
+
+    bytes += generator.text(namaToko.toUpperCase(),
+        styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
+    bytes += generator.text(alamatToko, styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.text("LAPORAN AKHIR SHIFT", styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text("Tgl: ${dataLaporan['tanggal']}", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.text("BARANG/JASA TERJUAL:", styles: const PosStyles(bold: true));
+    for (var item in items) {
+      int qty = int.tryParse(item['total_qty'].toString()) ?? 0;
+      int subtotal = int.tryParse(item['total_subtotal'].toString()) ?? 0;
+      bytes += generator.text("${item['nama']} (${item['jenis']})", styles: const PosStyles(align: PosAlign.left));
+      // Kolom ukuran 4 dan 8 (total 12 cocok 58mm)
+      bytes += generator.row([
+        PosColumn(text: "$qty x", width: 4),
+        PosColumn(text: formatRupiah(subtotal), width: 8, styles: const PosStyles(align: PosAlign.right)),
+      ]);
     }
-    if (Platform.isIOS) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content:
-                Text('Cetak Bluetooth terhalang aturan iOS. Gunakan Android.'),
-            backgroundColor: Colors.orange));
-      }
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.text("RINGKASAN KEUANGAN:", styles: const PosStyles(bold: true));
+    
+    int totalJasa = int.tryParse(totals['total_jasa']?.toString() ?? '0') ?? 0;
+    int ppn = int.tryParse(totals['ppn']?.toString() ?? '0') ?? 0;
+    int nonTunai = int.tryParse(totals['non_tunai']?.toString() ?? '0') ?? 0;
+    int tunai = int.tryParse(totals['tunai']?.toString() ?? '0') ?? 0;
+    int grandTotal = int.tryParse(totals['grand_total']?.toString() ?? '0') ?? 0;
+
+    // Kolom ukuran 6 dan 6
+    bytes += generator.row([PosColumn(text: "Total Jasa", width: 6), PosColumn(text: formatRupiah(totalJasa), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+    bytes += generator.row([PosColumn(text: "Total PPN", width: 6), PosColumn(text: formatRupiah(ppn), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+    bytes += generator.row([PosColumn(text: "Non-Tunai", width: 6), PosColumn(text: formatRupiah(nonTunai), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+    bytes += generator.row([PosColumn(text: "Tunai Kasir", width: 6), PosColumn(text: formatRupiah(tunai), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+    
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.row([
+      PosColumn(text: "GRAND TOTAL", width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: formatRupiah(grandTotal), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))
+    ]);
+
+    // Jika ada catatan tambahan
+    if (keteranganTambahan.isNotEmpty) {
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("CATATAN / PENGELUARAN:", styles: const PosStyles(bold: true));
+      bytes += generator.text(keteranganTambahan, styles: const PosStyles(align: PosAlign.left));
+    }
+
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text("Dihasilkan otomatis oleh", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text(superadmin != null ? superadmin['brand'] : "Smart Kasir", styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.feed(2);
+
+    return bytes;
+  }
+
+  // --- 1. CETAK VIA BLUETOOTH ---
+  Future<void> _cetakLaporanRekapFisik(Map<String, dynamic> dataLaporan) async {
+    if (kIsWeb || Platform.isIOS) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Cetak Bluetooth fisik hanya didukung di Android.'),
+          backgroundColor: Colors.orange));
       return;
     }
 
@@ -300,180 +373,42 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       if (isConnected) {
         final profile = await CapabilityProfile.load();
         final generator = Generator(PaperSize.mm58, profile);
-        List<int> bytes = [];
-
-        final toko = dataLaporan['toko'];
-        final superadmin = dataLaporan['superadmin'];
-        final items = dataLaporan['items'] ?? [];
-        final totals = dataLaporan['totals'];
-
-        String namaToko = toko != null ? toko['nama_toko'] : 'Toko Saya';
-        String alamatToko = toko != null ? toko['alamat'] : '-';
-
-        // Header
-        bytes += generator.text(namaToko.toUpperCase(),
-            styles: const PosStyles(
-                align: PosAlign.center, bold: true, height: PosTextSize.size2));
-        bytes += generator.text(alamatToko,
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
-
-        // Judul Laporan
-        bytes += generator.text("LAPORAN AKHIR SHIFT",
-            styles: const PosStyles(align: PosAlign.center, bold: true));
-        bytes += generator.text("Tgl: ${dataLaporan['tanggal']}",
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
-
-        // Rincian Terjual
-        bytes += generator.text("BARANG/JASA TERJUAL:",
-            styles: const PosStyles(bold: true));
-        for (var item in items) {
-          int qty = int.tryParse(item['total_qty'].toString()) ?? 0;
-          int subtotal = int.tryParse(item['total_subtotal'].toString()) ?? 0;
-
-          bytes += generator.text("${item['nama']} (${item['jenis']})",
-              styles: const PosStyles(align: PosAlign.left));
-          bytes += generator.row([
-            PosColumn(text: "$qty x", width: 4),
-            PosColumn(
-                text: formatRupiah(subtotal),
-                width: 8,
-                styles: const PosStyles(align: PosAlign.right)),
-          ]);
-        }
-
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
-
-        // Ringkasan Keuangan
-        bytes += generator.text("RINGKASAN KEUANGAN:",
-            styles: const PosStyles(bold: true));
-
-        int totalJasa =
-            int.tryParse(totals['total_jasa']?.toString() ?? '0') ?? 0;
-        int ppn = int.tryParse(totals['ppn']?.toString() ?? '0') ?? 0;
-        int nonTunai =
-            int.tryParse(totals['non_tunai']?.toString() ?? '0') ?? 0;
-        int tunai = int.tryParse(totals['tunai']?.toString() ?? '0') ?? 0;
-        int grandTotal =
-            int.tryParse(totals['grand_total']?.toString() ?? '0') ?? 0;
-
-        bytes += generator.row([
-          PosColumn(text: "Total Jasa", width: 6),
-          PosColumn(
-              text: formatRupiah(totalJasa),
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right)),
-        ]);
-        bytes += generator.row([
-          PosColumn(text: "Total PPN", width: 6),
-          PosColumn(
-              text: formatRupiah(ppn),
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right)),
-        ]);
-        bytes += generator.row([
-          PosColumn(text: "Total Non-Tunai", width: 6),
-          PosColumn(
-              text: formatRupiah(nonTunai),
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right)),
-        ]);
-        bytes += generator.row([
-          PosColumn(text: "Total Tunai", width: 6),
-          PosColumn(
-              text: formatRupiah(tunai),
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right, bold: true)),
-        ]);
-
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
-
-        bytes += generator.row([
-          PosColumn(
-              text: "GRAND TOTAL",
-              width: 6,
-              styles: const PosStyles(bold: true)),
-          PosColumn(
-              text: formatRupiah(grandTotal),
-              width: 6,
-              styles: const PosStyles(align: PosAlign.right, bold: true)),
-        ]);
-
-        bytes += generator.text("--------------------------------",
-            styles: const PosStyles(align: PosAlign.center));
-
-        // Footer
-        bytes += generator.text("Dihasilkan otomatis oleh",
-            styles: const PosStyles(align: PosAlign.center));
-        bytes += generator.text(
-            superadmin != null ? superadmin['brand'] : "Smart Kasir",
-            styles: const PosStyles(align: PosAlign.center, bold: true));
-
-        bytes += generator.feed(2);
-
+        
+        List<int> bytes = _buatStrukRekapBytes(dataLaporan, generator);
         await PrintBluetoothThermal.writeBytes(bytes);
       } else {
-        List<BluetoothInfo> devices =
-            await PrintBluetoothThermal.pairedBluetooths;
+        List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
         if (mounted) {
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Pilih Printer Bluetooth',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              title: const Text('Pilih Printer Bluetooth', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               content: SizedBox(
-                height: 300,
-                width: 300,
+                height: 300, width: 300,
                 child: devices.isEmpty
-                    ? const Center(
-                        child: Text("Belum ada perangkat terpasang.",
-                            textAlign: TextAlign.center))
+                    ? const Center(child: Text("Belum ada perangkat terpasang."))
                     : ListView.builder(
                         itemCount: devices.length,
                         itemBuilder: (context, index) {
                           return ListTile(
-                            leading: const Icon(Icons.print,
-                                color: Colors.blueAccent),
+                            leading: const Icon(Icons.print, color: Colors.blueAccent),
                             title: Text(devices[index].name),
                             subtitle: Text(devices[index].macAdress),
                             onTap: () async {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(SnackBar(
-                                content: Text(
-                                    'Menghubungkan ke ${devices[index].name}...'),
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text('Menghubungkan ke ${devices[index].name}...'),
                                 backgroundColor: Colors.orange,
                               ));
                               try {
-                                bool terhubung =
-                                    await PrintBluetoothThermal.connect(
-                                        macPrinterAddress:
-                                            devices[index].macAdress);
+                                bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: devices[index].macAdress);
                                 if (terhubung) {
                                   _cetakLaporanRekapFisik(dataLaporan);
                                 } else {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(const SnackBar(
-                                      content:
-                                          Text('Gagal terhubung ke printer.'),
-                                      backgroundColor: Colors.red,
-                                    ));
-                                  }
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal terhubung ke printer.'), backgroundColor: Colors.red));
                                 }
                               } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Koneksi gagal. Cek ulang bluetooth.'),
-                                          backgroundColor: Colors.red));
-                                }
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Koneksi gagal. Cek ulang bluetooth.'), backgroundColor: Colors.red));
                               }
                             },
                           );
@@ -481,25 +416,109 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                       ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child:
-                      const Text('Batal', style: TextStyle(color: Colors.red)),
-                )
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal', style: TextStyle(color: Colors.red)))
               ],
             ),
           );
         }
       }
     } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error Bluetooth: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  // --- 2. CETAK VIA WIFI / LAN Sockets ---
+  Future<void> _cetakLaporanRekapWiFi(Map<String, dynamic> dataLaporan) async {
+    final prefs = await SharedPreferences.getInstance();
+    String ipPrinter = prefs.getString('ip_printer') ?? '';
+    
+    if (ipPrinter.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Alamat IP Printer belum diatur di Pengaturan!'), backgroundColor: Colors.orange));
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Mengirim ke Printer Jaringan...'), backgroundColor: Colors.blueAccent));
+
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = _buatStrukRekapBytes(dataLaporan, generator);
+
+      final socket = await Socket.connect(ipPrinter, 9100, timeout: const Duration(seconds: 5));
+      socket.add(bytes);
+      socket.destroy();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Berhasil mencetak via WiFi!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Error Bluetooth: $e'), backgroundColor: Colors.red));
+          content: Text('Gagal mencetak LAN/WiFi: Cek koneksi & IP Printer.'), backgroundColor: Colors.red));
       }
     }
   }
 
-  // --- POP-UP CETAK ULANG STRUK ---
+  // --- 3. BAGIKAN KE WHATSAPP (Text Format) ---
+  Future<void> _bagikanKeWA(Map<String, dynamic> dataLaporan) async {
+    final toko = dataLaporan['toko'];
+    final items = dataLaporan['items'] ?? [];
+    final totals = dataLaporan['totals'];
+    String keteranganTambahan = dataLaporan['keterangan_tambahan'] ?? '';
+    
+    String namaToko = toko != null ? toko['nama_toko'] : 'Toko Saya';
+    String tanggal = dataLaporan['tanggal'] ?? '';
+
+    StringBuffer sb = StringBuffer();
+    sb.writeln("*LAPORAN AKHIR SHIFT* 📝");
+    sb.writeln("🏢 Toko: $namaToko");
+    sb.writeln("📅 Tgl: $tanggal");
+    sb.writeln("---------------------------------");
+    sb.writeln("*BARANG/JASA TERJUAL:*");
+    for (var item in items) {
+      int qty = int.tryParse(item['total_qty'].toString()) ?? 0;
+      int sub = int.tryParse(item['total_subtotal'].toString()) ?? 0;
+      sb.writeln("- ${item['nama']} ($qty x): ${formatRupiah(sub)}");
+    }
+    sb.writeln("---------------------------------");
+    sb.writeln("*RINGKASAN KEUANGAN:*");
+    int totalJasa = int.tryParse(totals['total_jasa']?.toString() ?? '0') ?? 0;
+    int ppn = int.tryParse(totals['ppn']?.toString() ?? '0') ?? 0;
+    int nonTunai = int.tryParse(totals['non_tunai']?.toString() ?? '0') ?? 0;
+    int tunai = int.tryParse(totals['tunai']?.toString() ?? '0') ?? 0;
+    int grandTotal = int.tryParse(totals['grand_total']?.toString() ?? '0') ?? 0;
+
+    sb.writeln("Total Jasa: ${formatRupiah(totalJasa)}");
+    sb.writeln("Total PPN: ${formatRupiah(ppn)}");
+    sb.writeln("Total Non-Tunai: ${formatRupiah(nonTunai)}");
+    sb.writeln("Total Tunai Kasir: *${formatRupiah(tunai)}*");
+    sb.writeln("---------------------------------");
+    sb.writeln("*GRAND TOTAL: ${formatRupiah(grandTotal)}*");
+    
+    if (keteranganTambahan.isNotEmpty) {
+      sb.writeln("---------------------------------");
+      sb.writeln("*CATATAN PENGELUARAN:*");
+      sb.writeln(keteranganTambahan);
+    }
+
+    String encodedText = Uri.encodeComponent(sb.toString());
+    String url = "https://wa.me/?text=$encodedText";
+    
+    try {
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tidak dapat membuka WhatsApp!'), backgroundColor: Colors.red));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error WhatsApp URL Launcher'), backgroundColor: Colors.red));
+    }
+  }
+  // =======================================================================
+
   Future<void> lihatDetailTransaksi(int id) async {
     showDialog(
         context: context,
@@ -507,7 +526,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     try {
       final res = await http.get(Uri.parse('$baseUrl/transaksi/$id'),
           headers: {'ngrok-skip-browser-warning': 'true'});
-      Navigator.pop(context); // Tutup loading
+      Navigator.pop(context); 
 
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
@@ -527,8 +546,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                 children: [
                   Text(toko != null ? toko['nama_toko'] : 'Nama Toko',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 18)),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   Text(toko != null ? toko['alamat'] : 'Alamat',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -543,10 +561,8 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(
-                                child: Text('${item['nama']} x${item['qty']}')),
-                            Text(formatRupiah(
-                                int.parse(item['subtotal'].toString()))),
+                            Expanded(child: Text('${item['nama']} x${item['qty']}')),
+                            Text(formatRupiah(int.parse(item['subtotal'].toString()))),
                           ],
                         ),
                       )),
@@ -555,66 +571,52 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Total:'),
-                        Text(
-                            formatRupiah(
-                                int.parse(header['total_harga'].toString())),
+                        Text(formatRupiah(int.parse(header['total_harga'].toString())),
                             style: const TextStyle(fontWeight: FontWeight.bold))
                       ]),
                   Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Tunai/Bayar:'),
-                        Text(formatRupiah(
-                            int.parse(header['uang_bayar'].toString())))
+                        Text(formatRupiah(int.parse(header['uang_bayar'].toString())))
                       ]),
                   Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Kembali:'),
-                        Text(formatRupiah(
-                            int.parse(header['kembalian'].toString())))
+                        Text(formatRupiah(int.parse(header['kembalian'].toString())))
                       ]),
                   const SizedBox(height: 20),
                   const Text('Terima Kasih Atas Kunjungan Anda',
                       textAlign: TextAlign.center,
-                      style:
-                          TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                      style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
                   const Divider(thickness: 1, color: Colors.black54),
                   const SizedBox(height: 5),
                   Text('Powered by ${superadmin['brand']}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 11)),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                   Text(superadmin['teks'],
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 10, color: Colors.grey)),
                   Text('Info Aplikasi/Sistem WA: ${superadmin['wa']}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.bold)),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
             actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Tutup')),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup')),
               ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pop(context); // Tutup dialog pop-up
+                  Navigator.pop(context); 
 
-                  // --- MAPPING DATA & LEMPAR KE HALAMAN STRUK ---
                   List<Map<String, dynamic>> keranjangCetak = [];
                   int hitungSubtotal = 0;
                   int hitungJasa = 0;
 
                   for (var item in details) {
-                    int sub =
-                        int.tryParse(item['subtotal']?.toString() ?? '0') ?? 0;
-                    int idProd = int.tryParse(item['product_id']?.toString() ??
-                            item['id']?.toString() ??
-                            '0') ??
-                        0;
+                    int sub = int.tryParse(item['subtotal']?.toString() ?? '0') ?? 0;
+                    int idProd = int.tryParse(item['product_id']?.toString() ?? item['id']?.toString() ?? '0') ?? 0;
 
                     if (idProd == 0) {
                       hitungJasa += sub;
@@ -625,10 +627,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                     keranjangCetak.add({
                       'id': idProd,
                       'nama': item['nama'] ?? 'Produk',
-                      'harga': int.tryParse(item['harga_satuan']?.toString() ??
-                              item['harga']?.toString() ??
-                              '0') ??
-                          0,
+                      'harga': int.tryParse(item['harga_satuan']?.toString() ?? item['harga']?.toString() ?? '0') ?? 0,
                       'qty': int.tryParse(item['qty']?.toString() ?? '1') ?? 1,
                       'subtotal': sub,
                     });
@@ -639,24 +638,15 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                     MaterialPageRoute(
                       builder: (context) => HalamanStruk(
                         keranjang: keranjangCetak,
-                        totalBelanja: int.tryParse(
-                                header['total_harga']?.toString() ?? '0') ??
-                            0,
+                        totalBelanja: int.tryParse(header['total_harga']?.toString() ?? '0') ?? 0,
                         subtotal: hitungSubtotal,
-                        ppnNominal: int.tryParse(
-                                header['ppn_nominal']?.toString() ?? '0') ??
-                            0,
+                        ppnNominal: int.tryParse(header['ppn_nominal']?.toString() ?? '0') ?? 0,
                         biayaJasa: hitungJasa,
-                        uangDiterima: int.tryParse(
-                                header['uang_bayar']?.toString() ?? '0') ??
-                            0,
-                        uangKembalian: int.tryParse(
-                                header['kembalian']?.toString() ?? '0') ??
-                            0,
+                        uangDiterima: int.tryParse(header['uang_bayar']?.toString() ?? '0') ?? 0,
+                        uangKembalian: int.tryParse(header['kembalian']?.toString() ?? '0') ?? 0,
                         noStruk: 'INV-${header['id']}',
                         tanggal: formatWaktuOtomatis(header['tanggal']),
-                        metodePembayaran:
-                            header['metode_pembayaran']?.toString() ?? 'Tunai',
+                        metodePembayaran: header['metode_pembayaran']?.toString() ?? 'Tunai',
                       ),
                     ),
                   );
@@ -673,7 +663,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     }
   }
 
-  // --- POP-UP REKAP HARIAN (END SHIFT) ---
   Future<void> cetakRekapHarian() async {
     showDialog(
         context: context,
@@ -682,148 +671,151 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       final res = await http.get(Uri.parse('$baseUrl/rekap'),
           headers: {'ngrok-skip-browser-warning': 'true'});
       Navigator.pop(context);
+      
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         final items = data['items'];
         final totals = data['totals'];
         final toko = data['toko'];
-        final superadmin = data['superadmin'];
+        
+        TextEditingController keteranganRekapCtrl = TextEditingController();
 
         showModalBottomSheet(
           context: context,
-          isScrollControlled: true,
-          shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-          builder: (context) => Container(
-            padding: const EdgeInsets.all(20),
-            height: MediaQuery.of(context).size.height * 0.85,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                    child: Text(toko != null ? toko['nama_toko'] : 'Nama Toko',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 18))),
-                Center(
-                    child: Text(toko != null ? toko['alamat'] : 'Alamat',
-                        style:
-                            const TextStyle(fontSize: 12, color: Colors.grey))),
-                const SizedBox(height: 15),
-                const Center(
-                    child: Text('LAPORAN AKHIR SHIFT',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold))),
-                Center(
-                    child: Text('Tanggal: ${data['tanggal']}',
-                        style: const TextStyle(color: Colors.grey))),
-                const Divider(thickness: 2),
-                const Text('BARANG/JASA KELUAR:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, i) {
-                      return ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title:
-                            Text('${items[i]['nama']} (${items[i]['jenis']})'),
-                        trailing: Text(
-                            'Terjual: ${items[i]['total_qty']} | ${formatRupiah(int.parse(items[i]['total_subtotal'].toString()))}'),
-                      );
-                    },
+          isScrollControlled: true, 
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          builder: (context) => Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              height: MediaQuery.of(context).size.height * 0.85,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                      child: Text(toko != null ? toko['nama_toko'] : 'Nama Toko',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                  Center(
+                      child: Text(toko != null ? toko['alamat'] : 'Alamat',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey))),
+                  const SizedBox(height: 15),
+                  const Center(
+                      child: Text('LAPORAN AKHIR SHIFT',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                  Center(
+                      child: Text('Tanggal: ${data['tanggal']}',
+                          style: const TextStyle(color: Colors.grey))),
+                  const Divider(thickness: 2),
+                  const Text('BARANG/JASA KELUAR:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: items.length,
+                      itemBuilder: (context, i) {
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('${items[i]['nama']} (${items[i]['jenis']})'),
+                          trailing: Text('Terjual: ${items[i]['total_qty']} | ${formatRupiah(int.parse(items[i]['total_subtotal'].toString()))}'),
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const Divider(thickness: 2),
-                const Text('RINGKASAN KEUANGAN:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Pendapatan Jasa:'),
-                      Text(formatRupiah(int.parse(
-                          totals['total_jasa'].toString() == 'null'
-                              ? '0'
-                              : totals['total_jasa'].toString())))
-                    ]),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total PPN:'),
-                      Text(formatRupiah(int.parse(
-                          totals['ppn'].toString() == 'null'
-                              ? '0'
-                              : totals['ppn'].toString())))
-                    ]),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Non-Tunai:'),
-                      Text(formatRupiah(int.parse(
-                          totals['non_tunai'].toString() == 'null'
-                              ? '0'
-                              : totals['non_tunai'].toString())))
-                    ]),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Tunai Kasir:',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green)),
-                      Text(
-                          formatRupiah(int.parse(
-                              totals['tunai'].toString() == 'null'
-                                  ? '0'
-                                  : totals['tunai'].toString())),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: Colors.green))
-                    ]),
-                const Divider(),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('GRAND TOTAL:',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text(
-                          formatRupiah(int.parse(
-                              totals['grand_total'].toString() == 'null'
-                                  ? '0'
-                                  : totals['grand_total'].toString())),
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueAccent))
-                    ]),
-                const SizedBox(height: 20),
-                Center(
-                    child: Text(
-                        'Dihasilkan otomatis oleh sistem ${superadmin['brand']}',
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontStyle: FontStyle.italic,
-                            color: Colors.grey))),
-                const SizedBox(height: 15),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        backgroundColor: Colors.black87),
-                    onPressed: () {
-                      Navigator.pop(context); // Tutup BottomSheet
-                      _cetakLaporanRekapFisik(
-                          data); // Panggil fungsi cetak rekap
-                    },
-                    icon: const Icon(Icons.print, color: Colors.white),
-                    label: const Text('Cetak Struk Laporan',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                  const Divider(thickness: 2),
+                  const Text('RINGKASAN KEUANGAN:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    const Text('Total Jasa:'),
+                    Text(formatRupiah(int.parse(totals['total_jasa'].toString() == 'null' ? '0' : totals['total_jasa'].toString())))
+                  ]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    const Text('Total PPN:'),
+                    Text(formatRupiah(int.parse(totals['ppn'].toString() == 'null' ? '0' : totals['ppn'].toString())))
+                  ]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    const Text('Total Non-Tunai:'),
+                    Text(formatRupiah(int.parse(totals['non_tunai'].toString() == 'null' ? '0' : totals['non_tunai'].toString())))
+                  ]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    const Text('Total Tunai Kasir:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                    Text(formatRupiah(int.parse(totals['tunai'].toString() == 'null' ? '0' : totals['tunai'].toString())),
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))
+                  ]),
+                  const Divider(),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    const Text('GRAND TOTAL:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(formatRupiah(int.parse(totals['grand_total'].toString() == 'null' ? '0' : totals['grand_total'].toString())),
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent))
+                  ]),
+                      
+                  const SizedBox(height: 10),
+                  const Text('Catatan Tambahan / Pengeluaran:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: keteranganRekapCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'Cth: Uang kepakai beli es batu 20rb...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
                   ),
-                )
-              ],
+                  const SizedBox(height: 15),
+
+                  // ===============================================
+                  // FITUR BARU: TOMBOL PILIHAN CETAK / SHARE WA
+                  // ===============================================
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Colors.black87),
+                          onPressed: () {
+                            Navigator.pop(context); 
+                            data['keterangan_tambahan'] = keteranganRekapCtrl.text;
+                            _cetakLaporanRekapFisik(data); 
+                          },
+                          icon: const Icon(Icons.bluetooth, color: Colors.white, size: 18),
+                          label: const Text('Bluetooth', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Colors.teal),
+                          onPressed: () {
+                            Navigator.pop(context); 
+                            data['keterangan_tambahan'] = keteranganRekapCtrl.text;
+                            _cetakLaporanRekapWiFi(data); 
+                          },
+                          icon: const Icon(Icons.wifi, color: Colors.white, size: 18),
+                          label: const Text('WiFi/LAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: Colors.green),
+                      onPressed: () {
+                        Navigator.pop(context); 
+                        data['keterangan_tambahan'] = keteranganRekapCtrl.text;
+                        _bagikanKeWA(data); 
+                      },
+                      icon: const Icon(Icons.share, color: Colors.white, size: 18),
+                      label: const Text('Bagikan ke WhatsApp', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                ],
+              ),
             ),
           ),
         );
@@ -857,7 +849,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  // --- NOTIFIKASI MASA AKTIF (< 7 HARI) ---
                   if (sisaHariMasaAktif <= 7 && sisaHariMasaAktif > 0)
                     Container(
                       margin: const EdgeInsets.only(bottom: 20),
@@ -888,7 +879,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                       ),
                     ),
 
-                  // --- NOTIFIKASI PERINGATAN DATA TOKO ---
                   if (!isTokoLengkap && role == 'admin')
                     Container(
                       margin: const EdgeInsets.only(bottom: 20),
@@ -920,7 +910,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                       ),
                     ),
 
-                  // Sapaan Dinamis berdasarkan nama login
                   Text('Selamat Datang, $username!',
                       style: const TextStyle(
                           fontSize: 24, fontWeight: FontWeight.bold)),
@@ -952,7 +941,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                   ),
                   const SizedBox(height: 20),
 
-                  // --- TOMBOL MENU CETAK ---
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blueAccent,
@@ -965,8 +953,45 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
 
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        side: BorderSide(color: Colors.grey.shade300)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(15),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.edit_note, color: Colors.orange),
+                              const SizedBox(width: 10),
+                              Text('Catatan Pribadi ($role)', 
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: catatanPribadiCtrl,
+                            maxLines: 3,
+                            decoration: InputDecoration(
+                              hintText: 'Tulis tugas, keluhan, atau info di sini...\n(Catatan ini tersimpan aman & rahasia di perangkat Anda)',
+                              hintStyle: const TextStyle(fontSize: 13),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              filled: true,
+                              fillColor: Colors.orange.shade50.withAlpha(100),
+                            ),
+                            onChanged: (val) => _simpanCatatanPribadi(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
