@@ -12,6 +12,7 @@ import 'dart:io' show Platform, Socket; // Ditambah Socket untuk WiFi/LAN
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:url_launcher/url_launcher.dart'; // Ditambah untuk Share WA
+import 'package:fl_chart/fl_chart.dart'; // Tambahkan ini
 
 class HalamanBeranda extends StatefulWidget {
   const HalamanBeranda({super.key});
@@ -32,6 +33,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   int totalProduk = 0;
   int stokMenipis = 0;
   List riwayatTerbaru = [];
+  List grafikJamSibuk = [];
 
   // Variabel Sesi Pengguna & Peringatan
   String username = 'Kasir';
@@ -136,7 +138,8 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   Future<void> ambilDataDashboard() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse('$baseUrl/dashboard'),
+      // Mengirimkan toko_id agar datanya spesifik
+      final response = await http.get(Uri.parse('$baseUrl/dashboard?toko_id=$tokoId'),
           headers: {'ngrok-skip-browser-warning': 'true'});
       if (response.statusCode == 200) {
         final Map<String, dynamic> res = json.decode(response.body);
@@ -153,6 +156,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
           totalProduk = res['data']['total_produk'] ?? 0;
           stokMenipis = res['data']['stok_menipis'] ?? 0;
           riwayatTerbaru = res['data']['riwayat_terbaru'] ?? [];
+          grafikJamSibuk = res['data']['jam_sibuk'] ?? []; // Tangkap data grafik
           isLoading = false;
         });
       } else {
@@ -827,6 +831,114 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   }
 
   @override
+    Widget _buildGrafikJamSibuk() {
+    if (grafikJamSibuk.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: Text('Belum ada data transaksi hari ini.', style: TextStyle(color: Colors.grey))),
+      );
+    }
+
+    // Mengubah data API JSON menjadi Format BarChart Fl_Chart
+    List<BarChartGroupData> barGroups = [];
+    double maxY = 0;
+
+    for (var data in grafikJamSibuk) {
+      int jam = int.parse(data['jam'].toString());
+      double total = double.parse(data['total_transaksi'].toString());
+      
+      if (total > maxY) maxY = total; // Cari nilai tertinggi untuk tinggi grafik
+
+      barGroups.add(
+        BarChartGroupData(
+          x: jam,
+          barRods: [
+            BarChartRodData(
+              toY: total,
+              color: Colors.blueAccent,
+              width: 16,
+              borderRadius: BorderRadius.circular(4),
+              backDrawRodData: BackgroundBarChartRodData(
+                show: true,
+                toY: maxY + 2, // Background bayangan grafik
+                color: Colors.blue.withAlpha(20),
+              )
+            )
+          ],
+        )
+      );
+    }
+
+    return Container(
+      height: 250,
+      padding: const EdgeInsets.only(top: 20, right: 20, left: 10, bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.grey.withAlpha(20), blurRadius: 10, offset: const Offset(0, 5))]
+      ),
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: maxY + 2,
+          barTouchData: BarTouchData(
+            enabled: true,
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (group) => Colors.black87,
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                return BarTooltipItem(
+                  'Pukul ${group.x.toString().padLeft(2, '0')}:00\n',
+                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  children: [
+                    TextSpan(
+                      text: '${rod.toY.toInt()} Transaksi',
+                      style: const TextStyle(color: Colors.yellowAccent, fontSize: 12),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (double value, TitleMeta meta) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text('${value.toInt()}:00', style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+                  );
+                },
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 30,
+                getTitlesWidget: (value, meta) {
+                  if (value % 1 != 0) return const SizedBox.shrink(); // Hilangkan desimal
+                  return Text(value.toInt().toString(), style: const TextStyle(color: Colors.grey, fontSize: 10));
+                },
+              ),
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: 1,
+            getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1),
+          ),
+          barGroups: barGroups,
+        ),
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -940,6 +1052,20 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                               stokMenipis > 0 ? Colors.redAccent : Colors.teal),
                     ],
                   ),
+                  const SizedBox(height: 20),
+
+// JUDUL GRAFIK
+const Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    Text('📈 Analitik Jam Sibuk (Hari Ini)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+  ],
+),
+const SizedBox(height: 10),
+
+// PANGGIL GRAFIKNYA DI SINI
+_buildGrafikJamSibuk(),
+const SizedBox(height: 25),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
