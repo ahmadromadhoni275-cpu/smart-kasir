@@ -17,12 +17,17 @@ class _HalamanProdukState extends State<HalamanProduk> {
   final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
   
   List dataProduk = [];
-  List daftarKategori = []; // Penampung data kategori dinamis
+  List filteredProduk = []; // Variabel baru untuk menampung hasil pencarian
+  List daftarKategori = []; 
+  
   String _userRole = 'kasir';
   bool isLoading = true;
 
   bool _isFiturJasaAktif = true;
   bool _isFiturMejaAktif = false;
+
+  // Controller untuk fitur pencarian
+  TextEditingController searchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -55,44 +60,28 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  // --- MENGUBAH STATUS JASA (ON/OFF) BESERTA NOTIFIKASINYA ---
   Future<void> _toggleFiturJasa(bool nilaiBaru) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('fitur_jasa_aktif', nilaiBaru);
     setState(() {
       _isFiturJasaAktif = nilaiBaru;
     });
-
-    tampilkanNotifikasiTengah(
-        'Berhasil!',
-        'Kolom input Jasa manual di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.',
-        true);
+    tampilkanNotifikasiTengah('Berhasil!', 'Kolom input Jasa manual di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
   }
 
-  // --- MENGUBAH STATUS MEJA (ON/OFF) BESERTA NOTIFIKASINYA ---
   Future<void> _toggleFiturMeja(bool nilaiBaru) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('fitur_meja_aktif', nilaiBaru);
     setState(() {
       _isFiturMejaAktif = nilaiBaru;
     });
-
-    tampilkanNotifikasiTengah(
-        'Berhasil!',
-        'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.',
-        true);
+    tampilkanNotifikasiTengah('Berhasil!', 'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
   }
 
-  // --- FUNGSI SCAN BARCODE KAMERA ---
+  // --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
   Future<void> mulaiScanBarcode(TextEditingController targetController) async {
     try {
-      String hasilScan = await FlutterBarcodeScanner.scanBarcode(
-        '#ff6600', // Warna garis laser
-        'Batal',   // Teks tombol batal
-        true,      // Tampilkan ikon flash
-        ScanMode.BARCODE,
-      );
-
+      String hasilScan = await FlutterBarcodeScanner.scanBarcode('#ff6600', 'Batal', true, ScanMode.BARCODE);
       if (hasilScan != '-1') {
         setState(() {
           targetController.text = hasilScan;
@@ -103,6 +92,36 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
+  // --- FUNGSI SCAN BARCODE KHUSUS UNTUK PENCARIAN ---
+  Future<void> _scanBarcodeUntukPencarian() async {
+    try {
+      String hasilScan = await FlutterBarcodeScanner.scanBarcode('#ff6600', 'Batal', true, ScanMode.BARCODE);
+      if (hasilScan != '-1') {
+        searchCtrl.text = hasilScan;
+        _filterPencarian(hasilScan); // Langsung jalankan fungsi filter
+      }
+    } catch (e) {
+      debugPrint('Error saat scanning barcode pencarian: $e');
+    }
+  }
+
+  // --- FUNGSI FILTER PENCARIAN BARANG ---
+  void _filterPencarian(String keyword) {
+    setState(() {
+      if (keyword.isEmpty) {
+        filteredProduk = dataProduk; // Kembalikan ke seluruh data jika kosong
+      } else {
+        filteredProduk = dataProduk.where((item) {
+          final nama = item['nama']?.toString().toLowerCase() ?? '';
+          final kode = item['kode_barang']?.toString().toLowerCase() ?? '';
+          final searchLower = keyword.toLowerCase();
+          
+          return nama.contains(searchLower) || kode.contains(searchLower);
+        }).toList();
+      }
+    });
+  }
+
   Future<void> ambilDataProduk() async {
     setState(() => isLoading = true);
     try {
@@ -110,9 +129,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
         setState(() {
-          // Hanya mengambil data yang berjenis 'barang'
           List semuaData = responseData['data'] ?? [];
           dataProduk = semuaData.where((item) => item['jenis'] != 'jasa').toList();
+          filteredProduk = dataProduk; // Samakan data filter dengan data asli di awal
           isLoading = false;
         });
       } else {
@@ -124,7 +143,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  // --- NOTIFIKASI POP-UP ASLI ANDA ---
   void tampilkanNotifikasiTengah(String judul, String pesan, bool sukses) {
     showDialog(
       context: context,
@@ -139,51 +157,27 @@ class _HalamanProdukState extends State<HalamanProduk> {
               color: Colors.white,
               shape: BoxShape.rectangle,
               borderRadius: BorderRadius.circular(20),
-              boxShadow: const [
-                BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 10,
-                    offset: Offset(0, 10))
-              ],
+              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 10))],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: sukses
-                        ? Colors.green.withAlpha(50)
-                        : Colors.red.withAlpha(50),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    sukses ? Icons.check_circle : Icons.error_outline,
-                    color: sukses ? Colors.green : Colors.red,
-                    size: 60,
-                  ),
+                  decoration: BoxDecoration(color: sukses ? Colors.green.withAlpha(50) : Colors.red.withAlpha(50), shape: BoxShape.circle),
+                  child: Icon(sukses ? Icons.check_circle : Icons.error_outline, color: sukses ? Colors.green : Colors.red, size: 60),
                 ),
                 const SizedBox(height: 20),
-                Text(judul,
-                    style: const TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(judul, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
-                Text(pesan,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                Text(pesan, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey)),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: sukses ? Colors.green : Colors.red,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 12)),
+                    style: ElevatedButton.styleFrom(backgroundColor: sukses ? Colors.green : Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Tutup',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 )
               ],
@@ -196,7 +190,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
   Future<void> simpanProduk(int? id, String kodeBarang, String nama, int harga, int stok, int? kategoriId) async {
     final url = id == null ? Uri.parse(baseUrl) : Uri.parse('$baseUrl/$id');
-
     final Map<String, dynamic> payload = {
       'toko_id': 1,
       'kode_barang': kodeBarang,
@@ -204,7 +197,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       'jenis': 'barang',
       'harga': harga,
       'stok': stok,
-      'kategori_id': kategoriId, // Mengirim ID Kategori
+      'kategori_id': kategoriId,
     };
 
     try {
@@ -214,18 +207,12 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         await ambilDataProduk();
-        if (mounted) {
-          tampilkanNotifikasiTengah('Berhasil!', 'Data barang berhasil disimpan.', true);
-        }
+        if (mounted) tampilkanNotifikasiTengah('Berhasil!', 'Data barang berhasil disimpan.', true);
       } else {
-        if (mounted) {
-          tampilkanNotifikasiTengah('Gagal!', 'Server menolak (Error ${response.statusCode}).', false);
-        }
+        if (mounted) tampilkanNotifikasiTengah('Gagal!', 'Server menolak (Error ${response.statusCode}).', false);
       }
     } catch (e) {
-      if (mounted) {
-        tampilkanNotifikasiTengah('Error Jaringan', 'Terjadi kesalahan: $e', false);
-      }
+      if (mounted) tampilkanNotifikasiTengah('Error Jaringan', 'Terjadi kesalahan: $e', false);
     }
   }
 
@@ -234,9 +221,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: {'ngrok-skip-browser-warning': 'true'});
       if (response.statusCode == 200) {
         await ambilDataProduk();
-        if (mounted) {
-          tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
-        }
+        if (mounted) tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
       }
     } catch (e) {
       debugPrint("Error Hapus: $e");
@@ -248,8 +233,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
     TextEditingController namaCtrl = TextEditingController(text: produkInfo?['nama'] ?? '');
     TextEditingController hargaCtrl = TextEditingController(text: produkInfo?['harga']?.toString() ?? '');
     TextEditingController stokCtrl = TextEditingController(text: produkInfo?['stok']?.toString() ?? '');
-    
-    // Inisialisasi kategori terpilih
     int? selectedKategoriId = produkInfo?['kategori_id'] != null ? int.tryParse(produkInfo!['kategori_id'].toString()) : null;
 
     showModalBottomSheet(
@@ -271,20 +254,18 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     const SizedBox(height: 20),
                     Text(produkInfo == null ? '✨ Tambah Barang Baru' : '✏️ Edit Barang', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
-                    
                     TextField(
                       controller: kodeCtrl,
                       decoration: InputDecoration(
                         labelText: 'Kode Barang / Barcode',
                         prefixIcon: const Icon(Icons.qr_code),
                         suffixIcon: IconButton(
-                          icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
-                          onPressed: () {
-                            // Gunakan fungsi scan yang sudah dirangkai
-                            mulaiScanBarcode(kodeCtrl).then((_) {
-                              setModalState(() {}); // Segarkan input setelah scan
-                            });
-                          }
+                            icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
+                            onPressed: () {
+                              mulaiScanBarcode(kodeCtrl).then((_) {
+                                setModalState(() {}); 
+                              });
+                            }
                         ),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                       ),
@@ -295,11 +276,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     TextField(controller: hargaCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Harga (Rp)', prefixIcon: const Icon(Icons.attach_money), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
                     const SizedBox(height: 15),
                     TextField(controller: stokCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Jumlah Stok', prefixIcon: const Icon(Icons.layers), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                    
-                    // =======================================================
-                    // SMART HIDING: Dropdown Divisi Kategori Printer
-                    // (Hanya muncul jika admin sudah membuat kategori)
-                    // =======================================================
                     if (daftarKategori.isNotEmpty) ...[
                       const SizedBox(height: 15),
                       DropdownButtonFormField<int>(
@@ -322,8 +298,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                         },
                       ),
                     ],
-                    // =======================================================
-
                     const SizedBox(height: 25),
                     SizedBox(
                       width: double.infinity,
@@ -367,7 +341,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          // Tombol Akses Menu Manajemen Kategori Khusus Admin
           if (isAdmin)
             IconButton(
               icon: const Icon(Icons.category),
@@ -376,17 +349,58 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const HalamanKategori()),
-                ).then((_) => ambilDaftarKategori()); // Refresh daftar setelah kembali
+                ).then((_) => ambilDaftarKategori()); 
               },
             ),
         ],
       ),
       body: Column(
         children: [
+          
+          // ========================================================
+          // KOLOM PENCARIAN & SCAN BARCODE (Dapat diakses Kasir & Admin)
+          // ========================================================
+          Padding(
+            padding: const EdgeInsets.all(15.0),
+            child: TextField(
+              controller: searchCtrl,
+              onChanged: _filterPencarian, // Panggil filter tiap mengetik
+              decoration: InputDecoration(
+                hintText: 'Cari nama atau scan kode...',
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (searchCtrl.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          searchCtrl.clear();
+                          _filterPencarian(''); // Hapus filter
+                        },
+                      ),
+                    // Tombol kamera untuk scan langsung dari bar pencarian
+                    IconButton(
+                      icon: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent),
+                      onPressed: _scanBarcodeUntukPencarian,
+                    ),
+                  ],
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+          ),
+          // ========================================================
+
           if (isAdmin) ...[
-            // CARD SAKELAR JASA
             Card(
-              margin: const EdgeInsets.only(top: 15, left: 15, right: 15),
+              margin: const EdgeInsets.symmetric(horizontal: 15),
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
               child: SwitchListTile(
@@ -398,7 +412,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 onChanged: _toggleFiturJasa,
               ),
             ),
-            // CARD SAKELAR NO MEJA
             Card(
               margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 5),
               elevation: 0,
@@ -417,57 +430,59 @@ class _HalamanProdukState extends State<HalamanProduk> {
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-                    onRefresh: ambilDataProduk,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(top: 5, left: 15, right: 15, bottom: 80),
-                      itemCount: dataProduk.length,
-                      itemBuilder: (context, index) {
-                        var item = dataProduk[index];
-                        int idItem = int.parse(item['id'].toString());
+                : filteredProduk.isEmpty // Gunakan filteredProduk
+                    ? const Center(child: Text("Barang tidak ditemukan."))
+                    : RefreshIndicator(
+                        onRefresh: ambilDataProduk,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(top: 5, left: 15, right: 15, bottom: 80),
+                          itemCount: filteredProduk.length, // Gunakan filteredProduk
+                          itemBuilder: (context, index) {
+                            var item = filteredProduk[index]; // Gunakan filteredProduk
+                            int idItem = int.parse(item['id'].toString());
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 15),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withAlpha(30), blurRadius: 10, offset: const Offset(0, 5))]),
-                          child: Padding(
-                            padding: const EdgeInsets.all(15.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(color: Colors.blueAccent.withAlpha(25), borderRadius: BorderRadius.circular(15)),
-                                  child: const Icon(Icons.shopping_bag, color: Colors.blueAccent, size: 30),
-                                ),
-                                const SizedBox(width: 15),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(item['kode_barang'] ?? '-', style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 3),
-                                      Text(item['nama'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 5),
-                                      Text('Rp ${item['harga']}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
-                                      const SizedBox(height: 5),
-                                      Text('Stok: ${item['stok']}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                                    ],
-                                  ),
-                                ),
-                                isAdmin
-                                    ? Column(
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 15),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withAlpha(30), blurRadius: 10, offset: const Offset(0, 5))]),
+                              child: Padding(
+                                padding: const EdgeInsets.all(15.0),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(color: Colors.blueAccent.withAlpha(25), borderRadius: BorderRadius.circular(15)),
+                                      child: const Icon(Icons.shopping_bag, color: Colors.blueAccent, size: 30),
+                                    ),
+                                    const SizedBox(width: 15),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          IconButton(icon: const Icon(Icons.edit_note, color: Colors.orange, size: 28), onPressed: () => tampilkanFormDialog(produkInfo: item)),
-                                          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 28), onPressed: () => hapusProduk(idItem)),
+                                          Text(item['kode_barang'] ?? '-', style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 3),
+                                          Text(item['nama'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 5),
+                                          Text('Rp ${item['harga']}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
+                                          const SizedBox(height: 5),
+                                          Text('Stok: ${item['stok']}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                                         ],
-                                      )
-                                    : const SizedBox(),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                                      ),
+                                    ),
+                                    isAdmin
+                                        ? Column(
+                                            children: [
+                                              IconButton(icon: const Icon(Icons.edit_note, color: Colors.orange, size: 28), onPressed: () => tampilkanFormDialog(produkInfo: item)),
+                                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 28), onPressed: () => hapusProduk(idItem)),
+                                            ],
+                                          )
+                                        : const SizedBox(),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
           ),
         ],
       ),
