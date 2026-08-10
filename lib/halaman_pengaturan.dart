@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'halaman_bantuan.dart';
 import 'halaman_notifikasi.dart';
+import 'halaman_referral.dart'; // IMPORT HALAMAN REFERRAL
 
 class HalamanPengaturan extends StatefulWidget {
   const HalamanPengaturan({super.key});
@@ -271,6 +272,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // --- KARTU LANGGANAN ---
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -342,6 +344,8 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                     ),
                   ),
                   const SizedBox(height: 25),
+
+                  // --- KARTU PUSAT BANTUAN ---
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -367,11 +371,45 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                       },
                     ),
                   ),
+                  const SizedBox(height: 10),
+
+                  // =======================================================
+                  // --- FITUR BARU: MENU REFERRAL / UNDANG TEMAN ---
+                  // =======================================================
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15)),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                      leading: const CircleAvatar(
+                          backgroundColor: Colors.orange,
+                          child:
+                              Icon(Icons.card_giftcard, color: Colors.white)),
+                      title: const Text('Program Undang Teman',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: const Text(
+                          'Dapatkan gratis masa aktif toko 30 hari!'),
+                      trailing: const Icon(Icons.arrow_forward_ios,
+                          size: 16, color: Colors.grey),
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const HalamanReferral()));
+                      },
+                    ),
+                  ),
+                  // =======================================================
+
                   const SizedBox(height: 25),
                   const Text('Informasi Dasar Toko',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
+                  
+                  // --- FORM INFORMASI TOKO ---
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -398,6 +436,8 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
+                  
+                  // --- FORM PEMBAYARAN & QRIS ---
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -463,6 +503,8 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                     ),
                   ),
                   const SizedBox(height: 35),
+                  
+                  // --- TOMBOL SIMPAN ---
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(

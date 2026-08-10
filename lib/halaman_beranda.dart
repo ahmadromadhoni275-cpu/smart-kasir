@@ -829,8 +829,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       Navigator.pop(context);
     }
   }
-
-  @override
+@override
     Widget _buildGrafikJamSibuk() {
     if (grafikJamSibuk.isEmpty) {
       return const Padding(
