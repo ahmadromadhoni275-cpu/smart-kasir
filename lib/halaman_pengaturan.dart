@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'halaman_bantuan.dart';
 import 'halaman_notifikasi.dart';
 import 'halaman_referral.dart'; // IMPORT HALAMAN REFERRAL
+import 'halaman_langganan.dart';
 
 class HalamanPengaturan extends StatefulWidget {
   const HalamanPengaturan({super.key});
@@ -309,7 +310,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                             Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  const Text('Saldo Deposit',
+                                  const Text('Saldo',
                                       style: TextStyle(
                                           color: Colors.white70, fontSize: 12)),
                                   Text(_formatRupiah(_saldoDeposit),
@@ -330,13 +331,11 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                                   borderRadius: BorderRadius.circular(12)),
                             ),
                             onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          'Menghubungkan ke Payment Gateway Otomatis...')));
-                            },
+  Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLangganan()));
+},
+
                             icon: const Icon(Icons.payment),
-                            label: const Text('Perpanjang Masa Aktif / Deposit',
+                            label: const Text('Perpanjang Masa Aktif',
                                 style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         )
