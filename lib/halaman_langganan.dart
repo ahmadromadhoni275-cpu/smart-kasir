@@ -26,22 +26,41 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
     _ambilDaftarPaket();
   }
 
-  Future<void> _ambilDaftarPaket() async {
+ Future<void> _ambilDaftarPaket() async {
     final prefs = await SharedPreferences.getInstance();
     tokoId = prefs.getInt('toko_id') ?? 1;
 
     try {
-      final res = await http.get(Uri.parse('$baseUrl/getPaketLangganan'), headers: {'ngrok-skip-browser-warning': 'true'});
+      final res = await http.get(
+        Uri.parse('$baseUrl/getPaketLangganan'), 
+        headers: {'ngrok-skip-browser-warning': 'true'}
+      );
+      
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         setState(() {
           paketLangganan = data['data'];
-          rekeningTujuan = data['rekening_tujuan'];
+          rekeningTujuan = data['rekening_tujuan'] ?? '-';
           isLoading = false;
         });
+      } else {
+        // --- BAGIAN INI DITAMBAHKAN AGAR LOADING BERHENTI SAAT ERROR ---
+        setState(() => isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Gagal mengambil data paket. Status API: ${res.statusCode}'),
+            backgroundColor: Colors.red,
+          ));
+        }
       }
     } catch (e) {
       setState(() => isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Gagal terhubung ke server: $e'),
+          backgroundColor: Colors.red,
+        ));
+      }
     }
   }
 
