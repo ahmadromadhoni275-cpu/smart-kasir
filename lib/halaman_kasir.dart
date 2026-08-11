@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-iimport 'package:barcode_scan2/barcode_scan2.dart'; 
+import 'package:barcode_scan2/barcode_scan2.dart'; 
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
