@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart'; 
+iimport 'package:barcode_scan2/barcode_scan2.dart'; 
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
@@ -146,16 +146,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
-  Future<void> mulaiScanBarcode() async {
+Future<void> mulaiScanBarcode() async {
     try {
-      String hasilScan = await FlutterBarcodeScanner.scanBarcode(
-        '#ff6600',
-        'Batal',
-        true,
-        ScanMode.BARCODE,
-      );
+      // Memanggil kamera scanner
+      var result = await BarcodeScanner.scan();
+      
+      // Mengambil hasil teks dari barcode
+      String hasilScan = result.rawContent;
 
-      if (hasilScan != '-1') {
+      // Jika hasil tidak kosong (artinya user tidak membatalkan / menekan back)
+      if (hasilScan.isNotEmpty && hasilScan != '-1') {
         setState(() {
           pencarianController.text = hasilScan;
           kataKunci = hasilScan;

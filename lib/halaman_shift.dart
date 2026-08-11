@@ -274,7 +274,7 @@ class _HalamanShiftState extends State<HalamanShift> {
       bytes += generator.text("LAPORAN TUTUP SHIFT", styles: const PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.text("Kasir: $namaKasir", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Buka : $waktuBuka", styles: const PosStyles(align: PosAlign.left, fontSize: PosFontSize.size1));
+     bytes += generator.text("Buka : $waktuBuka", styles: const PosStyles(align: PosAlign.left));
       bytes += generator.text("Tutup: $waktuTutup", styles: const PosStyles(align: PosAlign.left, fontSize: PosFontSize.size1));
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
       

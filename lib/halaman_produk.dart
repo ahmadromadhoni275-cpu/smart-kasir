@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:barcode_scan2/barcode_scan2.dart';
 import 'halaman_kategori.dart'; // Navigasi ke manajemen kategori
 
 class HalamanProduk extends StatefulWidget {
@@ -78,11 +78,13 @@ class _HalamanProdukState extends State<HalamanProduk> {
     tampilkanNotifikasiTengah('Berhasil!', 'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
   }
 
-  // --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
+// --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
   Future<void> mulaiScanBarcode(TextEditingController targetController) async {
     try {
-      String hasilScan = await FlutterBarcodeScanner.scanBarcode('#ff6600', 'Batal', true, ScanMode.BARCODE);
-      if (hasilScan != '-1') {
+      var result = await BarcodeScanner.scan();
+      String hasilScan = result.rawContent;
+
+      if (hasilScan.isNotEmpty && hasilScan != '-1') {
         setState(() {
           targetController.text = hasilScan;
         });
@@ -95,8 +97,10 @@ class _HalamanProdukState extends State<HalamanProduk> {
   // --- FUNGSI SCAN BARCODE KHUSUS UNTUK PENCARIAN ---
   Future<void> _scanBarcodeUntukPencarian() async {
     try {
-      String hasilScan = await FlutterBarcodeScanner.scanBarcode('#ff6600', 'Batal', true, ScanMode.BARCODE);
-      if (hasilScan != '-1') {
+      var result = await BarcodeScanner.scan();
+      String hasilScan = result.rawContent;
+
+      if (hasilScan.isNotEmpty && hasilScan != '-1') {
         searchCtrl.text = hasilScan;
         _filterPencarian(hasilScan); // Langsung jalankan fungsi filter
       }
@@ -104,7 +108,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
       debugPrint('Error saat scanning barcode pencarian: $e');
     }
   }
-
   // --- FUNGSI FILTER PENCARIAN BARANG ---
   void _filterPencarian(String keyword) {
     setState(() {
