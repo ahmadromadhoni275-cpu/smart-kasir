@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+import 'main.dart'; // Memanggil KerangkaNavigasi
 
 class HalamanRegistrasi extends StatefulWidget {
   // Tambahkan parameter opsional untuk menerima kode referal jika dipanggil dari link
@@ -20,12 +24,12 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _namaTokoController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _waController = TextEditingController(); // Input No WA
+  final TextEditingController _waController = TextEditingController(); 
   final TextEditingController _referalController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
 
   bool isLoading = false;
-  bool isOtpSent = false; // Menandakan apakah OTP sudah dikirim ke email
+  bool isOtpSent = false; 
   bool _obscureText = true;
 
   @override
@@ -72,7 +76,7 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
 
       if (response.statusCode == 200) {
         setState(() {
-          isOtpSent = true; // Munculkan kolom OTP
+          isOtpSent = true; 
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -98,7 +102,7 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
     }
   }
 
-  // --- 2. FUNGSI DAFTAR (SETELAH OTP DIKIRIM & DIISI) ---
+  // --- 2. FUNGSI DAFTAR DAN AUTO-LOGIN ---
   Future<void> prosesDaftar() async {
     if (_otpController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -111,7 +115,7 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
 
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/registerAdminDanToko'), // API Baru
+        Uri.parse('$baseUrl/registerAdminDanToko'), 
         headers: {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
@@ -120,24 +124,83 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
           'username': _usernameController.text,
           'password': _passwordController.text,
           'email': _emailController.text,
-          'no_wa': _waController.text, // Sesuai tabel users
+          'no_wa': _waController.text, 
           'nama_toko': _namaTokoController.text,
           'otp': _otpController.text,
           'referral_input': _referalController.text.isEmpty ? null : _referalController.text,
         }),
       );
 
-      setState(() => isLoading = false);
-
       if (response.statusCode == 201) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Pendaftaran Berhasil! Selamat menikmati trial 14 Hari.'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 4)));
-          Navigator.pop(context); // Kembali ke halaman Login
+        // REGISTRASI BERHASIL -> JALANKAN OTOMATIS LOGIN DI BELAKANG LAYAR
+        try {
+          final loginResponse = await http.post(
+            Uri.parse('$baseUrl/login'),
+            headers: {'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'},
+            body: json.encode({
+              'username': _usernameController.text,
+              'password': _passwordController.text,
+            }),
+          );
+
+          setState(() => isLoading = false);
+
+          if (loginResponse.statusCode == 200) {
+            final data = json.decode(loginResponse.body);
+            final user = data['user'];
+
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt('user_id', int.parse(user['id'].toString()));
+            await prefs.setInt('toko_id', int.parse(user['toko_id'].toString()));
+            await prefs.setString('username', user['username']);
+            await prefs.setString('role', user['role']);
+            await prefs.setBool('is_logged_in', true);
+
+            // Simpan FCM Token
+            try {
+              String? fcmToken = await FirebaseMessaging.instance.getToken();
+              if (fcmToken != null) {
+                await http.post(
+                  Uri.parse('$baseUrl/update-fcm-token'),
+                  headers: {'Content-Type': 'application/json'},
+                  body: json.encode({'user_id': user['id'], 'fcm_token': fcmToken}),
+                );
+              }
+            } catch (e) {
+              debugPrint("FCM Token error: $e");
+            }
+
+            if (mounted) {
+              // Arahkan ke Beranda dan Hapus Riwayat Navigasi (Tidak bisa di-back ke halaman daftar)
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const KerangkaNavigasi()),
+                (Route<dynamic> route) => false,
+              );
+
+              // Munculkan notifikasi agar melengkapi pengaturan toko
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Pendaftaran Berhasil! Harap lengkapi informasi toko Anda di Halaman Pengaturan.'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 6)));
+            }
+          } else {
+            // Jika login gagal (jarang terjadi), kembalikan ke halaman login
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Pendaftaran Berhasil. Silakan login manual.'),
+                  backgroundColor: Colors.green));
+              Navigator.pop(context);
+            }
+          }
+        } catch (e) {
+          setState(() => isLoading = false);
+          if (mounted) {
+            Navigator.pop(context);
+          }
         }
       } else {
+        setState(() => isLoading = false);
         final data = json.decode(response.body);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -214,7 +277,7 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
                 ),
                 const SizedBox(height: 15),
                 TextField(
-                  controller: _waController, // Field Nomor WhatsApp
+                  controller: _waController,
                   keyboardType: TextInputType.phone,
                   enabled: !isOtpSent,
                   decoration: InputDecoration(
@@ -237,11 +300,10 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                 ),
                 const SizedBox(height: 15),
-                
                 // Kode Referal (Opsional)
                 TextField(
                   controller: _referalController,
-                  enabled: !isOtpSent, // Kunci jika OTP sudah dikirim
+                  enabled: !isOtpSent, 
                   decoration: InputDecoration(
                       labelText: 'Kode Referal (Opsional)',
                       prefixIcon: const Icon(Icons.card_giftcard, color: Colors.orange),

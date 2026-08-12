@@ -24,6 +24,23 @@ class _HalamanLoginState extends State<HalamanLogin> {
 
   bool isLoading = false;
   bool _obscureText = true;
+  bool _ingatSaya = false; // Variabel untuk fitur Simpan Akun
+
+  @override
+  void initState() {
+    super.initState();
+    _muatDataLoginTersimpan(); // Panggil saat layar pertama kali dibuka
+  }
+
+  // --- FUNGSI MEMUAT DATA LOGIN TERSIMPAN ---
+  Future<void> _muatDataLoginTersimpan() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _usernameController.text = prefs.getString('saved_username') ?? '';
+      _passwordController.text = prefs.getString('saved_password') ?? '';
+      _ingatSaya = prefs.getBool('remember_me') ?? false;
+    });
+  }
 
   Future<void> prosesLogin() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
@@ -54,21 +71,29 @@ class _HalamanLoginState extends State<HalamanLogin> {
         final data = json.decode(response.body);
         final user = data['user'];
 
-        // --- SIMPAN DATA KE MEMORI HP ---
         final prefs = await SharedPreferences.getInstance();
+
+        // --- LOGIKA SIMPAN AKUN ---
+        if (_ingatSaya) {
+          await prefs.setString('saved_username', _usernameController.text);
+          await prefs.setString('saved_password', _passwordController.text);
+          await prefs.setBool('remember_me', true);
+        } else {
+          await prefs.remove('saved_username');
+          await prefs.remove('saved_password');
+          await prefs.setBool('remember_me', false);
+        }
+
+        // --- SIMPAN DATA SESI KE MEMORI HP ---
         await prefs.setInt('user_id', int.parse(user['id'].toString()));
         await prefs.setInt('toko_id', int.parse(user['toko_id'].toString()));
         await prefs.setString('username', user['username']);
         await prefs.setString('role', user['role']);
         await prefs.setBool('is_logged_in', true);
 
-        // ========================================================
-        // FITUR BARU: MENGIRIM FCM TOKEN KE SERVER SETELAH LOGIN
-        // ========================================================
+        // --- MENGIRIM FCM TOKEN KE SERVER ---
         try {
-          // 1. Ambil Token dari mesin HP
           String? fcmToken = await FirebaseMessaging.instance.getToken();
-          // 2. Jika token berhasil didapat, kirim ke CodeIgniter
           if (fcmToken != null) {
             await http.post(
               Uri.parse('$baseUrl/update-fcm-token'),
@@ -85,7 +110,6 @@ class _HalamanLoginState extends State<HalamanLogin> {
         } catch (e) {
           debugPrint("Gagal mengambil/mengirim FCM Token: $e");
         }
-        // ========================================================
 
         // ARAHKAN KE KERANGKA NAVIGASI (MENU BAWAH)
         if (mounted) {
@@ -163,16 +187,32 @@ class _HalamanLoginState extends State<HalamanLogin> {
                   ),
                 ),
                 const SizedBox(height: 5),
-                // --- TAMBAHAN: TOMBOL LUPA PASSWORD ---
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLupaPassword()));
-                    },
-                    child: const Text('Lupa Password?', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-                  ),
+                
+                // --- BARIS CHECKBOX SIMPAN AKUN & LUPA PASSWORD ---
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _ingatSaya,
+                          activeColor: Colors.blueAccent,
+                          onChanged: (value) {
+                            setState(() => _ingatSaya = value!);
+                          },
+                        ),
+                        const Text('Simpan Akun', style: TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLupaPassword()));
+                      },
+                      child: const Text('Lupa Password?', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ],
                 ),
+                
                 const SizedBox(height: 15),
                 SizedBox(
                   width: double.infinity,
@@ -224,7 +264,7 @@ class _HalamanLoginState extends State<HalamanLogin> {
 }
 
 // ========================================================
-// --- HALAMAN BARU: LUPA PASSWORD DENGAN OTP ---
+// --- HALAMAN LUPA PASSWORD DENGAN OTP ---
 // ========================================================
 class HalamanLupaPassword extends StatefulWidget {
   const HalamanLupaPassword({super.key});
@@ -235,7 +275,6 @@ class HalamanLupaPassword extends StatefulWidget {
 
 class _HalamanLupaPasswordState extends State<HalamanLupaPassword> {
   final String baseUrl = 'https://smartkasir.shop/api';
-  
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
@@ -354,7 +393,7 @@ class _HalamanLupaPasswordState extends State<HalamanLupaPassword> {
                 ),
                 const SizedBox(height: 25),
 
-                // 1. INPUT EMAIL (Hanya aktif sebelum OTP dikirim)
+                // 1. INPUT EMAIL
                 TextField(
                   controller: _emailController,
                   enabled: !isOtpSent,
