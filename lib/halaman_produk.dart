@@ -17,7 +17,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
   final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
   
   List dataProduk = [];
-  List filteredProduk = []; // Variabel baru untuk menampung hasil pencarian
+  List filteredProduk = []; 
   List daftarKategori = []; 
   
   String _userRole = 'kasir';
@@ -25,6 +25,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
   bool _isFiturJasaAktif = true;
   bool _isFiturMejaAktif = false;
+  bool _isFiturTakeawayAktif = false; // VAR BARU UNTUK FITUR TAKEAWAY
 
   // Controller untuk fitur pencarian
   TextEditingController searchCtrl = TextEditingController();
@@ -43,6 +44,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       _userRole = prefs.getString('role') ?? 'kasir';
       _isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
       _isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false;
+      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway_aktif') ?? false; // LOAD PENGATURAN TAKEAWAY
     });
   }
 
@@ -78,7 +80,17 @@ class _HalamanProdukState extends State<HalamanProduk> {
     tampilkanNotifikasiTengah('Berhasil!', 'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
   }
 
-// --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
+  // FUNGSI TOGGLE BARU UNTUK DINE IN / TAKEAWAY
+  Future<void> _toggleFiturTakeaway(bool nilaiBaru) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('fitur_takeaway_aktif', nilaiBaru);
+    setState(() {
+      _isFiturTakeawayAktif = nilaiBaru;
+    });
+    tampilkanNotifikasiTengah('Berhasil!', 'Fitur Dine In & Takeaway di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
+  }
+
+  // --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
   Future<void> mulaiScanBarcode(TextEditingController targetController) async {
     try {
       var result = await BarcodeScanner.scan();
@@ -108,6 +120,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       debugPrint('Error saat scanning barcode pencarian: $e');
     }
   }
+
   // --- FUNGSI FILTER PENCARIAN BARANG ---
   void _filterPencarian(String keyword) {
     setState(() {
@@ -118,7 +131,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
           final nama = item['nama']?.toString().toLowerCase() ?? '';
           final kode = item['kode_barang']?.toString().toLowerCase() ?? '';
           final searchLower = keyword.toLowerCase();
-          
           return nama.contains(searchLower) || kode.contains(searchLower);
         }).toList();
       }
@@ -263,12 +275,12 @@ class _HalamanProdukState extends State<HalamanProduk> {
                         labelText: 'Kode Barang / Barcode',
                         prefixIcon: const Icon(Icons.qr_code),
                         suffixIcon: IconButton(
-                            icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
-                            onPressed: () {
-                              mulaiScanBarcode(kodeCtrl).then((_) {
-                                setModalState(() {}); 
-                              });
-                            }
+                          icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
+                          onPressed: () {
+                            mulaiScanBarcode(kodeCtrl).then((_) {
+                              setModalState(() {}); 
+                            });
+                          }
                         ),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                       ),
@@ -359,7 +371,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
       ),
       body: Column(
         children: [
-          
           // ========================================================
           // KOLOM PENCARIAN & SCAN BARCODE (Dapat diakses Kasir & Admin)
           // ========================================================
@@ -367,7 +378,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
             padding: const EdgeInsets.all(15.0),
             child: TextField(
               controller: searchCtrl,
-              onChanged: _filterPencarian, // Panggil filter tiap mengetik
+              onChanged: _filterPencarian, 
               decoration: InputDecoration(
                 hintText: 'Cari nama atau scan kode...',
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
@@ -379,10 +390,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
                         icon: const Icon(Icons.clear, color: Colors.grey),
                         onPressed: () {
                           searchCtrl.clear();
-                          _filterPencarian(''); // Hapus filter
+                          _filterPencarian(''); 
                         },
                       ),
-                    // Tombol kamera untuk scan langsung dari bar pencarian
                     IconButton(
                       icon: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent),
                       onPressed: _scanBarcodeUntukPencarian,
@@ -428,20 +438,36 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 onChanged: _toggleFiturMeja,
               ),
             ),
+            // ========================================================
+            // SAKLAR BARU UNTUK DINE IN / TAKEAWAY
+            // ========================================================
+            Card(
+              margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 15),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
+              child: SwitchListTile(
+                activeColor: Colors.orange,
+                title: const Text('Fitur Dine In & Takeaway', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(_isFiturTakeawayAktif ? 'Aktif (Pilihan muncul di tiap item kasir)' : 'Nonaktif (Disembunyikan)'),
+                secondary: const Icon(Icons.takeout_dining, color: Colors.deepOrange),
+                value: _isFiturTakeawayAktif,
+                onChanged: _toggleFiturTakeaway,
+              ),
+            ),
           ],
 
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : filteredProduk.isEmpty // Gunakan filteredProduk
+                : filteredProduk.isEmpty 
                     ? const Center(child: Text("Barang tidak ditemukan."))
                     : RefreshIndicator(
                         onRefresh: ambilDataProduk,
                         child: ListView.builder(
                           padding: const EdgeInsets.only(top: 5, left: 15, right: 15, bottom: 80),
-                          itemCount: filteredProduk.length, // Gunakan filteredProduk
+                          itemCount: filteredProduk.length, 
                           itemBuilder: (context, index) {
-                            var item = filteredProduk[index]; // Gunakan filteredProduk
+                            var item = filteredProduk[index]; 
                             int idItem = int.parse(item['id'].toString());
 
                             return Container(

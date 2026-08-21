@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'halaman_struk.dart';
 import 'halaman_riwayat.dart';
 import 'halaman_printer.dart'; 
-import 'halaman_shift.dart'; // <-- TAMBAHAN IMPORT HALAMAN SHIFT
+import 'halaman_shift.dart'; 
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -26,9 +26,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
   String userRole = 'kasir';
 
   bool isLocked = false;
-  bool isShiftTerbuka = false; // <-- TAMBAHAN STATE UNTUK SHIFT
+  bool isShiftTerbuka = false; 
   bool isFiturJasaAktif = true;
   bool isFiturMejaAktif = false; 
+  bool isFiturTakeawayAktif = false; // VARIABEL STATE BARU UNTUK TAKEAWAY PER ITEM
 
   List data = [];
   bool isLoading = true;
@@ -82,7 +83,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =======================================================
-  // FITUR BARU: CEK STATUS SHIFT
+  // CEK STATUS SHIFT
   // =======================================================
   Future<void> _cekStatusShift() async {
     try {
@@ -107,7 +108,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Future<void> _muatDataPenggunaDanToko() async {
     setState(() => isLoading = true);
     final prefs = await SharedPreferences.getInstance();
-    
     setState(() {
       idTokoAktif = prefs.getInt('toko_id') ?? 1;
       idKasirAktif = prefs.getInt('user_id') ?? 1;
@@ -115,6 +115,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
       isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
       isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false;
+      isFiturTakeawayAktif = prefs.getBool('fitur_takeaway_aktif') ?? false; // LOAD SAKLAR TAKEAWAY
     });
 
     try {
@@ -141,10 +142,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
       debugPrint('Error cek masa aktif: $e');
     }
 
-    // Cek status shift setelah cek langganan toko
     await _cekStatusShift();
 
-    // Jika langganan aman DAN shift sudah dibuka, baru muat data produk
     if (!isLocked && isShiftTerbuka) {
       ambilDataProduk();
     } else {
@@ -226,6 +225,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
           'subtotal': harga,
           'kategori_id': produk['kategori_id'], 
           'stok_maksimal': stokTersedia, 
+          'tipe_pesanan': 'Dine In', // DEFAULT TIPE PESANAN PER ITEM
         });
       }
     });
@@ -294,9 +294,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
     for (var item in keranjang) {
       int h = int.tryParse(item['harga'].toString()) ?? 0;
       int q = int.tryParse(item['qty'].toString()) ?? 1;
+      String tipePesananItem = item['tipe_pesanan'] ?? 'Dine In';
+
       finalDetailBelanja.add({
         'id': item['id'],
-        'nama': item['nama'] ?? 'Produk',
+        'nama': "${item['nama']} ($tipePesananItem)", // Menyertakan jenis pesanan di nama item struk
         'harga': h,
         'qty': q,
         'subtotal': h * q,
@@ -601,71 +603,124 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               int q = int.tryParse(item['qty'].toString()) ?? 0;
                               int maxStok = item['stok_maksimal'] ?? 0; 
                               int sub = h * q;
+                              String tipeItem = item['tipe_pesanan'] ?? 'Dine In';
 
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(item['nama'] ?? 'Produk',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold)),
-                                subtitle: Text('Rp $h / item'),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  border: Border(bottom: BorderSide(color: Colors.grey.shade200))
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Rp $sub',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blueAccent)),
-                                    const SizedBox(width: 15),
-                                    InkWell(
-                                      onTap: () {
-                                        setModalState(() {
-                                          if (keranjang[i]['qty'] > 1) {
-                                            keranjang[i]['qty'] -= 1;
-                                            keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
-                                          } else {
-                                            keranjang.removeAt(i);
-                                          }
-                                        });
-                                        setState(() {}); 
-                                        _simpanKeranjangLokal(); 
-                                      },
-                                      child: const Icon(
-                                          Icons.remove_circle_outline,
-                                          color: Colors.redAccent,
-                                          size: 28),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(item['nama'] ?? 'Produk',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                                        ),
+                                        Text('Rp $sub',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.blueAccent, fontSize: 15)),
+                                      ],
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10),
-                                      child: Text('$q',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16)),
-                                    ),
-                                    InkWell(
-                                      onTap: () {
-                                        if (keranjang[i]['qty'] >= maxStok) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Maksimal stok tercapai! Sisa stok hanya: $maxStok'),
-                                              backgroundColor: Colors.red,
-                                              duration: const Duration(seconds: 1),
-                                            ),
-                                          );
-                                          return;
-                                        }
+                                    const SizedBox(height: 5),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        // ==========================================
+                                        // TOMBOL PILIHAN DINE IN / TAKEAWAY PER ITEM
+                                        // ==========================================
+                                        if (isFiturTakeawayAktif)
+                                          Row(
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  setModalState(() { keranjang[i]['tipe_pesanan'] = 'Dine In'; });
+                                                  setState(() {});
+                                                  _simpanKeranjangLokal();
+                                                },
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: tipeItem == 'Dine In' ? Colors.blueAccent : Colors.grey.shade200,
+                                                    borderRadius: BorderRadius.circular(5),
+                                                  ),
+                                                  child: Text('Dine In', style: TextStyle(fontSize: 10, color: tipeItem == 'Dine In' ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 5),
+                                              InkWell(
+                                                onTap: () {
+                                                  setModalState(() { keranjang[i]['tipe_pesanan'] = 'Takeaway'; });
+                                                  setState(() {});
+                                                  _simpanKeranjangLokal();
+                                                },
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: tipeItem == 'Takeaway' ? Colors.orange : Colors.grey.shade200,
+                                                    borderRadius: BorderRadius.circular(5),
+                                                  ),
+                                                  child: Text('Takeaway', style: TextStyle(fontSize: 10, color: tipeItem == 'Takeaway' ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        else
+                                          const SizedBox.shrink(),
 
-                                        setModalState(() {
-                                          keranjang[i]['qty'] += 1;
-                                          keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
-                                        });
-                                        setState(() {});
-                                        _simpanKeranjangLokal(); 
-                                      },
-                                      child: const Icon(
-                                          Icons.add_circle_outline,
-                                          color: Colors.green,
-                                          size: 28),
+                                        // TOMBOL TAMBAH / KURANG QTY
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            InkWell(
+                                              onTap: () {
+                                                setModalState(() {
+                                                  if (keranjang[i]['qty'] > 1) {
+                                                    keranjang[i]['qty'] -= 1;
+                                                    keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
+                                                  } else {
+                                                    keranjang.removeAt(i);
+                                                  }
+                                                });
+                                                setState(() {}); 
+                                                _simpanKeranjangLokal(); 
+                                              },
+                                              child: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 26),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              child: Text('$q', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                            ),
+                                            InkWell(
+                                              onTap: () {
+                                                if (keranjang[i]['qty'] >= maxStok) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text('Maksimal stok tercapai! Sisa stok hanya: $maxStok'),
+                                                      backgroundColor: Colors.red,
+                                                      duration: const Duration(seconds: 1),
+                                                    ),
+                                                  );
+                                                  return;
+                                                }
+                                                setModalState(() {
+                                                  keranjang[i]['qty'] += 1;
+                                                  keranjang[i]['subtotal'] = keranjang[i]['qty'] * h;
+                                                });
+                                                setState(() {});
+                                                _simpanKeranjangLokal(); 
+                                              },
+                                              child: const Icon(Icons.add_circle_outline, color: Colors.green, size: 26),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -673,6 +728,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             },
                           ),
                   ),
+
                   if (isFiturMejaAktif) ...[
                     const Divider(thickness: 2),
                     const Text('Informasi Pemesanan',
@@ -809,9 +865,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  // =======================================================
-  // UI 1: GEMBOK MASA AKTIF LANGGANAN
-  // =======================================================
   Widget _buildLayarTerkunci() {
     bool isAdmin = userRole == 'admin' || userRole == 'superadmin';
     return Center(
@@ -838,9 +891,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  // =======================================================
-  // FITUR BARU - UI 2: GEMBOK SHIFT KASIR
-  // =======================================================
   Widget _buildLayarShiftTerkunci() {
     return Center(
       child: Padding(
@@ -856,7 +906,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
             const Text(
               'Anda belum membuka shift kasir hari ini. Silakan buka shift terlebih dahulu untuk mulai melayani transaksi.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+              style: const TextStyle(color: Colors.grey, fontSize: 14),
             ),
             const SizedBox(height: 30),
             ElevatedButton.icon(
@@ -869,7 +919,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   context,
                   MaterialPageRoute(builder: (context) => const HalamanShift()),
                 ).then((_) {
-                  // Jalankan ulang pengecekan saat kembali dari Halaman Shift
                   _muatDataPenggunaDanToko();
                 });
               },
@@ -931,12 +980,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ),
         ],
       ),
-      
-      // LOGIKA TAMPILAN TENGAH (BODY)
       body: isLocked
-          ? _buildLayarTerkunci() // Gembok Langganan
+          ? _buildLayarTerkunci() 
           : (!isShiftTerbuka
-              ? _buildLayarShiftTerkunci() // Gembok Shift
+              ? _buildLayarShiftTerkunci() 
               : Column(
                   children: [
                     Container(
@@ -985,7 +1032,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                     .indexWhere((k) => k['id'] == produk['id']);
                                 if (idxK != -1) {
                                   qtyDiKeranjang = int.tryParse(
-                                          keranjang[idxK]['qty'].toString()) ?? 0;
+                                      keranjang[idxK]['qty'].toString()) ?? 0;
                                 }
 
                                 return Card(
@@ -1078,8 +1125,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     ),
                   ],
                 )),
-      
-      // LOGIKA TOMBOL BAWAH KERANJANG
       bottomNavigationBar: (keranjang.isEmpty && getNominalJasa() == 0 || isLocked || !isShiftTerbuka)
           ? const SizedBox.shrink()
           : Container(
