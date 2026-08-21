@@ -11,7 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform, Socket; // Ditambah Socket untuk WiFi/LAN
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
-import 'package:url_launcher/url_launcher.dart'; // Ditambah untuk Share WA
+import 'package:url_launcher/url_launcher.dart'; // Ditambah untuk Share WA dan Buka Link
 import 'package:fl_chart/fl_chart.dart'; // Tambahkan ini
 
 class HalamanBeranda extends StatefulWidget {
@@ -34,6 +34,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   int stokMenipis = 0;
   List riwayatTerbaru = [];
   List grafikJamSibuk = [];
+  
+  // Variabel Data Komunitas Dinamis (TAMBAHAN FITUR KOMUNITAS)
+  List dataKomunitas = []; 
 
   // Variabel Sesi Pengguna & Peringatan
   String username = 'Kasir';
@@ -60,7 +63,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       tokoId = prefs.getInt('toko_id') ?? 1;
       idKasirAktif = prefs.getInt('user_id') ?? 1;
     });
-    
     _cekKelengkapanToko();
     _muatCatatanPribadi(); 
   }
@@ -137,13 +139,16 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
 
   Future<void> ambilDataDashboard() async {
     setState(() => isLoading = true);
+    
+    // Panggil muat komunitas agar ikut diperbarui saat refresh (Tarik ke bawah)
+    _muatKomunitas(); 
+
     try {
       // Mengirimkan toko_id agar datanya spesifik
       final response = await http.get(Uri.parse('$baseUrl/dashboard?toko_id=$tokoId'),
           headers: {'ngrok-skip-browser-warning': 'true'});
       if (response.statusCode == 200) {
         final Map<String, dynamic> res = json.decode(response.body);
-        
         final toko = res['toko'];
         if (toko != null && toko['masa_aktif'] != null) {
           DateTime masaAktif = DateTime.parse(toko['masa_aktif']);
@@ -166,6 +171,52 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       setState(() => isLoading = false);
     }
   }
+
+  // =======================================================================
+  // FUNGSI KOMUNITAS DINAMIS (TAMBAHAN BARU)
+  // =======================================================================
+  Future<void> _muatKomunitas() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/komunitas'),
+        headers: {'ngrok-skip-browser-warning': 'true'}
+      );
+      if (response.statusCode == 200) {
+        final res = json.decode(response.body);
+        if (mounted) {
+          setState(() {
+            dataKomunitas = res['data'] ?? [];
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Gagal muat komunitas: $e');
+    }
+  }
+
+  Future<void> _bukaLink(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal membuka link / aplikasi tujuan tidak ditemukan.'))
+        );
+      }
+    }
+  }
+
+  IconData getIconPlatform(String platform) {
+    switch (platform.toLowerCase()) {
+      case 'whatsapp': return Icons.chat;
+      case 'tiktok': return Icons.music_note;
+      case 'instagram': return Icons.camera_alt;
+      case 'telegram': return Icons.send;
+      case 'facebook': return Icons.facebook;
+      case 'youtube': return Icons.play_arrow;
+      default: return Icons.link;
+    }
+  }
+  // =======================================================================
 
   String formatRupiah(int angka) {
     return NumberFormat.currency(
@@ -330,7 +381,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
     bytes += generator.text("RINGKASAN KEUANGAN:", styles: const PosStyles(bold: true));
-    
     int totalJasa = int.tryParse(totals['total_jasa']?.toString() ?? '0') ?? 0;
     int ppn = int.tryParse(totals['ppn']?.toString() ?? '0') ?? 0;
     int nonTunai = int.tryParse(totals['non_tunai']?.toString() ?? '0') ?? 0;
@@ -342,7 +392,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     bytes += generator.row([PosColumn(text: "Total PPN", width: 6), PosColumn(text: formatRupiah(ppn), width: 6, styles: const PosStyles(align: PosAlign.right))]);
     bytes += generator.row([PosColumn(text: "Non-Tunai", width: 6), PosColumn(text: formatRupiah(nonTunai), width: 6, styles: const PosStyles(align: PosAlign.right))]);
     bytes += generator.row([PosColumn(text: "Tunai Kasir", width: 6), PosColumn(text: formatRupiah(tunai), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.row([
       PosColumn(text: "GRAND TOTAL", width: 6, styles: const PosStyles(bold: true)),
@@ -378,7 +427,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       if (isConnected) {
         final profile = await CapabilityProfile.load();
         final generator = Generator(PaperSize.mm58, profile);
-        
         List<int> bytes = _buatStrukRekapBytes(dataLaporan, generator);
         await PrintBluetoothThermal.writeBytes(bytes);
       } else {
@@ -436,10 +484,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   Future<void> _cetakLaporanRekapWiFi(Map<String, dynamic> dataLaporan) async {
     final prefs = await SharedPreferences.getInstance();
     String ipPrinter = prefs.getString('ip_printer') ?? '';
-    
     if (ipPrinter.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Alamat IP Printer belum diatur di Pengaturan!'), backgroundColor: Colors.orange));
+          content: Text('Alamat IP Printer belum diatur di Pengaturan!'), backgroundColor: Colors.orange));
       return;
     }
 
@@ -454,15 +501,14 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       final socket = await Socket.connect(ipPrinter, 9100, timeout: const Duration(seconds: 5));
       socket.add(bytes);
       socket.destroy();
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Berhasil mencetak via WiFi!'), backgroundColor: Colors.green));
+            content: Text('Berhasil mencetak via WiFi!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Gagal mencetak LAN/WiFi: Cek koneksi & IP Printer.'), backgroundColor: Colors.red));
+            content: Text('Gagal mencetak LAN/WiFi: Cek koneksi & IP Printer.'), backgroundColor: Colors.red));
       }
     }
   }
@@ -473,7 +519,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     final items = dataLaporan['items'] ?? [];
     final totals = dataLaporan['totals'];
     String keteranganTambahan = dataLaporan['keterangan_tambahan'] ?? '';
-    
     String namaToko = toko != null ? toko['nama_toko'] : 'Toko Saya';
     String tanggal = dataLaporan['tanggal'] ?? '';
 
@@ -502,7 +547,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     sb.writeln("Total Tunai Kasir: *${formatRupiah(tunai)}*");
     sb.writeln("---------------------------------");
     sb.writeln("*GRAND TOTAL: ${formatRupiah(grandTotal)}*");
-    
     if (keteranganTambahan.isNotEmpty) {
       sb.writeln("---------------------------------");
       sb.writeln("*CATATAN PENGELUARAN:*");
@@ -511,7 +555,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
 
     String encodedText = Uri.encodeComponent(sb.toString());
     String url = "https://wa.me/?text=$encodedText";
-    
     try {
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -676,13 +719,11 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       final res = await http.get(Uri.parse('$baseUrl/rekap'),
           headers: {'ngrok-skip-browser-warning': 'true'});
       Navigator.pop(context);
-      
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         final items = data['items'];
         final totals = data['totals'];
         final toko = data['toko'];
-        
         TextEditingController keteranganRekapCtrl = TextEditingController();
 
         showModalBottomSheet(
@@ -751,7 +792,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                     Text(formatRupiah(int.parse(totals['grand_total'].toString() == 'null' ? '0' : totals['grand_total'].toString())),
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent))
                   ]),
-                      
                   const SizedBox(height: 10),
                   const Text('Catatan Tambahan / Pengeluaran:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                   const SizedBox(height: 5),
@@ -829,8 +869,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       Navigator.pop(context);
     }
   }
-@override
-    Widget _buildGrafikJamSibuk() {
+
+  @override
+  Widget _buildGrafikJamSibuk() {
     if (grafikJamSibuk.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
@@ -845,7 +886,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     for (var data in grafikJamSibuk) {
       int jam = int.parse(data['jam'].toString());
       double total = double.parse(data['total_transaksi'].toString());
-      
       if (total > maxY) maxY = total; // Cari nilai tertinggi untuk tinggi grafik
 
       barGroups.add(
@@ -872,10 +912,10 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       height: 250,
       padding: const EdgeInsets.only(top: 20, right: 20, left: 10, bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.grey.withAlpha(20), blurRadius: 10, offset: const Offset(0, 5))]
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [BoxShadow(color: Colors.grey.withAlpha(20), blurRadius: 10, offset: const Offset(0, 5))]
       ),
       child: BarChart(
         BarChartData(
@@ -938,6 +978,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     );
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -1022,6 +1063,56 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                       ),
                     ),
 
+                  // ==========================================
+                  // WIDGET KOMUNITAS DINAMIS (TAMPIL JIKA ADA DATA)
+                  // ==========================================
+                  if (dataKomunitas.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Colors.blueAccent, Colors.lightBlue]),
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 5))
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Gabung Komunitas Kami! 🚀',
+                            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Dapatkan info update terbaru dan tips berjualan.',
+                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                          const SizedBox(height: 15),
+                          Wrap(
+                            spacing: 15,
+                            runSpacing: 10,
+                            children: dataKomunitas.map((komunitas) {
+                              return InkWell(
+                                onTap: () => _bukaLink(komunitas['url']),
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.white,
+                                  radius: 22,
+                                  child: Icon(
+                                    getIconPlatform(komunitas['platform']),
+                                    color: Colors.blueAccent,
+                                    size: 24,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // ==========================================
+
                   Text('Selamat Datang, $username!',
                       style: const TextStyle(
                           fontSize: 24, fontWeight: FontWeight.bold)),
@@ -1053,18 +1144,18 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                   ),
                   const SizedBox(height: 20),
 
-// JUDUL GRAFIK
-const Row(
-  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  children: [
-    Text('📈 Analitik Jam Sibuk (Hari Ini)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-  ],
-),
-const SizedBox(height: 10),
+                  // JUDUL GRAFIK
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('📈 Analitik Jam Sibuk (Hari Ini)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
 
-// PANGGIL GRAFIKNYA DI SINI
-_buildGrafikJamSibuk(),
-const SizedBox(height: 25),
+                  // PANGGIL GRAFIKNYA DI SINI
+                  _buildGrafikJamSibuk(),
+                  const SizedBox(height: 25),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
@@ -1114,7 +1205,7 @@ const SizedBox(height: 25),
                               const Icon(Icons.edit_note, color: Colors.orange),
                               const SizedBox(width: 10),
                               Text('Catatan Pribadi ($role)', 
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                             ],
                           ),
                           const SizedBox(height: 10),
@@ -1134,7 +1225,6 @@ const SizedBox(height: 25),
                       ),
                     ),
                   ),
-                  
                   const SizedBox(height: 20),
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
