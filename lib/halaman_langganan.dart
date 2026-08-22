@@ -5,6 +5,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
+// Import halaman riwayat langganan
+import 'HalamanRiwayatLangganan.dart';
+
 class HalamanLangganan extends StatefulWidget {
   const HalamanLangganan({super.key});
 
@@ -14,7 +17,6 @@ class HalamanLangganan extends StatefulWidget {
 
 class _HalamanLanggananState extends State<HalamanLangganan> {
   final String domainUrl = 'https://smartkasir.shop';
-  
   bool isManualAktif = false;
   bool isOtomatisAktif = false;
   bool isLoading = true;
@@ -209,7 +211,13 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
     if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     if (!isManualAktif && !isOtomatisAktif) {
-      return Scaffold(appBar: AppBar(title: const Text('Langganan'), backgroundColor: Colors.blueAccent), body: const Center(child: Text('Fitur langganan dinonaktifkan.')));
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Langganan'), 
+          backgroundColor: Colors.blueAccent
+        ), 
+        body: const Center(child: Text('Fitur langganan dinonaktifkan.'))
+      );
     }
 
     int harga1Bulan = hargaPerBulan;
@@ -218,7 +226,23 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(title: const Text('Perpanjang Langganan', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+      appBar: AppBar(
+        title: const Text('Perpanjang Langganan', style: TextStyle(fontWeight: FontWeight.bold)), 
+        backgroundColor: Colors.blueAccent, 
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history_edu),
+            tooltip: 'Riwayat Pembayaran',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HalamanRiwayatLangganan()),
+              );
+            },
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
