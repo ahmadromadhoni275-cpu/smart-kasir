@@ -4,12 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io' show Platform, Socket; // Socket untuk Printer LAN/Wi-Fi
+import 'dart:io' show Platform, Socket; 
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
-import 'package:image/image.dart' as img; // Untuk memproses gambar QRIS
+import 'package:image/image.dart' as img; 
 
 class HalamanStruk extends StatefulWidget {
   final List keranjang;
@@ -22,7 +22,7 @@ class HalamanStruk extends StatefulWidget {
   final String noStruk;
   final String tanggal;
   final String metodePembayaran;
-  final String? noMeja; // TAMBAHAN: Untuk fitur No Meja
+  final String? noMeja; 
 
   const HalamanStruk({
     super.key,
@@ -36,7 +36,7 @@ class HalamanStruk extends StatefulWidget {
     required this.noStruk,
     required this.tanggal,
     required this.metodePembayaran,
-    this.noMeja, // Parameter baru opsional
+    this.noMeja, 
   });
 
   @override
@@ -52,7 +52,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
   String namaBank = '';
   String rekeningBank = '';
   String atasNama = '';
-  String qrQrisPath = ''; // Tempat menyimpan path gambar QRIS
+  String qrQrisPath = ''; 
 
   String namaPetugas = 'Kasir/Admin';
   String waSuperadmin = 'Memuat...';
@@ -108,7 +108,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
           namaBank = data['nama_bank'] ?? '';
           rekeningBank = data['rekening_bank'] ?? '';
           atasNama = data['atas_nama'] ?? '';
-          qrQrisPath = data['qr_qris'] ?? ''; // Tarik path QRIS dari server
+          qrQrisPath = data['qr_qris'] ?? ''; 
         });
       }
     } catch (e) {
@@ -152,13 +152,16 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     for (var item in widget.keranjang) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
+      // MENGAMBIL DATA TIPE PESANAN (DINE IN / TAKEAWAY)
+      String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
+      
       int itemHarga = _parseInt(item['harga']);
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) {
         itemSub = itemHarga * itemQty;
       }
-      pesan += "$namaItem\n";
+      pesan += "$namaItem$tipePesanan\n";
       pesan += "$itemQty x ${_formatRp(itemHarga)} = ${_formatRp(itemSub)}\n";
     }
 
@@ -213,23 +216,19 @@ class _HalamanStrukState extends State<HalamanStruk> {
     final prefs = await SharedPreferences.getInstance();
     String alamatUtama = prefs.getString('printer_alamat_utama') ?? '';
 
-    // Jika admin sama sekali belum mengatur printer utama di Halaman Printer
     if (alamatUtama.isEmpty) {
-      _tampilkanDialogPilihPrinterBluetoothLama(); // Gunakan dialog pencarian darurat
+      _tampilkanDialogPilihPrinterBluetoothLama(); 
     } else {
-      _eksekusiMultiPrinter(prefs); // Jalankan mesin cerdas penyortir divisi
+      _eksekusiMultiPrinter(prefs); 
     }
   }
 
-  // FUNGSI 1: EKSEKUSI PENYORTIRAN DAN CETAK BERDASARKAN DIVISI
   Future<void> _eksekusiMultiPrinter(SharedPreferences prefs) async {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memproses cetak ke berbagai rute...'), backgroundColor: Colors.blueAccent));
 
-    // A. Bikin Struk Lengkap untuk Kasir (Utama)
     List<int> bytesUtama = await _generateBytesStrukLengkap();
     await _kirimDataKePrinter(prefs, 'utama', bytesUtama, 'Kasir');
 
-    // B. Sortir Keranjang Berdasarkan Divisi/Kategori
     Map<String, List<dynamic>> pesananDivisi = {};
     for (var item in widget.keranjang) {
       String? catId = item['kategori_id']?.toString();
@@ -241,29 +240,25 @@ class _HalamanStrukState extends State<HalamanStruk> {
       }
     }
 
-    // C. Cetak Tiket Khusus ke Masing-Masing Divisi (Dapur / Bar)
     for (var catId in pesananDivisi.keys) {
       List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[catId]!);
       await _kirimDataKePrinter(prefs, 'cat_$catId', bytesDivisi, 'Divisi $catId');
     }
   }
 
-  // FUNGSI 2: PENGIRIMAN DATA MENTAH VIA BLUETOOTH / JARINGAN (Wi-Fi)
   Future<void> _kirimDataKePrinter(SharedPreferences prefs, String idSlot, List<int> bytes, String namaRute) async {
     String tipe = prefs.getString('printer_tipe_$idSlot') ?? 'bluetooth';
     String alamat = prefs.getString('printer_alamat_$idSlot') ?? '';
 
-    if (alamat.isEmpty) return; // Lewati jika tidak ada perangkat yang didaftarkan untuk divisi ini
+    if (alamat.isEmpty) return; 
 
     try {
       if (tipe == 'wifi') {
-        // Tembak via Jaringan Lokal (TCP/IP)
         Socket socket = await Socket.connect(alamat, 9100, timeout: const Duration(seconds: 5));
         socket.add(bytes);
         await socket.flush();
         socket.destroy();
       } else {
-        // Tembak via Bluetooth
         await PrintBluetoothThermal.connect(macPrinterAddress: alamat);
         await PrintBluetoothThermal.writeBytes(bytes);
       }
@@ -272,19 +267,16 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
   }
 
-  // FUNGSI 3: FORMAT STRUK LENGKAP + QRIS (UNTUK PELANGGAN)
   Future<List<int>> _generateBytesStrukLengkap() async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
-    // Header Toko
     bytes += generator.text(namaToko.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2));
     bytes += generator.text(alamatToko, styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("WA: $waToko", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-    // Info Transaksi
     bytes += generator.row([
       PosColumn(text: "No: ${widget.noStruk}", width: 6),
       PosColumn(text: "Tgl: ${widget.tanggal}", width: 6, styles: const PosStyles(align: PosAlign.right)),
@@ -298,15 +290,16 @@ class _HalamanStrukState extends State<HalamanStruk> {
     ]);
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-    // Item Belanja
     for (var item in widget.keranjang) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
+      String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
+      
       int itemHarga = _parseInt(item['harga']);
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) itemSub = itemHarga * itemQty;
 
-      bytes += generator.text(namaItem, styles: const PosStyles(align: PosAlign.left));
+      bytes += generator.text(namaItem + tipePesanan, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.row([
         PosColumn(text: "$itemQty x ${_formatRp(itemHarga)}", width: 6),
         PosColumn(text: _formatRp(itemSub), width: 6, styles: const PosStyles(align: PosAlign.right)),
@@ -314,7 +307,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-    // Biaya Tambahan
     if (_parseInt(widget.biayaJasa) > 0) {
       bytes += generator.row([
         PosColumn(text: "Biaya", width: 6),
@@ -345,15 +337,13 @@ class _HalamanStrukState extends State<HalamanStruk> {
       bytes += generator.text("Pembayaran Non-Tunai:", styles: const PosStyles(align: PosAlign.left));
       bytes += generator.text("$namaBank - $rekeningBank", styles: const PosStyles(align: PosAlign.left));
       bytes += generator.text("A/N: $atasNama", styles: const PosStyles(align: PosAlign.left));
-      
-      // CETAK GAMBAR QRIS JIKA ADA
+
       if (qrQrisPath.isNotEmpty) {
         try {
           final resImg = await http.get(Uri.parse('$domainUrl/$qrQrisPath'));
           if (resImg.statusCode == 200) {
             img.Image? originalImage = img.decodeImage(resImg.bodyBytes);
             if (originalImage != null) {
-              // Perkecil agar muat di kertas 58mm (Lebar efektif 384 dot)
               img.Image resized = img.copyResize(originalImage, width: 300);
               bytes += generator.feed(1);
               bytes += generator.text("SCAN QRIS DI BAWAH INI", styles: const PosStyles(align: PosAlign.center, bold: true));
@@ -365,7 +355,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
         }
       }
     }
-    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(1);
     bytes += generator.text("Terima kasih telah berbelanja", styles: const PosStyles(align: PosAlign.center));
@@ -379,7 +368,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
     return bytes;
   }
 
-  // FUNGSI 4: FORMAT TIKET DIVISI (UNTUK DAPUR / BAR)
   Future<List<int>> _generateBytesStrukDivisi(List items) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
@@ -388,7 +376,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
     bytes += generator.text("TIKET PESANAN", styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
     bytes += generator.feed(1);
     bytes += generator.text("No: ${widget.noStruk}", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("Waktu: ${widget.tanggal.split(' ')[1]}", styles: const PosStyles(align: PosAlign.center)); // Hanya jam
+    bytes += generator.text("Waktu: ${widget.tanggal.split(' ')[1]}", styles: const PosStyles(align: PosAlign.center)); 
 
     if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
       bytes += generator.feed(1);
@@ -396,20 +384,19 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-    // Hanya tampilkan Qty dan Nama Barang dalam huruf tebal, tanpa harga!
     for (var item in items) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
+      String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
       int itemQty = _parseInt(item['qty']);
-      bytes += generator.text("$itemQty x $namaItem", styles: const PosStyles(bold: true, width: PosTextSize.size2));
+      
+      bytes += generator.text("$itemQty x $namaItem$tipePesanan", styles: const PosStyles(bold: true, width: PosTextSize.size2));
       bytes += generator.feed(1);
     }
-    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(2);
     return bytes;
   }
 
-  // FUNGSI 5: FALLBACK PENCARIAN BLUETOOTH LAMA (JIKA PENGATURAN KOSONG)
   Future<void> _tampilkanDialogPilihPrinterBluetoothLama() async {
     try {
       List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
@@ -437,12 +424,9 @@ class _HalamanStrukState extends State<HalamanStruk> {
                               try {
                                 bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: devices[index].macAdress);
                                 if (terhubung) {
-                                  // Simpan ke memori agar besok tidak nanya lagi
                                   final prefs = await SharedPreferences.getInstance();
                                   await prefs.setString('printer_tipe_utama', 'bluetooth');
                                   await prefs.setString('printer_alamat_utama', devices[index].macAdress);
-                                  
-                                  // Lanjut cetak seperti biasa
                                   _eksekusiMultiPrinter(prefs);
                                 }
                               } catch (e) {
@@ -526,6 +510,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                       if (widget.keranjang.isNotEmpty)
                         ...widget.keranjang.map((item) {
                           String namaItem = item['nama']?.toString() ?? 'Produk';
+                          String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
                           int itemHarga = _parseInt(item['harga']);
                           int itemQty = _parseInt(item['qty']);
                           int itemSub = _parseInt(item['subtotal']);
@@ -537,7 +522,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(child: Text("$namaItem (${itemQty}x)", style: const TextStyle(fontSize: 13))),
+                                Expanded(child: Text("$namaItem$tipePesanan (${itemQty}x)", style: const TextStyle(fontSize: 13))),
                                 Text(_formatRp(itemSub), style: const TextStyle(fontSize: 13)),
                               ],
                             ),
@@ -545,7 +530,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
                         })
                       else
                         const Text('Tidak ada item', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      
                       const Divider(height: 25, thickness: 1),
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRp(subtotalVal))]),
                       if (jasaVal > 0) ...[const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Biaya Jasa'), Text(_formatRp(jasaVal))])],
@@ -593,7 +577,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    onPressed: _mulaiProsesCetak, // Panggil logika Multi-Printer
+                    onPressed: _mulaiProsesCetak, 
                     icon: const Icon(Icons.print, size: 18),
                     label: const Text('Cetak Fisik', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
