@@ -87,17 +87,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
   // =======================================================
   Future<void> _cekStatusShift() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/shift/status/$idTokoAktif/$idKasirAktif'),
-        headers: {'ngrok-skip-browser-warning': 'true'}
-      );
-      if (response.statusCode == 200) {
-        final resData = json.decode(response.body);
-        setState(() {
-          isShiftTerbuka = resData['data'] != null && resData['data']['status'] == 'buka';
+      final response = await http.get(Uri.parse('$domainUrl/api/cekStatusShift/$tokoId/$userId'));
+      final data = json.decode(response.body);
+      if (data['status'] == true) {
+        setState(() { 
+            isShiftTerbuka = true; 
+            shiftIdAktif = data['data']['shift_id']; 
         });
       } else {
-        setState(() => isShiftTerbuka = false);
+        setState(() { isShiftTerbuka = false; });
       }
     } catch (e) {
       debugPrint('Error cek shift: $e');
@@ -329,6 +327,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       "metode_pembayaran": metode,
       "nama_pelanggan": metode == 'kasbon' ? namaPelanggan : null, 
       "no_meja": isFiturMejaAktif && noMejaCtrl.text.isNotEmpty ? noMejaCtrl.text : null,
+      "tipe_pesanan": keranjang.isNotEmpty && keranjang[0]['tipe_pesanan'] == 'Takeaway' ? 'takeaway' : 'dine_in',
       "items": finalDetailBelanja.map((item) => {
         "product_id": int.tryParse(item['id'].toString()) ?? 0,
         "qty": int.tryParse(item['qty'].toString()) ?? 1,

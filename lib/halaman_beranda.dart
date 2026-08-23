@@ -104,38 +104,50 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   }
 
   void _konfirmasiLogout() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Keluar Aplikasi',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Apakah Anda yakin ingin keluar dari akun ini?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear(); 
-              if (mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const HalamanLogin()),
-                  (route) => false, 
-                );
-              }
-            },
-            child: const Text('Keluar',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Keluar Aplikasi',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: const Text('Apakah Anda yakin ingin keluar dari akun ini?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () async {
+            final prefs = await SharedPreferences.getInstance();
+            
+            // ==========================================
+            // PERBAIKAN: JANGAN GUNAKAN prefs.clear()!
+            // Hapus HANYA data sesi login penggunanya saja
+            // ==========================================
+            await prefs.remove('is_logged_in');
+            await prefs.remove('role');
+            await prefs.remove('username');
+            await prefs.remove('nama');
+            await prefs.remove('user_id'); // Hapus ID kasir jika ada
+            
+            // SETELAN SEPERTI FITUR TAKEAWAY & PRINTER AKAN TETAP AMAN DI SINI!
+
+            if (mounted) {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const HalamanLogin()),
+                (route) => false, 
+              );
+            }
+          },
+          child: const Text('Keluar',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    ),
+  );
+}
+
 
   Future<void> ambilDataDashboard() async {
     setState(() => isLoading = true);

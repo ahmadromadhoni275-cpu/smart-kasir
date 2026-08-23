@@ -144,7 +144,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
     pesan += "No. : ${widget.noStruk}\n";
     pesan += "Tgl : ${widget.tanggal}\n";
     if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
-      pesan += "Meja: ${widget.noMeja}\n";
+      pesan += "Meja: *${widget.noMeja}*\n";
     }
     pesan += "Oleh : $namaPetugas\n";
     pesan += "Bayar : ${widget.metodePembayaran}\n";
@@ -152,16 +152,13 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     for (var item in widget.keranjang) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
-      // MENGAMBIL DATA TIPE PESANAN (DINE IN / TAKEAWAY)
-      String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
-      
       int itemHarga = _parseInt(item['harga']);
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) {
         itemSub = itemHarga * itemQty;
       }
-      pesan += "$namaItem$tipePesanan\n";
+      pesan += "$namaItem\n";
       pesan += "$itemQty x ${_formatRp(itemHarga)} = ${_formatRp(itemSub)}\n";
     }
 
@@ -279,11 +276,15 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     bytes += generator.row([
       PosColumn(text: "No: ${widget.noStruk}", width: 6),
-      PosColumn(text: "Tgl: ${widget.tanggal}", width: 6, styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(text: "Tgl: ${widget.tanggal.split(' ')[0]}", width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
+    
     if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
-      bytes += generator.text("MEJA: ${widget.noMeja}", styles: const PosStyles(bold: true));
+      bytes += generator.feed(1);
+      bytes += generator.text("MEJA: ${widget.noMeja}", styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
+      bytes += generator.feed(1);
     }
+    
     bytes += generator.row([
       PosColumn(text: "Kasir: $namaPetugas", width: 6),
       PosColumn(text: "Bayar: ${widget.metodePembayaran}", width: 6, styles: const PosStyles(align: PosAlign.right)),
@@ -292,14 +293,12 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     for (var item in widget.keranjang) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
-      String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
-      
       int itemHarga = _parseInt(item['harga']);
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) itemSub = itemHarga * itemQty;
 
-      bytes += generator.text(namaItem + tipePesanan, styles: const PosStyles(align: PosAlign.left));
+      bytes += generator.text(namaItem, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.row([
         PosColumn(text: "$itemQty x ${_formatRp(itemHarga)}", width: 6),
         PosColumn(text: _formatRp(itemSub), width: 6, styles: const PosStyles(align: PosAlign.right)),
@@ -309,7 +308,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     if (_parseInt(widget.biayaJasa) > 0) {
       bytes += generator.row([
-        PosColumn(text: "Biaya", width: 6),
+        PosColumn(text: "Biaya Jasa", width: 6),
         PosColumn(text: _formatRp(widget.biayaJasa), width: 6, styles: const PosStyles(align: PosAlign.right)),
       ]);
     }
@@ -340,7 +339,15 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
       if (qrQrisPath.isNotEmpty) {
         try {
-          final resImg = await http.get(Uri.parse('$domainUrl/$qrQrisPath'));
+          // ==========================================
+          // PERBAIKAN LOGIKA URL GAMBAR QRIS (POIN 4)
+          // ==========================================
+          String finalQrUrl = qrQrisPath.startsWith('http') 
+              ? qrQrisPath 
+              : '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}';
+
+          final resImg = await http.get(Uri.parse(finalQrUrl));
+          
           if (resImg.statusCode == 200) {
             img.Image? originalImage = img.decodeImage(resImg.bodyBytes);
             if (originalImage != null) {
@@ -355,6 +362,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
         }
       }
     }
+    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(1);
     bytes += generator.text("Terima kasih telah berbelanja", styles: const PosStyles(align: PosAlign.center));
@@ -386,10 +394,8 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     for (var item in items) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
-      String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
       int itemQty = _parseInt(item['qty']);
-      
-      bytes += generator.text("$itemQty x $namaItem$tipePesanan", styles: const PosStyles(bold: true, width: PosTextSize.size2));
+      bytes += generator.text("$itemQty x $namaItem", styles: const PosStyles(bold: true, width: PosTextSize.size2));
       bytes += generator.feed(1);
     }
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
@@ -494,6 +500,8 @@ class _HalamanStrukState extends State<HalamanStruk> {
                             const SizedBox(height: 5),
                             const Text('Transaksi Berhasil!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             Text('No: ${widget.noStruk}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            
+                            // TAMPILAN NOMOR MEJA DI UI LAYAR HP
                             if (widget.noMeja != null && widget.noMeja!.isNotEmpty)
                               Container(
                                 margin: const EdgeInsets.only(top: 10),
@@ -510,7 +518,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
                       if (widget.keranjang.isNotEmpty)
                         ...widget.keranjang.map((item) {
                           String namaItem = item['nama']?.toString() ?? 'Produk';
-                          String tipePesanan = item['tipe_pesanan'] != null ? " [${item['tipe_pesanan']}]" : "";
                           int itemHarga = _parseInt(item['harga']);
                           int itemQty = _parseInt(item['qty']);
                           int itemSub = _parseInt(item['subtotal']);
@@ -522,7 +529,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(child: Text("$namaItem$tipePesanan (${itemQty}x)", style: const TextStyle(fontSize: 13))),
+                                Expanded(child: Text("$namaItem (${itemQty}x)", style: const TextStyle(fontSize: 13))),
                                 Text(_formatRp(itemSub), style: const TextStyle(fontSize: 13)),
                               ],
                             ),
@@ -530,6 +537,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                         })
                       else
                         const Text('Tidak ada item', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        
                       const Divider(height: 25, thickness: 1),
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRp(subtotalVal))]),
                       if (jasaVal > 0) ...[const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Biaya Jasa'), Text(_formatRp(jasaVal))])],

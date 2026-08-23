@@ -13,19 +13,19 @@ class HalamanProduk extends StatefulWidget {
 }
 
 class _HalamanProdukState extends State<HalamanProduk> {
+  final String domainUrl = 'https://smartkasir.shop';
   final String baseUrl = 'https://smartkasir.shop/api/produk';
   final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
   
   List dataProduk = [];
   List filteredProduk = []; 
   List daftarKategori = []; 
-  
   String _userRole = 'kasir';
   bool isLoading = true;
 
   bool _isFiturJasaAktif = true;
   bool _isFiturMejaAktif = false;
-  bool _isFiturTakeawayAktif = false; // VAR BARU UNTUK FITUR TAKEAWAY
+  bool _isFiturTakeawayAktif = false; 
 
   // Controller untuk fitur pencarian
   TextEditingController searchCtrl = TextEditingController();
@@ -40,12 +40,39 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
   Future<void> _cekRolePengguna() async {
     final prefs = await SharedPreferences.getInstance();
+    int tokoId = prefs.getInt('toko_id') ?? 1;
+
     setState(() {
       _userRole = prefs.getString('role') ?? 'kasir';
-      _isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
-      _isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false;
-      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway_aktif') ?? false; // LOAD PENGATURAN TAKEAWAY
+      // Load sementara dari lokal agar cepat tampil
+      _isFiturJasaAktif = prefs.getBool('fitur_jasa') ?? true;
+      _isFiturMejaAktif = prefs.getBool('fitur_meja') ?? false;
+      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway') ?? false; 
     });
+
+    // TARIK DATA ASLI DARI SERVER AGAR SINKRON DENGAN WEB
+    try {
+      final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$tokoId'), headers: {'ngrok-skip-browser-warning': 'true'});
+      if (response.statusCode == 200) {
+        final dataToko = json.decode(response.body)['data'];
+        
+        bool dbJasa = (dataToko['fitur_jasa'] ?? 1) == 1;
+        bool dbMeja = (dataToko['fitur_meja'] ?? 0) == 1;
+        bool dbTakeaway = (dataToko['fitur_takeaway'] ?? 0) == 1;
+
+        setState(() {
+          _isFiturJasaAktif = dbJasa;
+          _isFiturMejaAktif = dbMeja;
+          _isFiturTakeawayAktif = dbTakeaway;
+        });
+
+        await prefs.setBool('fitur_jasa', dbJasa);
+        await prefs.setBool('fitur_meja', dbMeja);
+        await prefs.setBool('fitur_takeaway', dbTakeaway);
+      }
+    } catch (e) {
+      debugPrint("Gagal sinkron setelan toko: $e");
+    }
   }
 
   Future<void> ambilDaftarKategori() async {
@@ -62,32 +89,39 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  Future<void> _toggleFiturJasa(bool nilaiBaru) async {
+  // ========================================================
+  // FUNGSI PINTAR SINKRONISASI FITUR (LOKAL + DATABASE SERVER)
+  // ========================================================
+  Future<void> _ubahFiturGlobal(String jenisFitur, bool nilaiBaru, String namaFiturTampil) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('fitur_jasa_aktif', nilaiBaru);
-    setState(() {
-      _isFiturJasaAktif = nilaiBaru;
-    });
-    tampilkanNotifikasiTengah('Berhasil!', 'Kolom input Jasa manual di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
-  }
+    int tokoId = prefs.getInt('toko_id') ?? 1;
 
-  Future<void> _toggleFiturMeja(bool nilaiBaru) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('fitur_meja_aktif', nilaiBaru);
     setState(() {
-      _isFiturMejaAktif = nilaiBaru;
+      if (jenisFitur == 'fitur_jasa') _isFiturJasaAktif = nilaiBaru;
+      if (jenisFitur == 'fitur_meja') _isFiturMejaAktif = nilaiBaru;
+      if (jenisFitur == 'fitur_takeaway') _isFiturTakeawayAktif = nilaiBaru;
     });
-    tampilkanNotifikasiTengah('Berhasil!', 'Fitur input No Meja di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
-  }
 
-  // FUNGSI TOGGLE BARU UNTUK DINE IN / TAKEAWAY
-  Future<void> _toggleFiturTakeaway(bool nilaiBaru) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('fitur_takeaway_aktif', nilaiBaru);
-    setState(() {
-      _isFiturTakeawayAktif = nilaiBaru;
-    });
-    tampilkanNotifikasiTengah('Berhasil!', 'Fitur Dine In & Takeaway di halaman Kasir telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
+    // Simpan ke lokal
+    await prefs.setBool(jenisFitur, nilaiBaru);
+
+    // Kirim sinyal ke Server agar Website ikut berubah
+    try {
+      final url = Uri.parse('$domainUrl/api/updateFiturToko');
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'toko_id': tokoId,
+          'jenis_fitur': jenisFitur,
+          'status': nilaiBaru ? 1 : 0
+        }),
+      );
+    } catch (e) {
+      debugPrint("Gagal kirim status $jenisFitur ke server: $e");
+    }
+
+    tampilkanNotifikasiTengah('Berhasil!', '$namaFiturTampil telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
   }
 
   // --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
@@ -114,7 +148,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
       if (hasilScan.isNotEmpty && hasilScan != '-1') {
         searchCtrl.text = hasilScan;
-        _filterPencarian(hasilScan); // Langsung jalankan fungsi filter
+        _filterPencarian(hasilScan); 
       }
     } catch (e) {
       debugPrint('Error saat scanning barcode pencarian: $e');
@@ -125,7 +159,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
   void _filterPencarian(String keyword) {
     setState(() {
       if (keyword.isEmpty) {
-        filteredProduk = dataProduk; // Kembalikan ke seluruh data jika kosong
+        filteredProduk = dataProduk; 
       } else {
         filteredProduk = dataProduk.where((item) {
           final nama = item['nama']?.toString().toLowerCase() ?? '';
@@ -146,7 +180,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
         setState(() {
           List semuaData = responseData['data'] ?? [];
           dataProduk = semuaData.where((item) => item['jenis'] != 'jasa').toList();
-          filteredProduk = dataProduk; // Samakan data filter dengan data asli di awal
+          filteredProduk = dataProduk; 
           isLoading = false;
         });
       } else {
@@ -371,9 +405,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
       ),
       body: Column(
         children: [
-          // ========================================================
-          // KOLOM PENCARIAN & SCAN BARCODE (Dapat diakses Kasir & Admin)
-          // ========================================================
           Padding(
             padding: const EdgeInsets.all(15.0),
             child: TextField(
@@ -409,7 +440,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
               ),
             ),
           ),
-          // ========================================================
 
           if (isAdmin) ...[
             Card(
@@ -422,7 +452,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 subtitle: Text(_isFiturJasaAktif ? 'Aktif (Muncul di layar kasir)' : 'Nonaktif (Disembunyikan)'),
                 secondary: const Icon(Icons.handyman, color: Colors.purple),
                 value: _isFiturJasaAktif,
-                onChanged: _toggleFiturJasa,
+                onChanged: (val) => _ubahFiturGlobal('fitur_jasa', val, 'Fitur Input Jasa Kasir'),
               ),
             ),
             Card(
@@ -435,12 +465,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 subtitle: Text(_isFiturMejaAktif ? 'Aktif (Muncul di layar kasir)' : 'Nonaktif (Disembunyikan)'),
                 secondary: const Icon(Icons.table_restaurant, color: Colors.orange),
                 value: _isFiturMejaAktif,
-                onChanged: _toggleFiturMeja,
+                onChanged: (val) => _ubahFiturGlobal('fitur_meja', val, 'Fitur No Meja'),
               ),
             ),
-            // ========================================================
-            // SAKLAR BARU UNTUK DINE IN / TAKEAWAY
-            // ========================================================
             Card(
               margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 15),
               elevation: 0,
@@ -451,7 +478,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 subtitle: Text(_isFiturTakeawayAktif ? 'Aktif (Pilihan muncul di tiap item kasir)' : 'Nonaktif (Disembunyikan)'),
                 secondary: const Icon(Icons.takeout_dining, color: Colors.deepOrange),
                 value: _isFiturTakeawayAktif,
-                onChanged: _toggleFiturTakeaway,
+                onChanged: (val) => _ubahFiturGlobal('fitur_takeaway', val, 'Fitur Dine In & Takeaway'),
               ),
             ),
           ],
