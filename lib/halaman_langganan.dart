@@ -222,7 +222,7 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
 
     int harga1Bulan = hargaPerBulan;
     int harga3Bulan = (hargaPerBulan * 3) - 15000; // Contoh diskon
-    int harga1Tahun = (hargaPerBulan * 12) - 100000;
+    int harga1Tahun = (hargaPerBulan * 12) - 50000;
 
     return Scaffold(
       backgroundColor: Colors.grey[100],

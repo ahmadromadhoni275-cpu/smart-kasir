@@ -5,9 +5,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'halaman_bantuan.dart';
 import 'halaman_notifikasi.dart';
-import 'halaman_referral.dart'; // IMPORT HALAMAN REFERRAL
+import 'halaman_referral.dart'; 
 import 'halaman_langganan.dart';
 
 class HalamanPengaturan extends StatefulWidget {
@@ -18,7 +19,7 @@ class HalamanPengaturan extends StatefulWidget {
 }
 
 class _HalamanPengaturanState extends State<HalamanPengaturan> {
-  // URL Domain telah disesuaikan ke hosting AnymHost Anda
+  // URL Domain telah disesuaikan
   final String domainUrl = 'https://smartkasir.shop';
   late final String baseUrl;
 
@@ -50,7 +51,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
   @override
   void initState() {
     super.initState();
-    baseUrl = '$domainUrl/api/toko';
+    baseUrl = '$domainUrl/api/detailToko'; // Menyesuaikan dengan API GET Anda
     _inisialisasiData();
   }
 
@@ -64,7 +65,6 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     ambilDataToko();
   }
 
-  // FITUR BARU: Tambahkan parameter isRefresh agar saat simpan, layar tidak kedip
   Future<void> ambilDataToko({bool isRefresh = false}) async {
     if (!isRefresh) setState(() => isLoading = true);
 
@@ -106,11 +106,9 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     try {
       // FITUR ANTI-CACHE: Tambahkan waktu sekarang ke URL agar Flutter Web selalu menarik gambar terbaru
       String waktuSekarang = DateTime.now().millisecondsSinceEpoch.toString();
-      final url = Uri.parse(
-          '$domainUrl/api/tampilGambar?file=$_qrUrl&v=$waktuSekarang');
+      final url = Uri.parse('$domainUrl/api/tampilGambar?file=$_qrUrl&v=$waktuSekarang');
 
-      final res =
-          await http.get(url, headers: {'ngrok-skip-browser-warning': 'true'});
+      final res = await http.get(url, headers: {'ngrok-skip-browser-warning': 'true'});
 
       if (res.statusCode == 200) {
         setState(() {
@@ -130,8 +128,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
   }
 
   Future<void> _pilihGambar() async {
-    final pickedFile =
-        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
       setState(() {
@@ -141,6 +138,9 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     }
   }
 
+  // ==========================================
+  // PERBAIKAN: SINKRONISASI KE API ubahToko
+  // ==========================================
   Future<void> simpanPerubahan() async {
     if (_namaCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -152,21 +152,21 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     setState(() => isSaving = true);
 
     try {
-      var request =
-          http.MultipartRequest('POST', Uri.parse('$baseUrl/$_tokoId'));
+      // TEMBAK LANGSUNG KE API PINTAR YANG KITA BUAT: "api/ubahToko"
+      var request = http.MultipartRequest('POST', Uri.parse('$domainUrl/api/ubahToko/$_tokoId'));
       request.headers['ngrok-skip-browser-warning'] = 'true';
+      
       request.fields['nama_toko'] = _namaCtrl.text;
       request.fields['alamat'] = _alamatCtrl.text;
       request.fields['no_hp'] = _noHpCtrl.text;
       request.fields['nama_bank'] = _namaBankCtrl.text;
       request.fields['rekening_bank'] = _rekeningCtrl.text;
       request.fields['atas_nama'] = _atasNamaCtrl.text;
-      request.fields['ppn_persen'] =
-          _ppnCtrl.text.isEmpty ? '0' : _ppnCtrl.text;
+      request.fields['ppn_persen'] = _ppnCtrl.text.isEmpty ? '0' : _ppnCtrl.text;
 
+      // HANYA MASUKKAN GAMBAR JIKA USER BENAR-BENAR MENGGANTI QRIS
       if (_imageBytes != null) {
-        request.files.add(http.MultipartFile.fromBytes('qr_qris', _imageBytes!,
-            filename: _imageName ?? 'upload_qr.jpg'));
+        request.files.add(http.MultipartFile.fromBytes('qr_qris', _imageBytes!, filename: _imageName ?? 'upload_qr.jpg'));
       }
 
       var streamedResponse = await request.send();
@@ -175,28 +175,34 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
       setState(() => isSaving = false);
 
       if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Profil toko berhasil diperbarui!'),
-              backgroundColor: Colors.green));
-          FocusScope.of(context).unfocus();
+        final jsonResult = json.decode(response.body);
+        
+        if (jsonResult['status'] == 'success') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Profil toko & QRIS berhasil diperbarui!'),
+                backgroundColor: Colors.green));
+            FocusScope.of(context).unfocus();
 
-          setState(() {
-            // LOGIKA CERDAS: Langsung jadikan gambar lokal (yang baru diunggah) sebagai gambar utama
-            // Hal ini membuat gambar langsung muncul tanpa kedip atau jeda unduh.
-            if (_imageBytes != null) {
-              _serverImageBytes = _imageBytes;
-              _imageBytes = null;
-            }
-          });
+            setState(() {
+              if (_imageBytes != null) {
+                _serverImageBytes = _imageBytes;
+                _imageBytes = null;
+              }
+              // Simpan URL gambar yang baru ke state jika server mengirim balikan
+              if (jsonResult['qr_qris'] != null) {
+                _qrUrl = jsonResult['qr_qris'];
+              }
+            });
 
-          // Sinkronkan data toko di latar belakang (tanpa efek loading putih)
-          ambilDataToko(isRefresh: true);
+            // Sinkronkan data di latar belakang
+            ambilDataToko(isRefresh: true);
+          }
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Gagal menyimpan perubahan.'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Gagal menyimpan perubahan. Error: ${response.statusCode}'),
               backgroundColor: Colors.red));
         }
       }
@@ -331,9 +337,8 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                                   borderRadius: BorderRadius.circular(12)),
                             ),
                             onPressed: () {
-  Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLangganan()));
-},
-
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLangganan()));
+                            },
                             icon: const Icon(Icons.payment),
                             label: const Text('Perpanjang Masa Aktif',
                                 style: TextStyle(fontWeight: FontWeight.bold)),
@@ -372,9 +377,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                   ),
                   const SizedBox(height: 10),
 
-                  // =======================================================
-                  // --- FITUR BARU: MENU REFERRAL / UNDANG TEMAN ---
-                  // =======================================================
+                  // --- MENU REFERRAL ---
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -400,14 +403,13 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                       },
                     ),
                   ),
-                  // =======================================================
-
                   const SizedBox(height: 25),
+
                   const Text('Informasi Dasar Toko',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  
+
                   // --- FORM INFORMASI TOKO ---
                   Container(
                     padding: const EdgeInsets.all(20),
@@ -431,11 +433,12 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                     ),
                   ),
                   const SizedBox(height: 25),
+
                   const Text('Rekening & Pembayaran Non-Tunai',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  
+
                   // --- FORM PEMBAYARAN & QRIS ---
                   Container(
                     padding: const EdgeInsets.all(20),
@@ -456,9 +459,11 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                             'Persentase PPN (%)', Icons.percent, _ppnCtrl,
                             type: TextInputType.number),
                         const Divider(height: 30),
+                        
                         const Text('Upload Barcode QRIS / Rekening',
                             style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
+                        
                         InkWell(
                           onTap: _pilihGambar,
                           child: Container(
@@ -502,7 +507,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                     ),
                   ),
                   const SizedBox(height: 35),
-                  
+
                   // --- TOMBOL SIMPAN ---
                   SizedBox(
                     width: double.infinity,
