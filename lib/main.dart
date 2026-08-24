@@ -35,8 +35,12 @@ void main() async {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+    // ===================================================================
+    // PERBAIKAN 1: MENGGUNAKAN IKON SILUET (ic_notifikasi)
+    // ===================================================================
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('ic_notifikasi'); // <--- Diubah di sini
+    
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
@@ -72,7 +76,11 @@ void main() async {
               channelDescription: 'Channel khusus untuk notifikasi transaksi',
               importance: Importance.max,
               priority: Priority.high,
-              icon: '@mipmap/ic_launcher',
+              // ===================================================================
+              // PERBAIKAN 2: WARNA & IKON SAAT APLIKASI DIBUKA (FOREGROUND)
+              // ===================================================================
+              icon: 'ic_notifikasi', // <--- Diubah di sini
+              color: Colors.blueAccent, // <--- Opsi tambahan agar ikon ada warna latarnya
             ),
           ),
         );
