@@ -128,7 +128,7 @@ class _HalamanLoginState extends State<HalamanLogin> {
     } catch (e) {
       setState(() => isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Gagal terhubung ke server: $e'),
             backgroundColor: Colors.red));
       }
