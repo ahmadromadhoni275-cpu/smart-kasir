@@ -40,9 +40,10 @@ flutter:
     - assets/logo.png
     - assets/logo2.png
 
-flutter_launcher_icons:
+flutter_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/ic_launcher.png" # <-- Sesuaikan dengan nama dan lokasi file gambar Anda
-  min_sdk_android: 21 # Opsional, biarkan saja seperti ini
+  image_path: "assets/ic_launcher.png" # Sesuaikan dengan nama file logo Anda di assets
+  adaptive_icon_background: "#2D68F8" # Warna latar belakang biru sesuai tema aplikasi
+  adaptive_icon_foreground: "assets/ic_launcher.png"
 
