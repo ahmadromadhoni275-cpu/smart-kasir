@@ -16,7 +16,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
   final String domainUrl = 'https://smartkasir.shop';
   final String baseUrl = 'https://smartkasir.shop/api/produk';
   final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
-  
   List dataProduk = [];
   List filteredProduk = []; 
   List daftarKategori = []; 
@@ -55,7 +54,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
       final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$tokoId'), headers: {'ngrok-skip-browser-warning': 'true'});
       if (response.statusCode == 200) {
         final dataToko = json.decode(response.body)['data'];
-        
         bool dbJasa = (dataToko['fitur_jasa'] ?? 1) == 1;
         bool dbMeja = (dataToko['fitur_meja'] ?? 0) == 1;
         bool dbTakeaway = (dataToko['fitur_takeaway'] ?? 0) == 1;
@@ -237,7 +235,10 @@ class _HalamanProdukState extends State<HalamanProduk> {
     );
   }
 
-  Future<void> simpanProduk(int? id, String kodeBarang, String nama, int harga, int stok, int? kategoriId) async {
+  // =========================================================================
+  // PERBAIKAN: Menambahkan `divisiPrinter` ke parameter penyimpan barang
+  // =========================================================================
+  Future<void> simpanProduk(int? id, String kodeBarang, String nama, int harga, int stok, int? kategoriId, String divisiPrinter) async {
     final url = id == null ? Uri.parse(baseUrl) : Uri.parse('$baseUrl/$id');
     final Map<String, dynamic> payload = {
       'toko_id': 1,
@@ -247,6 +248,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       'harga': harga,
       'stok': stok,
       'kategori_id': kategoriId,
+      'divisi_printer': divisiPrinter, // MENGIRIM DIVISI PRINTER KE BACKEND
     };
 
     try {
@@ -283,6 +285,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
     TextEditingController hargaCtrl = TextEditingController(text: produkInfo?['harga']?.toString() ?? '');
     TextEditingController stokCtrl = TextEditingController(text: produkInfo?['stok']?.toString() ?? '');
     int? selectedKategoriId = produkInfo?['kategori_id'] != null ? int.tryParse(produkInfo!['kategori_id'].toString()) : null;
+    
+    // Default divisi adalah 'kasir' jika tidak ada
+    String selectedDivisiPrinter = produkInfo?['divisi_printer']?.toString() ?? 'kasir';
 
     showModalBottomSheet(
       context: context,
@@ -303,6 +308,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     const SizedBox(height: 20),
                     Text(produkInfo == null ? '✨ Tambah Barang Baru' : '✏️ Edit Barang', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
+                    
                     TextField(
                       controller: kodeCtrl,
                       decoration: InputDecoration(
@@ -325,13 +331,14 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     TextField(controller: hargaCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Harga (Rp)', prefixIcon: const Icon(Icons.attach_money), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
                     const SizedBox(height: 15),
                     TextField(controller: stokCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Jumlah Stok', prefixIcon: const Icon(Icons.layers), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
+                    
                     if (daftarKategori.isNotEmpty) ...[
                       const SizedBox(height: 15),
                       DropdownButtonFormField<int>(
                         value: selectedKategoriId,
                         decoration: InputDecoration(
-                          labelText: 'Divisi / Kategori Cetak Printer',
-                          prefixIcon: const Icon(Icons.print, color: Colors.blueAccent),
+                          labelText: 'Kategori Produk',
+                          prefixIcon: const Icon(Icons.category, color: Colors.orange),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                         ),
                         items: daftarKategori.map((kat) {
@@ -347,6 +354,30 @@ class _HalamanProdukState extends State<HalamanProduk> {
                         },
                       ),
                     ],
+
+                    // =========================================================================
+                    // DROPDOWN DIVISI PRINTER (Tujuan Struk Dapur / Bar)
+                    // =========================================================================
+                    const SizedBox(height: 15),
+                    DropdownButtonFormField<String>(
+                      value: ['kasir', 'dapur', 'bar'].contains(selectedDivisiPrinter) ? selectedDivisiPrinter : 'kasir',
+                      decoration: InputDecoration(
+                        labelText: 'Tujuan Cetak Printer (Divisi)',
+                        prefixIcon: const Icon(Icons.print, color: Colors.blueAccent),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'kasir', child: Text('Hanya di Kasir')),
+                        DropdownMenuItem(value: 'dapur', child: Text('Kirim ke Printer Dapur')),
+                        DropdownMenuItem(value: 'bar', child: Text('Kirim ke Printer Bar')),
+                      ],
+                      onChanged: (val) {
+                        setModalState(() {
+                          selectedDivisiPrinter = val ?? 'kasir';
+                        });
+                      },
+                    ),
+
                     const SizedBox(height: 25),
                     SizedBox(
                       width: double.infinity,
@@ -362,6 +393,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                             int.tryParse(hargaCtrl.text) ?? 0,
                             int.tryParse(stokCtrl.text) ?? 0,
                             selectedKategoriId,
+                            selectedDivisiPrinter, // PASSING DATA DIVISI PRINTER
                           );
                         },
                         child: const Text('Simpan Data Barang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -496,6 +528,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                           itemBuilder: (context, index) {
                             var item = filteredProduk[index]; 
                             int idItem = int.parse(item['id'].toString());
+                            String divisiItem = item['divisi_printer']?.toString().toUpperCase() ?? 'KASIR';
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 15),
@@ -520,7 +553,30 @@ class _HalamanProdukState extends State<HalamanProduk> {
                                           const SizedBox(height: 5),
                                           Text('Rp ${item['harga']}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
                                           const SizedBox(height: 5),
-                                          Text('Stok: ${item['stok']}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                                          
+                                          // Tampilan Stok & Label Divisi
+                                          Row(
+                                            children: [
+                                              Text('Stok: ${item['stok']}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                                              const SizedBox(width: 10),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: divisiItem == 'DAPUR' ? Colors.deepOrange.withOpacity(0.1) : (divisiItem == 'BAR' ? Colors.brown.withOpacity(0.1) : Colors.blue.withOpacity(0.1)),
+                                                  border: Border.all(color: divisiItem == 'DAPUR' ? Colors.deepOrange : (divisiItem == 'BAR' ? Colors.brown : Colors.blueAccent)),
+                                                  borderRadius: BorderRadius.circular(5)
+                                                ),
+                                                child: Text(
+                                                  'Printer: $divisiItem',
+                                                  style: TextStyle(
+                                                    fontSize: 10, 
+                                                    fontWeight: FontWeight.bold,
+                                                    color: divisiItem == 'DAPUR' ? Colors.deepOrange : (divisiItem == 'BAR' ? Colors.brown : Colors.blueAccent)
+                                                  )
+                                                ),
+                                              )
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),

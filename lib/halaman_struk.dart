@@ -221,27 +221,43 @@ class _HalamanStrukState extends State<HalamanStruk> {
   }
 
   Future<void> _eksekusiMultiPrinter(SharedPreferences prefs) async {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memproses cetak ke berbagai rute...'), backgroundColor: Colors.blueAccent));
+  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memproses cetak ke berbagai rute...'), backgroundColor: Colors.blueAccent));
 
-    List<int> bytesUtama = await _generateBytesStrukLengkap();
-    await _kirimDataKePrinter(prefs, 'utama', bytesUtama, 'Kasir');
+  // 1. Cetak Struk Utama (Kasir)
+  List<int> bytesUtama = await _generateBytesStrukLengkap();
+  await _kirimDataKePrinter(prefs, 'utama', bytesUtama, 'Kasir');
 
-    Map<String, List<dynamic>> pesananDivisi = {};
-    for (var item in widget.keranjang) {
-      String? catId = item['kategori_id']?.toString();
-      if (catId != null && catId.isNotEmpty && catId != 'null') {
-        if (!pesananDivisi.containsKey(catId)) {
-          pesananDivisi[catId] = [];
-        }
-        pesananDivisi[catId]!.add(item);
+  // 2. Kelompokkan pesanan berdasarkan divisi printer (Dapur / Bar)
+  Map<String, List<dynamic>> pesananDivisi = {};
+  for (var item in widget.keranjang) {
+    // Ambil divisi printer dari item (default 'dapur' jika kosong)
+    String divisi = item['divisi_printer']?.toString().toLowerCase() ?? 'dapur';
+
+    if (!pesananDivisi.containsKey(divisi)) {
+      pesananDivisi[divisi] = [];
+    }
+    pesananDivisi[divisi]!.add(item);
+  }
+
+  // 3. Kirim cetakan tiket ke masing-masing printer divisi via LAN/WiFi
+  for (var divisi in pesananDivisi.keys) {
+    List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[divisi]!);
+    
+    // Ambil IP printer khusus divisi tersebut dari SharedPreferences yang kita buat di HalamanPrinter
+    String ipDivisi = prefs.getString('ip_printer_$divisi') ?? '';
+    
+    if (ipDivisi.isNotEmpty) {
+      try {
+        Socket socket = await Socket.connect(ipDivisi, 9100, timeout: const Duration(seconds: 5));
+        socket.add(bytesDivisi);
+        await socket.flush();
+        socket.destroy();
+      } catch (e) {
+        debugPrint("Gagal cetak ke printer divisi $divisi ($ipDivisi): $e");
       }
     }
-
-    for (var catId in pesananDivisi.keys) {
-      List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[catId]!);
-      await _kirimDataKePrinter(prefs, 'cat_$catId', bytesDivisi, 'Divisi $catId');
-    }
   }
+}
 
   Future<void> _kirimDataKePrinter(SharedPreferences prefs, String idSlot, List<int> bytes, String namaRute) async {
     String tipe = prefs.getString('printer_tipe_$idSlot') ?? 'bluetooth';

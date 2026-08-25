@@ -222,6 +222,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
           'qty': 1,
           'subtotal': harga,
           'kategori_id': produk['kategori_id'], 
+          'divisi_printer': produk['divisi_printer'] ?? 'kasir',
           'stok_maksimal': stokTersedia, 
           'tipe_pesanan': 'Dine In', // DEFAULT TIPE PESANAN PER ITEM
         });
@@ -301,6 +302,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         'qty': q,
         'subtotal': h * q,
         'kategori_id': item['kategori_id'], 
+        'divisi_printer': item['divisi_printer'] ?? 'kasir',
       });
     }
 

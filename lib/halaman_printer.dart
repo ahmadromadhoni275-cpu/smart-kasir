@@ -12,15 +12,16 @@ class HalamanPrinter extends StatefulWidget {
 }
 
 class _HalamanPrinterState extends State<HalamanPrinter> {
-  // Status Printer Bluetooth
+  // Status Printer Bluetooth (Kasir)
   String macPrinterTersimpan = '';
   String namaPrinterTersimpan = '';
   bool isBluetoothConnected = false;
   List<BluetoothInfo> perangkatBluetooth = [];
   bool isMencariBluetooth = false;
 
-  // Status Printer WiFi / LAN
-  TextEditingController ipPrinterCtrl = TextEditingController();
+  // Status Printer WiFi / LAN (Dapur & Bar)
+  TextEditingController ipDapurCtrl = TextEditingController();
+  TextEditingController ipBarCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -36,9 +37,12 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     setState(() {
       macPrinterTersimpan = prefs.getString('mac_printer') ?? '';
       namaPrinterTersimpan = prefs.getString('nama_printer') ?? 'Belum ada printer';
-      ipPrinterCtrl.text = prefs.getString('ip_printer') ?? '';
+      
+      // Load IP masing-masing divisi
+      ipDapurCtrl.text = prefs.getString('ip_printer_dapur') ?? '';
+      ipBarCtrl.text = prefs.getString('ip_printer_bar') ?? '';
     });
-    
+
     // Cek apakah bluetooth masih terhubung
     bool terhubung = await PrintBluetoothThermal.connectionStatus;
     setState(() {
@@ -53,7 +57,6 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     setState(() {
       isMencariBluetooth = true;
     });
-    
     try {
       List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
       setState(() {
@@ -73,7 +76,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     _tampilLoading('Menghubungkan ke $nama...');
     try {
       bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
-      Navigator.pop(context); // Tutup loading
+      Navigator.pop(context); 
 
       if (terhubung) {
         final prefs = await SharedPreferences.getInstance();
@@ -90,7 +93,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
         _tampilPesan('Gagal terhubung. Pastikan printer menyala.', Colors.red);
       }
     } catch (e) {
-      Navigator.pop(context); // Tutup loading
+      Navigator.pop(context); 
       _tampilPesan('Error koneksi bluetooth.', Colors.red);
     }
   }
@@ -106,35 +109,40 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
       final generator = Generator(PaperSize.mm58, profile);
       List<int> bytes = [];
 
-      bytes += generator.text("TES PRINTER BLUETOOTH", styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text("TES PRINTER KASIR", styles: const PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.text("Koneksi Sukses!", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Smart Kasir System", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Divisi: KASIR UTAMA", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.feed(2);
 
       await PrintBluetoothThermal.writeBytes(bytes);
-      _tampilPesan('Cetak tes berhasil!', Colors.green);
+      _tampilPesan('Cetak tes kasir berhasil!', Colors.green);
     } catch (e) {
       _tampilPesan('Gagal mencetak. Error: $e', Colors.red);
     }
   }
 
   // ==============================================================
-  // 3. FUNGSI PRINTER WIFI/LAN (Untuk Dapur / Bar / Rekap Jarak Jauh)
+  // 3. FUNGSI PRINTER WIFI/LAN (Untuk Dapur & Bar)
   // ==============================================================
-  Future<void> _simpanIpWifi() async {
-    if (ipPrinterCtrl.text.isEmpty) {
-      _tampilPesan('IP Printer tidak boleh kosong', Colors.red);
+  Future<void> _simpanIpWifi(String divisi, String ip) async {
+    if (ip.isEmpty) {
+      _tampilPesan('IP Printer $divisi tidak boleh kosong', Colors.red);
       return;
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('ip_printer', ipPrinterCtrl.text);
-    _tampilPesan('IP Printer Jaringan Berhasil Disimpan', Colors.green);
+    
+    if (divisi == 'DAPUR') {
+      await prefs.setString('ip_printer_dapur', ip);
+    } else if (divisi == 'BAR') {
+      await prefs.setString('ip_printer_bar', ip);
+    }
+    
+    _tampilPesan('IP Printer $divisi Berhasil Disimpan', Colors.green);
   }
 
-  Future<void> _tesPrintWifi() async {
-    String ip = ipPrinterCtrl.text;
+  Future<void> _tesPrintWifi(String divisi, String ip) async {
     if (ip.isEmpty) {
-      _tampilPesan('Simpan IP Printer terlebih dahulu!', Colors.red);
+      _tampilPesan('Simpan IP Printer $divisi terlebih dahulu!', Colors.red);
       return;
     }
 
@@ -144,7 +152,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
       final generator = Generator(PaperSize.mm58, profile);
       List<int> bytes = [];
 
-      bytes += generator.text("TES PRINTER WIFI / LAN", styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text("TES PRINTER $divisi", styles: const PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.text("Koneksi Jaringan Sukses!", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.text("IP: $ip", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.feed(2);
@@ -154,11 +162,11 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
       socket.add(bytes);
       socket.destroy();
 
-      Navigator.pop(context); // Tutup loading
-      _tampilPesan('Cetak tes jaringan berhasil!', Colors.green);
+      Navigator.pop(context); 
+      _tampilPesan('Cetak tes $divisi berhasil!', Colors.green);
     } catch (e) {
-      Navigator.pop(context); // Tutup loading
-      _tampilPesan('Gagal terhubung ke IP. Cek koneksi WiFi/LAN.', Colors.red);
+      Navigator.pop(context); 
+      _tampilPesan('Gagal terhubung ke $ip. Cek jaringan/kabel LAN printer.', Colors.red);
     }
   }
 
@@ -191,7 +199,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Pengaturan Printer', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Pengaturan Multi-Printer', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -201,15 +209,15 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            
             // ===============================================
             // KARTU 1: PRINTER BLUETOOTH (STRUK KASIR)
             // ===============================================
-            const Text('Printer Utama (Bluetooth)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const Text('1. Printer Kasir (Struk Utama)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const Text('Koneksi Bluetooth, cetak seluruh ringkasan pesanan.', style: TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 10),
             Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -217,7 +225,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.bluetooth_connected, size: 40, color: isBluetoothConnected ? Colors.green : Colors.grey),
+                        Icon(Icons.bluetooth_connected, size: 40, color: isBluetoothConnected ? Colors.blueAccent : Colors.grey),
                         const SizedBox(width: 15),
                         Expanded(
                           child: Column(
@@ -225,7 +233,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                             children: [
                               const Text('Status Koneksi:', style: TextStyle(color: Colors.grey, fontSize: 12)),
                               Text(isBluetoothConnected ? 'Terhubung' : 'Tidak Terhubung', 
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isBluetoothConnected ? Colors.green : Colors.red)),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isBluetoothConnected ? Colors.blueAccent : Colors.red)),
                               Text(namaPrinterTersimpan, style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
                             ],
                           ),
@@ -233,40 +241,33 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    
                     Row(
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              padding: const EdgeInsets.symmetric(vertical: 12)
-                            ),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 12)),
                             onPressed: _cariPerangkatBluetooth,
                             icon: const Icon(Icons.search, color: Colors.white, size: 18),
-                            label: const Text('Cari Printer', style: TextStyle(color: Colors.white)),
+                            label: const Text('Cari', style: TextStyle(color: Colors.white)),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isBluetoothConnected ? Colors.green : Colors.grey,
-                              padding: const EdgeInsets.symmetric(vertical: 12)
-                            ),
+                            style: ElevatedButton.styleFrom(backgroundColor: isBluetoothConnected ? Colors.green : Colors.grey, padding: const EdgeInsets.symmetric(vertical: 12)),
                             onPressed: isBluetoothConnected ? _tesPrintBluetooth : null,
                             icon: const Icon(Icons.print, color: Colors.white, size: 18),
-                            label: const Text('Tes Print', style: TextStyle(color: Colors.white)),
+                            label: const Text('Tes', style: TextStyle(color: Colors.white)),
                           ),
                         ),
                       ],
                     ),
 
                     if (isMencariBluetooth)
-                       const Padding(
-                         padding: EdgeInsets.only(top: 20),
-                         child: Center(child: CircularProgressIndicator()),
-                       ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 20),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
 
                     if (perangkatBluetooth.isNotEmpty) ...[
                       const Divider(height: 30),
@@ -274,11 +275,7 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                       const SizedBox(height: 10),
                       Container(
                         height: 150,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(10)
-                        ),
+                        decoration: BoxDecoration(color: Colors.grey[50], border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
                         child: ListView.builder(
                           itemCount: perangkatBluetooth.length,
                           itemBuilder: (context, index) {
@@ -297,29 +294,28 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                 ),
               ),
             ),
-            
             const SizedBox(height: 30),
 
             // ===============================================
-            // KARTU 2: PRINTER WIFI / LAN (DAPUR / BAR)
+            // KARTU 2: PRINTER DAPUR (WIFI / LAN)
             // ===============================================
-            const Text('Printer Jaringan (WiFi / LAN)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-            const Text('Biasanya digunakan untuk cetak struk Dapur atau Jarak Jauh', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const Text('2. Printer Dapur (Makanan)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const Text('Koneksi Jaringan (LAN/Wi-Fi). Hanya mencetak item divisi "dapur".', style: TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 10),
             Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextField(
-                      controller: ipPrinterCtrl,
+                      controller: ipDapurCtrl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
-                        labelText: 'Alamat IP Printer (Contoh: 192.168.1.100)',
-                        prefixIcon: const Icon(Icons.wifi, color: Colors.teal),
+                        labelText: 'IP Printer Dapur (Cth: 192.168.1.10)',
+                        prefixIcon: const Icon(Icons.soup_kitchen, color: Colors.deepOrange),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         filled: true,
                         fillColor: Colors.white,
@@ -330,11 +326,8 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.teal,
-                              padding: const EdgeInsets.symmetric(vertical: 12)
-                            ),
-                            onPressed: _simpanIpWifi,
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, padding: const EdgeInsets.symmetric(vertical: 12)),
+                            onPressed: () => _simpanIpWifi('DAPUR', ipDapurCtrl.text),
                             icon: const Icon(Icons.save, color: Colors.white, size: 18),
                             label: const Text('Simpan IP', style: TextStyle(color: Colors.white)),
                           ),
@@ -342,13 +335,63 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
-                              padding: const EdgeInsets.symmetric(vertical: 12)
-                            ),
-                            onPressed: _tesPrintWifi,
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 12)),
+                            onPressed: () => _tesPrintWifi('DAPUR', ipDapurCtrl.text),
                             icon: const Icon(Icons.print, color: Colors.white, size: 18),
-                            label: const Text('Tes Print LAN', style: TextStyle(color: Colors.white)),
+                            label: const Text('Tes Print', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+
+            // ===============================================
+            // KARTU 3: PRINTER BAR (WIFI / LAN)
+            // ===============================================
+            const Text('3. Printer Bar (Minuman)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const Text('Koneksi Jaringan (LAN/Wi-Fi). Hanya mencetak item divisi "bar".', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: ipBarCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'IP Printer Bar (Cth: 192.168.1.11)',
+                        prefixIcon: const Icon(Icons.local_cafe, color: Colors.brown),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.brown, padding: const EdgeInsets.symmetric(vertical: 12)),
+                            onPressed: () => _simpanIpWifi('BAR', ipBarCtrl.text),
+                            icon: const Icon(Icons.save, color: Colors.white, size: 18),
+                            label: const Text('Simpan IP', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 12)),
+                            onPressed: () => _tesPrintWifi('BAR', ipBarCtrl.text),
+                            icon: const Icon(Icons.print, color: Colors.white, size: 18),
+                            label: const Text('Tes Print', style: TextStyle(color: Colors.white)),
                           ),
                         ),
                       ],
@@ -360,9 +403,9 @@ class _HalamanPrinterState extends State<HalamanPrinter> {
 
             const SizedBox(height: 30),
             Center(
-              child: Text('Data printer tersimpan di perangkat ini.\nBeda HP Kasir, beda pengaturan printer.', 
-                textAlign: TextAlign.center, 
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontStyle: FontStyle.italic)),
+              child: Text('Data IP tersimpan di perangkat ini.\nBeda HP Kasir, beda IP tujuan.', 
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontStyle: FontStyle.italic)),
             )
           ],
         ),
