@@ -30,6 +30,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   bool isFiturJasaAktif = true;
   bool isFiturMejaAktif = false; 
   bool isFiturTakeawayAktif = false; // VARIABEL STATE BARU UNTUK TAKEAWAY PER ITEM
+  int shiftIdAktif = 0;
 
   List data = [];
   bool isLoading = true;
@@ -86,22 +87,23 @@ class _HalamanKasirState extends State<HalamanKasir> {
   // CEK STATUS SHIFT
   // =======================================================
   Future<void> _cekStatusShift() async {
-    try {
-      final response = await http.get(Uri.parse('$domainUrl/api/cekStatusShift/$tokoId/$userId'));
-      final data = json.decode(response.body);
-      if (data['status'] == true) {
-        setState(() { 
-            isShiftTerbuka = true; 
-            shiftIdAktif = data['data']['shift_id']; 
-        });
-      } else {
-        setState(() { isShiftTerbuka = false; });
-      }
-    } catch (e) {
-      debugPrint('Error cek shift: $e');
-      setState(() => isShiftTerbuka = false);
+  try {
+    // PERBAIKAN: Gunakan baseUrl, idTokoAktif, dan idKasirAktif
+    final response = await http.get(Uri.parse('$baseUrl/cekStatusShift/$idTokoAktif/$idKasirAktif'));
+    final data = json.decode(response.body);
+    if (data['status'] == true) {
+      setState(() { 
+        isShiftTerbuka = true; 
+        shiftIdAktif = data['data']['shift_id']; 
+      });
+    } else {
+      setState(() { isShiftTerbuka = false; });
     }
+  } catch (e) {
+    debugPrint('Error cek shift: $e');
+    setState(() => isShiftTerbuka = false);
   }
+}
 
   Future<void> _muatDataPenggunaDanToko() async {
     setState(() => isLoading = true);
