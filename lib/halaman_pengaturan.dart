@@ -51,7 +51,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
   @override
   void initState() {
     super.initState();
-    baseUrl = '$domainUrl/api/detailToko'; // Menyesuaikan dengan API GET Anda
+    baseUrl = '$domainUrl/api/detailToko'; 
     _inisialisasiData();
   }
 
@@ -69,8 +69,8 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     if (!isRefresh) setState(() => isLoading = true);
 
     try {
-      final response = await http.get(Uri.parse('$baseUrl/$_tokoId'),
-          headers: {'ngrok-skip-browser-warning': 'true'});
+      // PERBAIKAN 1: Hapus header ngrok agar tidak diblokir oleh Hosting/cPanel
+      final response = await http.get(Uri.parse('$baseUrl/$_tokoId'));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body)['data'];
@@ -96,19 +96,32 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
         }
       } else {
         setState(() => isLoading = false);
+        // Memunculkan pesan error jika server tidak membalas 200 OK
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Gagal memuat data toko (Error ${response.statusCode})'),
+              backgroundColor: Colors.red));
+        }
       }
     } catch (e) {
       setState(() => isLoading = false);
+      // Memunculkan pesan error jika format JSON rusak atau masalah jaringan
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Kesalahan jaringan: $e'),
+            backgroundColor: Colors.red));
+      }
     }
   }
 
   Future<void> _unduhGambarServer() async {
     try {
-      // FITUR ANTI-CACHE: Tambahkan waktu sekarang ke URL agar Flutter Web selalu menarik gambar terbaru
+      // FITUR ANTI-CACHE: Tambahkan waktu sekarang ke URL agar Flutter selalu menarik gambar terbaru
       String waktuSekarang = DateTime.now().millisecondsSinceEpoch.toString();
       final url = Uri.parse('$domainUrl/api/tampilGambar?file=$_qrUrl&v=$waktuSekarang');
 
-      final res = await http.get(url, headers: {'ngrok-skip-browser-warning': 'true'});
+      // PERBAIKAN 2: Hapus header ngrok di sini juga
+      final res = await http.get(url);
 
       if (res.statusCode == 200) {
         setState(() {
@@ -138,9 +151,6 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     }
   }
 
-  // ==========================================
-  // PERBAIKAN: SINKRONISASI KE API ubahToko
-  // ==========================================
   Future<void> simpanPerubahan() async {
     if (_namaCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -152,9 +162,10 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     setState(() => isSaving = true);
 
     try {
-      // TEMBAK LANGSUNG KE API PINTAR YANG KITA BUAT: "api/ubahToko"
       var request = http.MultipartRequest('POST', Uri.parse('$domainUrl/api/ubahToko/$_tokoId'));
-      request.headers['ngrok-skip-browser-warning'] = 'true';
+      
+      // PERBAIKAN 3: Hapus header ngrok dari request POST
+      // request.headers['ngrok-skip-browser-warning'] = 'true'; <-- Sudah dihapus
       
       request.fields['nama_toko'] = _namaCtrl.text;
       request.fields['alamat'] = _alamatCtrl.text;
@@ -209,8 +220,8 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
     } catch (e) {
       setState(() => isSaving = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Kesalahan jaringan saat menyimpan.'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Kesalahan jaringan saat menyimpan: $e'),
             backgroundColor: Colors.red));
       }
     }
@@ -459,11 +470,9 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                             'Persentase PPN (%)', Icons.percent, _ppnCtrl,
                             type: TextInputType.number),
                         const Divider(height: 30),
-                        
                         const Text('Upload Barcode QRIS / Rekening',
                             style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
-                        
                         InkWell(
                           onTap: _pilihGambar,
                           child: Container(
