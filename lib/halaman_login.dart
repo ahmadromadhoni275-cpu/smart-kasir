@@ -56,7 +56,7 @@ class _HalamanLoginState extends State<HalamanLogin> {
       final response = await http.post(
         Uri.parse('$baseUrl/login'),
         headers: {
-          'Content-Type': 'application/json': 'true',
+          'Content-Type': 'application/json',
         },
         body: json.encode({
           'username': _usernameController.text,
@@ -293,7 +293,7 @@ class _HalamanLupaPasswordState extends State<HalamanLupaPassword> {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/kirimOtpEmail'),
-        headers: {'Content-Type': 'application/json': 'true'},
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({'email': _emailController.text, 'jenis': 'lupa_password'}),
       );
 
@@ -329,7 +329,7 @@ class _HalamanLupaPasswordState extends State<HalamanLupaPassword> {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/resetPassword'),
-        headers: {'Content-Type': 'application/json': 'true'},
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'email': _emailController.text,
           'otp': _otpController.text,
