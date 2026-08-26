@@ -87,12 +87,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =======================================================
-  // CEK STATUS SHIFT
+  // CEK STATUS SHIFT (Sudah Bersih dari Ngrok Header)
   // =======================================================
   Future<void> _cekStatusShift() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/shift/status/$idTokoAktif/$idKasirAktif'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/shift/status/$idTokoAktif/$idKasirAktif'),
+        headers: {'Accept': 'application/json'}
+      );
       final data = json.decode(response.body);
+      
       if (data['status'] == true) {
         setState(() { 
           isShiftTerbuka = true; 
@@ -103,7 +107,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       }
     } catch (e) {
       debugPrint('Error cek shift: $e');
-      setState(() => isShiftTerbuka = false);
+      // Tidak lagi memaksa false agar popup tidak berkedip jika internet lambat
     }
   }
 
@@ -122,7 +126,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/shift/buka'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: json.encode({
           'toko_id': idTokoAktif,
           'user_id': idKasirAktif,
@@ -131,17 +138,38 @@ class _HalamanKasirState extends State<HalamanKasir> {
       );
 
       final res = json.decode(response.body);
-      if (response.statusCode == 201 && res['status'] == true) {
+      
+      if ((response.statusCode == 200 || response.statusCode == 201) && res['status'] == true) {
+        // 1. KOSONGKAN FORM DAN HILANGKAN POPUP SEKETIKA!
+        modalAwalCtrl.clear();
+        setState(() {
+           isShiftTerbuka = true; 
+        });
+
+        // 2. MUNCULKAN NOTIF SUKSES
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shift Kasir Berhasil Dibuka!'), backgroundColor: Colors.green),
         );
-        modalAwalCtrl.clear();
-        await _cekStatusShift(); 
+        
+        // 3. AMBIL DATA SHIFT ID DI LATAR BELAKANG
+        _cekStatusShift(); 
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Gagal membuka shift'), backgroundColor: Colors.red));
+        // TANGKAP PESAN ERROR DARI SERVER
+        String pesanError = 'Gagal membuka shift';
+        if (res['messages'] != null && res['messages']['error'] != null) {
+          pesanError = res['messages']['error'];
+        } else if (res['message'] != null) {
+          pesanError = res['message'];
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Info Server: $pesanError'), 
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4)
+        ));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error server saat membuka shift'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error jaringan: $e'), backgroundColor: Colors.red));
     }
     
     if (mounted) setState(() => isProsesBukaShift = false);
@@ -161,8 +189,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
 
     try {
-      final res = await http.get(Uri.parse('$baseUrl/toko/$idTokoAktif'),
-          headers: {'ngrok-skip-browser-warning': 'true'});
+      final res = await http.get(
+        Uri.parse('$baseUrl/toko/$idTokoAktif'),
+        headers: {'Accept': 'application/json'}
+      );
 
       if (res.statusCode == 200) {
         final tokoData = json.decode(res.body)['data'];
@@ -186,7 +216,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
     await _cekStatusShift();
 
-    // PERUBAHAN: Tarik data produk meskipun shift belum buka agar di balik layar (background) produk sudah siap
     if (!isLocked) {
       ambilDataProduk();
     } else {
@@ -197,7 +226,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Future<void> ambilDataProduk() async {
     final url = Uri.parse('$baseUrl/produk');
     try {
-      final response = await http.get(url, headers: {'ngrok-skip-browser-warning': 'true'});
+      final response = await http.get(url, headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
         setState(() {
@@ -935,7 +964,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ),
         ],
       ),
-      
       body: isLocked
           ? _buildLayarTerkunci()
           : Stack(
@@ -1048,7 +1076,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   Container(
                     width: double.infinity,
                     height: double.infinity,
-                    color: const Color(0xE60F172A), // Warna gelap transparan elegan
+                    color: const Color(0xE60F172A), 
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1060,7 +1088,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Icon Lingkaran Melayang
                                 Container(
                                   padding: const EdgeInsets.all(18),
                                   decoration: BoxDecoration(
@@ -1081,7 +1108,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                   style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.5),
                                 ),
                                 const SizedBox(height: 30),
-                                // Form Input Uang
                                 TextField(
                                   controller: modalAwalCtrl,
                                   keyboardType: TextInputType.number,
@@ -1099,7 +1125,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                   ),
                                 ),
                                 const SizedBox(height: 25),
-                                // Tombol Buka Shift
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton.icon(
