@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async'; // Tambahan untuk fungsi Timer/Delay
 
 // --- TAMBAHAN IMPORT FIREBASE & NOTIFIKASI ---
 import 'package:firebase_core/firebase_core.dart';
@@ -40,7 +41,6 @@ void main() async {
     // ===================================================================
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('ic_notifikasi'); // <--- Diubah di sini
-    
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
@@ -105,8 +105,79 @@ class AplikasiKasir extends StatelessWidget {
     return MaterialApp(
       title: 'Smart Kasir',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: isLoggedIn ? const KerangkaNavigasi() : const HalamanLogin(),
+      // PERUBAHAN: Arahkan home ke HalamanSplashLoading terlebih dahulu
+      home: HalamanSplashLoading(isLoggedIn: isLoggedIn),
       debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+// ===================================================================
+// HALAMAN SPLASH SCREEN (LOADING)
+// ===================================================================
+class HalamanSplashLoading extends StatefulWidget {
+  final bool isLoggedIn;
+  const HalamanSplashLoading({super.key, required this.isLoggedIn});
+
+  @override
+  State<HalamanSplashLoading> createState() => _HalamanSplashLoadingState();
+}
+
+class _HalamanSplashLoadingState extends State<HalamanSplashLoading> {
+  @override
+  void initState() {
+    super.initState();
+    _mulaiLoading();
+  }
+
+  // Fungsi untuk memberi jeda animasi loading lalu pindah halaman
+  void _mulaiLoading() async {
+    await Future.delayed(const Duration(seconds: 3)); // Waktu loading 3 detik
+    if (!mounted) return;
+
+    // Pindah halaman berdasarkan status login
+    if (widget.isLoggedIn) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const KerangkaNavigasi()),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HalamanLogin()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double lebarLayar = MediaQuery.of(context).size.width;
+
+    return Scaffold(
+      backgroundColor: Colors.blueAccent, // Ganti warna ini jika background logo bukan biru
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Gambar Logo Loading
+            Image.asset(
+              'assets/logo_loading.png',
+              width: lebarLayar * 0.45, // Ukuran logo 45% dari layar agar proporsional
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 40), // Jarak antara logo dan loading
+            // Indikator Putar
+            const SizedBox(
+              width: 30,
+              height: 30,
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                strokeWidth: 3.5,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
