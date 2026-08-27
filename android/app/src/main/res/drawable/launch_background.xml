@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Ubah background menjadi warna biru solid yang sama dengan HalamanSplashLoading -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Background Warna Biru Solid Sesuai Logo -->
-    <item android:drawable="@color/splash_background" />
-
-    <!-- Logo di Tengah -->
     <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@drawable/logo_splash" />
+        <!-- Hex code #448AFF adalah warna standar dari Colors.blueAccent di Flutter -->
+        <color android:color="#448AFF" />
     </item>
 </layer-list>

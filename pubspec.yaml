@@ -33,6 +33,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.9 
 
 flutter:
   uses-material-design: true
@@ -48,3 +49,10 @@ flutter_icons:
   adaptive_icon_background: "#2D68F8" # Warna latar belakang biru sesuai tema aplikasi
   adaptive_icon_foreground: "assets/ic_launcher.png"
 
+flutter_native_splash:
+  color: "#448AFF"               # Warna background biru (sama dengan blueAccent)
+  image: "assets/logo_loading.png" # Path logo loading Anda
+  android_12:
+    color: "#448AFF"
+    image: "assets/logo_loading.png"
+  fullscreen: true               # Supaya tampil penuh satu layar
