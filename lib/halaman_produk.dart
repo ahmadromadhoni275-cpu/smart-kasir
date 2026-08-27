@@ -16,6 +16,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
   final String domainUrl = 'https://smartkasir.shop';
   final String baseUrl = 'https://smartkasir.shop/api/produk';
   final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
+
   List dataProduk = [];
   List filteredProduk = []; 
   List daftarKategori = []; 
@@ -37,26 +38,31 @@ class _HalamanProdukState extends State<HalamanProduk> {
     ambilDaftarKategori();
   }
 
+  // ========================================================
+  // PERBAIKAN: Penarikan setelan fitur toko dengan key "_aktif"
+  // ========================================================
   Future<void> _cekRolePengguna() async {
     final prefs = await SharedPreferences.getInstance();
     int tokoId = prefs.getInt('toko_id') ?? 1;
 
     setState(() {
       _userRole = prefs.getString('role') ?? 'kasir';
-      // Load sementara dari lokal agar cepat tampil
-      _isFiturJasaAktif = prefs.getBool('fitur_jasa') ?? true;
-      _isFiturMejaAktif = prefs.getBool('fitur_meja') ?? false;
-      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway') ?? false; 
+      // Load sementara dari lokal (sudah pakai "_aktif")
+      _isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
+      _isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false;
+      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway_aktif') ?? false; 
     });
 
     // TARIK DATA ASLI DARI SERVER AGAR SINKRON DENGAN WEB
     try {
-      final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$tokoId'), headers: {'ngrok-skip-browser-warning': 'true'});
+      final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$tokoId'), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final dataToko = json.decode(response.body)['data'];
-        bool dbJasa = (dataToko['fitur_jasa'] ?? 1) == 1;
-        bool dbMeja = (dataToko['fitur_meja'] ?? 0) == 1;
-        bool dbTakeaway = (dataToko['fitur_takeaway'] ?? 0) == 1;
+        
+        // PERBAIKAN: Parsing aman kebal error String vs Integer
+        bool dbJasa = dataToko['fitur_jasa'].toString() == '1';
+        bool dbMeja = dataToko['fitur_meja'].toString() == '1';
+        bool dbTakeaway = dataToko['fitur_takeaway'].toString() == '1';
 
         setState(() {
           _isFiturJasaAktif = dbJasa;
@@ -64,9 +70,10 @@ class _HalamanProdukState extends State<HalamanProduk> {
           _isFiturTakeawayAktif = dbTakeaway;
         });
 
-        await prefs.setBool('fitur_jasa', dbJasa);
-        await prefs.setBool('fitur_meja', dbMeja);
-        await prefs.setBool('fitur_takeaway', dbTakeaway);
+        // Simpan ke lokal menggunakan "_aktif" agar dikenali kasir
+        await prefs.setBool('fitur_jasa_aktif', dbJasa);
+        await prefs.setBool('fitur_meja_aktif', dbMeja);
+        await prefs.setBool('fitur_takeaway_aktif', dbTakeaway);
       }
     } catch (e) {
       debugPrint("Gagal sinkron setelan toko: $e");
@@ -75,7 +82,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
   Future<void> ambilDaftarKategori() async {
     try {
-      final response = await http.get(Uri.parse(kategoriUrl), headers: {'ngrok-skip-browser-warning': 'true'});
+      final response = await http.get(Uri.parse(kategoriUrl), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final res = json.decode(response.body);
         setState(() {
@@ -100,8 +107,8 @@ class _HalamanProdukState extends State<HalamanProduk> {
       if (jenisFitur == 'fitur_takeaway') _isFiturTakeawayAktif = nilaiBaru;
     });
 
-    // Simpan ke lokal
-    await prefs.setBool(jenisFitur, nilaiBaru);
+    // Simpan ke lokal dengan tambahan "_aktif"
+    await prefs.setBool('${jenisFitur}_aktif', nilaiBaru);
 
     // Kirim sinyal ke Server agar Website ikut berubah
     try {
@@ -171,13 +178,19 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
   Future<void> ambilDataProduk() async {
     setState(() => isLoading = true);
+    // HANYA AMBIL PRODUK MILIK TOKO YANG SEDANG LOGIN SAJA (Filter via params jika memungkinkan, tapi backend sudah set via middleware/session jika diakses via route API yang tepat, pastikan sesuai. Jika API get all, backend memfilternya via token/session, jika tidak filter manual atau sesuaikan API)
     try {
-      final response = await http.get(Uri.parse(baseUrl), headers: {'ngrok-skip-browser-warning': 'true'});
+      final response = await http.get(Uri.parse(baseUrl), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
+        
+        final prefs = await SharedPreferences.getInstance();
+        int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
+
         setState(() {
           List semuaData = responseData['data'] ?? [];
-          dataProduk = semuaData.where((item) => item['jenis'] != 'jasa').toList();
+          // Filter produk berdasarkan toko_id yang sedang login dan yang bukan jasa
+          dataProduk = semuaData.where((item) => item['jenis'] != 'jasa' && item['toko_id'].toString() == tokoIdAsli.toString()).toList();
           filteredProduk = dataProduk; 
           isLoading = false;
         });
@@ -236,25 +249,28 @@ class _HalamanProdukState extends State<HalamanProduk> {
   }
 
   // =========================================================================
-  // PERBAIKAN: Menambahkan `divisiPrinter` ke parameter penyimpan barang
+  // PERBAIKAN: Menambahkan `toko_id` dinamis & `divisiPrinter`
   // =========================================================================
   Future<void> simpanProduk(int? id, String kodeBarang, String nama, int harga, int stok, int? kategoriId, String divisiPrinter) async {
+    final prefs = await SharedPreferences.getInstance();
+    int tokoIdAsli = prefs.getInt('toko_id') ?? 1; // DINAMIS MULTI-TOKO
+
     final url = id == null ? Uri.parse(baseUrl) : Uri.parse('$baseUrl/$id');
     final Map<String, dynamic> payload = {
-      'toko_id': 1,
+      'toko_id': tokoIdAsli,
       'kode_barang': kodeBarang,
       'nama': nama,
       'jenis': 'barang',
       'harga': harga,
       'stok': stok,
       'kategori_id': kategoriId,
-      'divisi_printer': divisiPrinter, // MENGIRIM DIVISI PRINTER KE BACKEND
+      'divisi_printer': divisiPrinter, 
     };
 
     try {
       final response = id == null
-          ? await http.post(url, headers: {'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'}, body: json.encode(payload))
-          : await http.put(url, headers: {'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'}, body: json.encode(payload));
+          ? await http.post(url, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: json.encode(payload))
+          : await http.put(url, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: json.encode(payload));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         await ambilDataProduk();
@@ -269,7 +285,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
   Future<void> hapusProduk(int id) async {
     try {
-      final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: {'ngrok-skip-browser-warning': 'true'});
+      final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         await ambilDataProduk();
         if (mounted) tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
@@ -308,7 +324,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                     const SizedBox(height: 20),
                     Text(produkInfo == null ? '✨ Tambah Barang Baru' : '✏️ Edit Barang', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
-                    
                     TextField(
                       controller: kodeCtrl,
                       decoration: InputDecoration(
@@ -393,7 +408,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                             int.tryParse(hargaCtrl.text) ?? 0,
                             int.tryParse(stokCtrl.text) ?? 0,
                             selectedKategoriId,
-                            selectedDivisiPrinter, // PASSING DATA DIVISI PRINTER
+                            selectedDivisiPrinter, 
                           );
                         },
                         child: const Text('Simpan Data Barang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -553,7 +568,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                                           const SizedBox(height: 5),
                                           Text('Rp ${item['harga']}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
                                           const SizedBox(height: 5),
-                                          
                                           // Tampilan Stok & Label Divisi
                                           Row(
                                             children: [
