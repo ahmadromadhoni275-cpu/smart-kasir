@@ -430,6 +430,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
           }
         });
 
+        // TANGKAP NILAI SEBELUM KERANJANG DIKOSONGKAN AGAR TIDAK RP 0 / HILANG
+        int subtotalFix = getSubtotal();
+        String? mejaFix = isFiturMejaAktif && noMejaCtrl.text.isNotEmpty ? noMejaCtrl.text : null;
+
         if (context.mounted) {
           Navigator.push(
             context,
@@ -437,7 +441,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
               builder: (context) => HalamanStruk(
                 keranjang: finalDetailBelanja,
                 totalBelanja: finalGrandTotal,
-                subtotal: getSubtotal(),
+                subtotal: subtotalFix, // <--- Gunakan variabel yang ditangkap
                 ppnNominal: finalPpnNominal,
                 biayaJasa: nominalJasa,
                 uangDiterima: uangBayar,
@@ -445,12 +449,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 noStruk: 'INV-${DateTime.now().millisecondsSinceEpoch}',
                 tanggal: DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
                 metodePembayaran: metode == 'tunai' ? 'Tunai' : (metode == 'kasbon' ? 'Kasbon/Hutang' : 'Non-Tunai'),
-                noMeja: isFiturMejaAktif ? noMejaCtrl.text : null,
+                noMeja: mejaFix, // <--- Gunakan variabel meja yang ditangkap
               ),
             ),
           );
         }
         kosongkanKeranjang();
+
       } else {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal oleh server: ${response.statusCode}'), backgroundColor: Colors.red));

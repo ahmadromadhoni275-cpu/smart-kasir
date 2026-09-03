@@ -75,7 +75,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
     try {
       final response = await http.get(
         Uri.parse('$domainUrl/api/pengaturan'),
-        headers: {'ngrok-skip-browser-warning': 'true'},
+        headers: {'Accept': 'application/json'},
       );
       if (response.statusCode == 200) {
         final res = json.decode(response.body);
@@ -98,7 +98,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
     try {
       final response = await http.get(Uri.parse('$domainUrl/api/toko/$tokoId'),
-          headers: {'ngrok-skip-browser-warning': 'true'});
+          headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final data = json.decode(response.body)['data'];
         setState(() {
@@ -130,6 +130,13 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
   Future<void> _kirimWhatsApp() async {
     int subtotalVal = _parseInt(widget.subtotal);
+    // SISTEM PENGAMAN SUBTOTAL
+    if (subtotalVal == 0) {
+      for (var item in widget.keranjang) {
+        if (item['id'] != 0) subtotalVal += _parseInt(item['subtotal']);
+      }
+    }
+
     int jasaVal = _parseInt(widget.biayaJasa);
     int ppnVal = _parseInt(widget.ppnNominal);
     int totalVal = _parseInt(widget.totalBelanja);
@@ -196,10 +203,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
   }
 
-  // ==============================================================
-  // MESIN MULTI-PRINTER HYBRID (Wi-Fi & Bluetooth & Split Bill)
-  // ==============================================================
-
   Future<void> _mulaiProsesCetak() async {
     if (kIsWeb) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cetak fisik tidak bisa dilakukan di Web.'), backgroundColor: Colors.orange));
@@ -221,43 +224,35 @@ class _HalamanStrukState extends State<HalamanStruk> {
   }
 
   Future<void> _eksekusiMultiPrinter(SharedPreferences prefs) async {
-  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memproses cetak ke berbagai rute...'), backgroundColor: Colors.blueAccent));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memproses cetak ke berbagai rute...'), backgroundColor: Colors.blueAccent));
 
-  // 1. Cetak Struk Utama (Kasir)
-  List<int> bytesUtama = await _generateBytesStrukLengkap();
-  await _kirimDataKePrinter(prefs, 'utama', bytesUtama, 'Kasir');
+    List<int> bytesUtama = await _generateBytesStrukLengkap();
+    await _kirimDataKePrinter(prefs, 'utama', bytesUtama, 'Kasir');
 
-  // 2. Kelompokkan pesanan berdasarkan divisi printer (Dapur / Bar)
-  Map<String, List<dynamic>> pesananDivisi = {};
-  for (var item in widget.keranjang) {
-    // Ambil divisi printer dari item (default 'dapur' jika kosong)
-    String divisi = item['divisi_printer']?.toString().toLowerCase() ?? 'dapur';
-
-    if (!pesananDivisi.containsKey(divisi)) {
-      pesananDivisi[divisi] = [];
+    Map<String, List<dynamic>> pesananDivisi = {};
+    for (var item in widget.keranjang) {
+      String divisi = item['divisi_printer']?.toString().toLowerCase() ?? 'dapur';
+      if (!pesananDivisi.containsKey(divisi)) {
+        pesananDivisi[divisi] = [];
+      }
+      pesananDivisi[divisi]!.add(item);
     }
-    pesananDivisi[divisi]!.add(item);
-  }
 
-  // 3. Kirim cetakan tiket ke masing-masing printer divisi via LAN/WiFi
-  for (var divisi in pesananDivisi.keys) {
-    List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[divisi]!);
-    
-    // Ambil IP printer khusus divisi tersebut dari SharedPreferences yang kita buat di HalamanPrinter
-    String ipDivisi = prefs.getString('ip_printer_$divisi') ?? '';
-    
-    if (ipDivisi.isNotEmpty) {
-      try {
-        Socket socket = await Socket.connect(ipDivisi, 9100, timeout: const Duration(seconds: 5));
-        socket.add(bytesDivisi);
-        await socket.flush();
-        socket.destroy();
-      } catch (e) {
-        debugPrint("Gagal cetak ke printer divisi $divisi ($ipDivisi): $e");
+    for (var divisi in pesananDivisi.keys) {
+      List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[divisi]!);
+      String ipDivisi = prefs.getString('ip_printer_$divisi') ?? '';
+      if (ipDivisi.isNotEmpty) {
+        try {
+          Socket socket = await Socket.connect(ipDivisi, 9100, timeout: const Duration(seconds: 5));
+          socket.add(bytesDivisi);
+          await socket.flush();
+          socket.destroy();
+        } catch (e) {
+          debugPrint("Gagal cetak ke printer divisi $divisi ($ipDivisi): $e");
+        }
       }
     }
   }
-}
 
   Future<void> _kirimDataKePrinter(SharedPreferences prefs, String idSlot, List<int> bytes, String namaRute) async {
     String tipe = prefs.getString('printer_tipe_$idSlot') ?? 'bluetooth';
@@ -294,25 +289,26 @@ class _HalamanStrukState extends State<HalamanStruk> {
       PosColumn(text: "No: ${widget.noStruk}", width: 6),
       PosColumn(text: "Tgl: ${widget.tanggal.split(' ')[0]}", width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
-    
     if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
       bytes += generator.feed(1);
       bytes += generator.text("MEJA: ${widget.noMeja}", styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
       bytes += generator.feed(1);
     }
-    
     bytes += generator.row([
       PosColumn(text: "Kasir: $namaPetugas", width: 6),
       PosColumn(text: "Bayar: ${widget.metodePembayaran}", width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
+    int subtotalFix = 0;
     for (var item in widget.keranjang) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
       int itemHarga = _parseInt(item['harga']);
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) itemSub = itemHarga * itemQty;
+      
+      if (item['id'] != 0) subtotalFix += itemSub; // Keperluan Subtotal bawah
 
       bytes += generator.text(namaItem, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.row([
@@ -321,6 +317,13 @@ class _HalamanStrukState extends State<HalamanStruk> {
       ]);
     }
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+    int subtotalParam = _parseInt(widget.subtotal) > 0 ? _parseInt(widget.subtotal) : subtotalFix;
+
+    bytes += generator.row([
+      PosColumn(text: "Subtotal", width: 6),
+      PosColumn(text: _formatRp(subtotalParam), width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
 
     if (_parseInt(widget.biayaJasa) > 0) {
       bytes += generator.row([
@@ -355,15 +358,11 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
       if (qrQrisPath.isNotEmpty) {
         try {
-          // ==========================================
-          // PERBAIKAN LOGIKA URL GAMBAR QRIS (POIN 4)
-          // ==========================================
           String finalQrUrl = qrQrisPath.startsWith('http') 
               ? qrQrisPath 
               : '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}';
 
           final resImg = await http.get(Uri.parse(finalQrUrl));
-          
           if (resImg.statusCode == 200) {
             img.Image? originalImage = img.decodeImage(resImg.bodyBytes);
             if (originalImage != null) {
@@ -378,7 +377,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
         }
       }
     }
-    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(1);
     bytes += generator.text("Terima kasih telah berbelanja", styles: const PosStyles(align: PosAlign.center));
@@ -478,6 +476,13 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
 
     int subtotalVal = _parseInt(widget.subtotal);
+    // SISTEM PENGAMAN SUBTOTAL AGAR TIDAK RP 0 
+    if (subtotalVal == 0) {
+      for (var item in widget.keranjang) {
+        if (item['id'] != 0) subtotalVal += _parseInt(item['subtotal']);
+      }
+    }
+
     int jasaVal = _parseInt(widget.biayaJasa);
     int ppnVal = _parseInt(widget.ppnNominal);
     int totalVal = _parseInt(widget.totalBelanja);
@@ -516,8 +521,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
                             const SizedBox(height: 5),
                             const Text('Transaksi Berhasil!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             Text('No: ${widget.noStruk}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            
-                            // TAMPILAN NOMOR MEJA DI UI LAYAR HP
+                            // TAMPILAN NOMOR MEJA 
                             if (widget.noMeja != null && widget.noMeja!.isNotEmpty)
                               Container(
                                 margin: const EdgeInsets.only(top: 10),
@@ -553,7 +557,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
                         })
                       else
                         const Text('Tidak ada item', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        
                       const Divider(height: 25, thickness: 1),
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRp(subtotalVal))]),
                       if (jasaVal > 0) ...[const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Biaya Jasa'), Text(_formatRp(jasaVal))])],
