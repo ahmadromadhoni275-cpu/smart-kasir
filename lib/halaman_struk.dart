@@ -358,10 +358,11 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
       if (qrQrisPath.isNotEmpty) {
         try {
-          String finalQrUrl = qrQrisPath.startsWith('http') 
-              ? qrQrisPath 
-              : '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}';
-
+            String cleanPath = qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath;
+            String finalQrUrl = qrQrisPath.startsWith('http') 
+                ? qrQrisPath 
+                : (cleanPath.contains('uploads/qr') ? '$domainUrl/$cleanPath' : '$domainUrl/uploads/qr/$cleanPath');
+  
           final resImg = await http.get(Uri.parse(finalQrUrl));
           if (resImg.statusCode == 200) {
             img.Image? originalImage = img.decodeImage(resImg.bodyBytes);
@@ -587,6 +588,24 @@ class _HalamanStrukState extends State<HalamanStruk> {
                               const Text('Transfer / QRIS Ke:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
                               Text('$namaBank - $rekeningBank', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                               Text('a/n $atasNama', style: const TextStyle(fontSize: 11)),
+                              if (qrQrisPath.isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Center(
+                                  child: Image.network(
+                                    qrQrisPath.startsWith('http') 
+                                      ? qrQrisPath 
+                                      : (qrQrisPath.contains('uploads/qr') 
+                                          ? '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}' 
+                                          : '$domainUrl/uploads/qr/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}'),
+                                    height: 150,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) => const Text(
+                                      'Gagal memuat QRIS',
+                                      style: TextStyle(color: Colors.red, fontSize: 10),
+                                    ),
+                                  ),
+                                ),
+                              ]
                             ],
                           ),
                         )
