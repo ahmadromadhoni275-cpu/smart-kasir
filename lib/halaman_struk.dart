@@ -130,7 +130,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
   Future<void> _kirimWhatsApp() async {
     int subtotalVal = _parseInt(widget.subtotal);
-    // SISTEM PENGAMAN SUBTOTAL
     if (subtotalVal == 0) {
       for (var item in widget.keranjang) {
         if (item['id'] != 0) subtotalVal += _parseInt(item['subtotal']);
@@ -254,6 +253,9 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
   }
 
+  // ===================================================================
+  // PERBAIKAN UTAMA: KONEKSI BLUETOOTH LEBIH AMAN & TIDAK HANG
+  // ===================================================================
   Future<void> _kirimDataKePrinter(SharedPreferences prefs, String idSlot, List<int> bytes, String namaRute) async {
     String tipe = prefs.getString('printer_tipe_$idSlot') ?? 'bluetooth';
     String alamat = prefs.getString('printer_alamat_$idSlot') ?? '';
@@ -267,11 +269,39 @@ class _HalamanStrukState extends State<HalamanStruk> {
         await socket.flush();
         socket.destroy();
       } else {
-        await PrintBluetoothThermal.connect(macPrinterAddress: alamat);
+        bool isConnected = false;
+        try {
+          isConnected = await PrintBluetoothThermal.connectionStatus;
+        } catch (_) {}
+
+        if (!isConnected) {
+          bool connected = false;
+          try {
+            connected = await PrintBluetoothThermal.connect(macPrinterAddress: alamat)
+                .timeout(const Duration(seconds: 5), onTimeout: () => false);
+          } catch (_) {
+            connected = false;
+          }
+
+          if (!connected) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Gagal terhubung ke printer $namaRute. Periksa perangkat!'), backgroundColor: Colors.red),
+              );
+            }
+            return;
+          }
+        }
+
         await PrintBluetoothThermal.writeBytes(bytes);
       }
     } catch (e) {
       debugPrint("Gagal cetak rute $namaRute: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal mengirim data ke printer.'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -307,8 +337,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) itemSub = itemHarga * itemQty;
-      
-      if (item['id'] != 0) subtotalFix += itemSub; // Keperluan Subtotal bawah
+      if (item['id'] != 0) subtotalFix += itemSub;
 
       bytes += generator.text(namaItem, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.row([
@@ -358,11 +387,10 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
       if (qrQrisPath.isNotEmpty) {
         try {
-            String cleanPath = qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath;
-            String finalQrUrl = qrQrisPath.startsWith('http') 
-                ? qrQrisPath 
-                : (cleanPath.contains('uploads/qr') ? '$domainUrl/$cleanPath' : '$domainUrl/uploads/qr/$cleanPath');
-  
+          String cleanPath = qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath;
+          String finalQrUrl = qrQrisPath.startsWith('http') 
+              ? qrQrisPath 
+              : (cleanPath.contains('uploads/qr') ? '$domainUrl/$cleanPath' : '$domainUrl/uploads/qr/$cleanPath');
           final resImg = await http.get(Uri.parse(finalQrUrl));
           if (resImg.statusCode == 200) {
             img.Image? originalImage = img.decodeImage(resImg.bodyBytes);
@@ -443,12 +471,20 @@ class _HalamanStrukState extends State<HalamanStruk> {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Menghubungkan ke ${devices[index].name}...')));
                               try {
-                                bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: devices[index].macAdress);
+                                bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: devices[index].macAdress)
+                                    .timeout(const Duration(seconds: 5), onTimeout: () => false);
+                                    
                                 if (terhubung) {
                                   final prefs = await SharedPreferences.getInstance();
                                   await prefs.setString('printer_tipe_utama', 'bluetooth');
                                   await prefs.setString('printer_alamat_utama', devices[index].macAdress);
                                   _eksekusiMultiPrinter(prefs);
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Gagal terhubung ke printer Bluetooth.'), backgroundColor: Colors.red),
+                                    );
+                                  }
                                 }
                               } catch (e) {
                                 debugPrint("Error koneksi: $e");
@@ -477,7 +513,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
 
     int subtotalVal = _parseInt(widget.subtotal);
-    // SISTEM PENGAMAN SUBTOTAL AGAR TIDAK RP 0 
     if (subtotalVal == 0) {
       for (var item in widget.keranjang) {
         if (item['id'] != 0) subtotalVal += _parseInt(item['subtotal']);
@@ -522,7 +557,6 @@ class _HalamanStrukState extends State<HalamanStruk> {
                             const SizedBox(height: 5),
                             const Text('Transaksi Berhasil!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             Text('No: ${widget.noStruk}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            // TAMPILAN NOMOR MEJA 
                             if (widget.noMeja != null && widget.noMeja!.isNotEmpty)
                               Container(
                                 margin: const EdgeInsets.only(top: 10),
@@ -593,10 +627,10 @@ class _HalamanStrukState extends State<HalamanStruk> {
                                 Center(
                                   child: Image.network(
                                     qrQrisPath.startsWith('http') 
-                                      ? qrQrisPath 
-                                      : (qrQrisPath.contains('uploads/qr') 
-                                          ? '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}' 
-                                          : '$domainUrl/uploads/qr/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}'),
+                                        ? qrQrisPath 
+                                        : (qrQrisPath.contains('uploads/qr') 
+                                            ? '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}' 
+                                            : '$domainUrl/uploads/qr/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}'),
                                     height: 150,
                                     fit: BoxFit.contain,
                                     errorBuilder: (context, error, stackTrace) => const Text(
