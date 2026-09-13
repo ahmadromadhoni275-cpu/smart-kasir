@@ -89,7 +89,9 @@ class _HalamanLoginState extends State<HalamanLogin> {
         await prefs.setString('username', user['username']);
         await prefs.setString('role', user['role']);
         await prefs.setBool('is_logged_in', true);
-
+        await prefs.setString('referral_code', userData['referral_code'] ?? '');
+        await prefs.setString('invited_by', userData['invited_by']?.toString() ?? '');
+        await prefs.setInt('invite_count', int.tryParse(userData['invite_count']?.toString() ?? '0') ?? 0);
         // --- MENGIRIM FCM TOKEN KE SERVER ---
         try {
           String? fcmToken = await FirebaseMessaging.instance.getToken();
