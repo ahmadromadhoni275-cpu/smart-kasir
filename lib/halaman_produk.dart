@@ -176,32 +176,38 @@ class _HalamanProdukState extends State<HalamanProduk> {
     });
   }
 
-  Future<void> ambilDataProduk() async {
-    setState(() => isLoading = true);
-    // HANYA AMBIL PRODUK MILIK TOKO YANG SEDANG LOGIN SAJA (Filter via params jika memungkinkan, tapi backend sudah set via middleware/session jika diakses via route API yang tepat, pastikan sesuai. Jika API get all, backend memfilternya via token/session, jika tidak filter manual atau sesuaikan API)
-    try {
-      final response = await http.get(Uri.parse(baseUrl), headers: {'Accept': 'application/json'});
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        
-        final prefs = await SharedPreferences.getInstance();
-        int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
+Future<void> ambilDataProduk() async {
+  setState(() => isLoading = true);
+  
+  try {
+    // 1. Tarik toko_id DULU sebelum memanggil http.get
+    final prefs = await SharedPreferences.getInstance();
+    int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
 
-        setState(() {
-          List semuaData = responseData['data'] ?? [];
-          // Filter produk berdasarkan toko_id yang sedang login dan yang bukan jasa
-          dataProduk = semuaData.where((item) => item['jenis'] != 'jasa' && item['toko_id'].toString() == tokoIdAsli.toString()).toList();
-          filteredProduk = dataProduk; 
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
-      }
-    } catch (e) {
-      debugPrint("Error Ambil Data: $e");
+    // 2. Sisipkan toko_id ke dalam URL request
+    final response = await http.get(
+      Uri.parse('$baseUrl?toko_id=$tokoIdAsli'), 
+      headers: {'Accept': 'application/json'}
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      
+      setState(() {
+        List semuaData = responseData['data'] ?? [];
+        // Filter produk berdasarkan toko_id yang sedang login dan yang bukan jasa
+        dataProduk = semuaData.where((item) => item['jenis'] != 'jasa' && item['toko_id'].toString() == tokoIdAsli.toString()).toList();
+        filteredProduk = dataProduk; 
+        isLoading = false;
+      });
+    } else {
       setState(() => isLoading = false);
     }
+  } catch (e) {
+    debugPrint("Error Ambil Data: $e");
+    setState(() => isLoading = false);
   }
+}
 
   void tampilkanNotifikasiTengah(String judul, String pesan, bool sukses) {
     showDialog(
@@ -283,18 +289,26 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  Future<void> hapusProduk(int id) async {
-    try {
-      final response = await http.delete(Uri.parse('$baseUrl/$id'), headers: {'Accept': 'application/json'});
-      if (response.statusCode == 200) {
-        await ambilDataProduk();
-        if (mounted) tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
-      }
-    } catch (e) {
-      debugPrint("Error Hapus: $e");
-    }
-  }
+Future<void> hapusProduk(int id) async {
+  try {
+    // Tarik toko_id untuk keamanan fungsi hapus
+    final prefs = await SharedPreferences.getInstance();
+    int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
 
+    // Sisipkan toko_id pada URL delete
+    final response = await http.delete(
+      Uri.parse('$baseUrl/$id?toko_id=$tokoIdAsli'), 
+      headers: {'Accept': 'application/json'}
+    );
+    
+    if (response.statusCode == 200) {
+      await ambilDataProduk();
+      if (mounted) tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
+    }
+  } catch (e) {
+    debugPrint("Error Hapus: $e");
+  }
+}
   void tampilkanFormDialog({Map<String, dynamic>? produkInfo}) {
     TextEditingController kodeCtrl = TextEditingController(text: produkInfo?['kode_barang'] ?? '');
     TextEditingController namaCtrl = TextEditingController(text: produkInfo?['nama'] ?? '');
