@@ -223,24 +223,26 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
-  Future<void> ambilDataProduk() async {
-    final url = Uri.parse('$baseUrl/produk');
-    try {
-      final response = await http.get(url, headers: {'Accept': 'application/json'});
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        setState(() {
-          data = responseData['data'] ?? [];
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
-      }
-    } catch (e) {
-      debugPrint("Error Ambil Data: $e");
+ Future<void> ambilDataProduk() async {
+  // PERBAIKAN: Menambahkan '?toko_id=$idTokoAktif' ke URL agar API mengizinkan data ditarik
+  final url = Uri.parse('$baseUrl/produk?toko_id=$idTokoAktif');
+  
+  try {
+    final response = await http.get(url, headers: {'Accept': 'application/json'});
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      setState(() {
+        data = responseData['data'] ?? [];
+        isLoading = false;
+      });
+    } else {
       setState(() => isLoading = false);
     }
+  } catch (e) {
+    debugPrint("Error Ambil Data: $e");
+    setState(() => isLoading = false);
   }
+}
 
   Future<void> mulaiScanBarcode() async {
     try {
