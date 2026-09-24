@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
+
+import 'tema.dart'; // Import tema eksklusif
 
 class HalamanPegawai extends StatefulWidget {
   const HalamanPegawai({super.key});
@@ -11,12 +13,10 @@ class HalamanPegawai extends StatefulWidget {
 }
 
 class _HalamanPegawaiState extends State<HalamanPegawai> {
-  // PENTING: URL baseUrl diubah, karena di file Api.php route-nya adalah '/api/pegawai'
-  final String baseUrl = 'https://smartkasir.shop/api/pegawai';
-
-  List dataPegawai = [];
+  final String domainUrl = 'https://smartkasir.shop';
   bool isLoading = true;
   int _tokoId = 1;
+  List dataPegawai = [];
 
   @override
   void initState() {
@@ -29,157 +29,125 @@ class _HalamanPegawaiState extends State<HalamanPegawai> {
     setState(() {
       _tokoId = prefs.getInt('toko_id') ?? 1;
     });
-    ambilDataPegawai();
+    await _ambilDataPegawai();
   }
 
-  // --- 1. AMBIL DATA PEGAWAI ---
-  Future<void> ambilDataPegawai() async {
+  // ==========================================
+  // FUNGSI API PENGGUNA
+  // ==========================================
+  Future<void> _ambilDataPegawai() async {
     setState(() => isLoading = true);
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl?toko_id=$_tokoId'), 
-        headers: {'ngrok-skip-browser-warning': 'true'}
+        Uri.parse('$domainUrl/api/daftarPegawai?toko_id=$_tokoId'),
+        headers: {'Accept': 'application/json'},
       );
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
+        final res = json.decode(response.body);
         setState(() {
-          dataPegawai = responseData['data'] ?? [];
+          dataPegawai = res['data'] ?? [];
           isLoading = false;
         });
       } else {
         setState(() => isLoading = false);
       }
     } catch (e) {
-      debugPrint("Error Ambil Data Pegawai: $e");
+      debugPrint("Gagal mengambil data pegawai: $e");
       setState(() => isLoading = false);
     }
   }
 
-  // --- 2. TAMBAH PEGAWAI BARU ---
-  Future<void> simpanPegawai(String username, String email, String noWa, String password) async {
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
-    
+  Future<void> _tambahPegawai(String username, String email, String noWa, String password) async {
     try {
       final response = await http.post(
-        Uri.parse(baseUrl), // Sesuai dengan route POST 'api/pegawai'
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        },
+        Uri.parse('$domainUrl/api/tambahPegawai'),
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'toko_id': _tokoId,
           'username': username,
           'email': email,
           'no_wa': noWa,
           'password': password,
-          'role': 'kasir'
+          'role': 'kasir', // Default role yang didaftarkan admin adalah kasir
         }),
       );
 
-      Navigator.pop(context); // Tutup loading
-
-      if (response.statusCode == 201) {
-        await ambilDataPegawai();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kasir baru berhasil didaftarkan!'), backgroundColor: Colors.green));
-        }
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _tampilkanNotif('Berhasil!', 'Pegawai baru berhasil ditambahkan.', AppColors.emerald);
+        await _ambilDataPegawai();
       } else {
-        final data = json.decode(response.body);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message'] ?? 'Gagal mendaftar'), backgroundColor: Colors.red));
-        }
+        final res = json.decode(response.body);
+        _tampilkanNotif('Gagal!', res['message'] ?? 'Gagal menambahkan pegawai.', AppColors.red);
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Tutup loading jika error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error jaringan saat mendaftar'), backgroundColor: Colors.red));
-      }
+      _tampilkanNotif('Error', 'Kesalahan jaringan: $e', AppColors.red);
     }
   }
 
-  // --- 3. UBAH STATUS (AKTIF / NON-AKTIF) ---
-  Future<void> ubahStatus(int id, int statusSekarang) async {
-    // Balik status: jika 1 (aktif) jadikan 0 (nonaktif), dan sebaliknya
-    int statusBaru = statusSekarang == 1 ? 0 : 1;
-    
+  Future<void> _ubahStatusAktif(int id, int statusBaru) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/status/$id'), // Sesuai dengan route POST 'api/pegawai/status/(:num)' di CodeIgniter
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        },
+      final response = await http.put(
+        Uri.parse('$domainUrl/api/ubahStatusPegawai/$id'),
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({'is_active': statusBaru}),
       );
 
       if (response.statusCode == 200) {
-        await ambilDataPegawai();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(statusBaru == 1 ? 'Akun diaktifkan!' : 'Akun dinonaktifkan!'), backgroundColor: statusBaru == 1 ? Colors.green : Colors.orange));
-        }
+        _tampilkanNotif('Diperbarui', 'Status pegawai berhasil diubah.', AppColors.smartBlue);
+      } else {
+        await _ambilDataPegawai(); // Rollback jika gagal
       }
     } catch (e) {
-      debugPrint('Error Status: $e');
+      debugPrint("Gagal mengubah status: $e");
+      await _ambilDataPegawai(); // Rollback UI
     }
   }
 
-  // --- 4. HAPUS PEGAWAI PERMANEN ---
-  Future<void> hapusPegawai(int id) async {
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
-    
+  Future<void> _hapusPegawai(int id) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/hapus/$id'), // Sesuai dengan route POST 'api/pegawai/hapus/(:num)' di CodeIgniter
-        headers: {'ngrok-skip-browser-warning': 'true'},
+      final response = await http.delete(
+        Uri.parse('$domainUrl/api/hapusPegawai/$id'),
+        headers: {'Accept': 'application/json'},
       );
 
-      Navigator.pop(context); // Tutup loading
-
       if (response.statusCode == 200) {
-        await ambilDataPegawai();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Akun pegawai telah dihapus permanen.'), backgroundColor: Colors.green));
-        }
+        _tampilkanNotif('Terhapus', 'Akun pegawai berhasil dihapus.', AppColors.emerald);
+        await _ambilDataPegawai();
+      } else {
+        _tampilkanNotif('Gagal', 'Tidak dapat menghapus pegawai.', AppColors.red);
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      debugPrint('Error Hapus: $e');
+      debugPrint("Gagal hapus pegawai: $e");
     }
   }
 
-  // --- DIALOG KONFIRMASI HAPUS ---
-  void konfirmasiHapus(int id, String nama) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Hapus', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-        content: Text('Apakah Anda yakin ingin menghapus akun $nama secara permanen?\n\nPerhatian: Data yang dihapus tidak bisa dikembalikan.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey))
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pop(context);
-              hapusPegawai(id);
-            },
-            child: const Text('Ya, Hapus', style: TextStyle(color: Colors.white)),
-          )
-        ],
-      ),
-    );
+  void _tampilkanNotif(String judul, String pesan, Color warna) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(
+          children: [
+            Icon(warna == AppColors.red ? Icons.error_outline : Icons.check_circle, color: AppColors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(pesan, style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    }
   }
 
-  // --- FORMULIR PENDAFTARAN KASIR (BOTTOM SHEET) ---
-  void tampilkanFormTambah() {
+  // ==========================================
+  // BOTTOM SHEET FORM (Tambah Pegawai)
+  // ==========================================
+  void _tampilkanFormTambah() {
     TextEditingController userCtrl = TextEditingController();
     TextEditingController emailCtrl = TextEditingController();
     TextEditingController waCtrl = TextEditingController();
     TextEditingController passCtrl = TextEditingController();
-    bool obscure = true;
+    bool isObscure = true;
 
     showModalBottomSheet(
       context: context,
@@ -189,84 +157,75 @@ class _HalamanPegawaiState extends State<HalamanPegawai> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
-              padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                  top: 20,
-                  left: 20,
-                  right: 20),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 24, right: 24),
               decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+                color: AppColors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+              ),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                        child: Container(
-                            width: 50,
-                            height: 5,
-                            decoration: BoxDecoration(
-                                color: Colors.grey[300],
-                                borderRadius: BorderRadius.circular(10)))),
-                    const SizedBox(height: 20),
-                    const Text('👤 Tambah Kasir Baru',
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
-                    TextField(
-                        controller: userCtrl,
-                        decoration: InputDecoration(
-                            labelText: 'Username',
-                            prefixIcon: const Icon(Icons.person),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                    const SizedBox(height: 15),
-                    TextField(
-                        controller: emailCtrl,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                            labelText: 'Email',
-                            prefixIcon: const Icon(Icons.email),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                    const SizedBox(height: 15),
-                    TextField(
-                        controller: waCtrl,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                            labelText: 'No WhatsApp',
-                            prefixIcon: const Icon(Icons.phone),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                    const SizedBox(height: 15),
-                    TextField(
-                        controller: passCtrl,
-                        obscureText: obscure,
-                        decoration: InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock),
-                            suffixIcon: IconButton(
-                                icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
-                                onPressed: () => setModalState(() => obscure = !obscure)),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
+                    Center(child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
                     const SizedBox(height: 25),
+                    const Text('Tambah Pegawai (Kasir)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                    const SizedBox(height: 5),
+                    const Text('Tambahkan akun kasir baru untuk toko Anda.', style: TextStyle(color: AppColors.slateGray, fontSize: 13)),
+                    const SizedBox(height: 25),
+
+                    _buildPremiumTextField('Username (Tanpa Spasi)', Icons.person, userCtrl),
+                    _buildPremiumTextField('Email (Opsional)', Icons.email, emailCtrl, isEmail: true),
+                    _buildPremiumTextField('No WhatsApp (Opsional)', Icons.phone, waCtrl, isNumber: true),
+                    
+                    // Field Password Khusus
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 15),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Password Akun', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: passCtrl,
+                            obscureText: isObscure,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.lock, color: AppColors.slateGray, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: AppColors.slateGray, size: 20),
+                                onPressed: () => setModalState(() => isObscure = !isObscure),
+                              ),
+                              filled: true,
+                              fillColor: AppColors.lightGray,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                          backgroundColor: AppColors.teal,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
                         onPressed: () {
                           if (userCtrl.text.isEmpty || passCtrl.text.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Username dan Password wajib diisi!'), backgroundColor: Colors.red));
+                            _tampilkanNotif('Peringatan', 'Username dan Password wajib diisi!', AppColors.red);
                             return;
                           }
                           Navigator.pop(context);
-                          simpanPegawai(userCtrl.text, emailCtrl.text, waCtrl.text, passCtrl.text);
+                          _tambahPegawai(userCtrl.text.replaceAll(' ', ''), emailCtrl.text, waCtrl.text, passCtrl.text);
                         },
-                        child: const Text('Daftarkan Kasir', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        child: const Text('Buat Akun Kasir', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -277,103 +236,193 @@ class _HalamanPegawaiState extends State<HalamanPegawai> {
     );
   }
 
+  Widget _buildPremiumTextField(String label, IconData icon, TextEditingController controller, {bool isNumber = false, bool isEmail = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            keyboardType: isNumber ? TextInputType.phone : (isEmail ? TextInputType.emailAddress : TextInputType.text),
+            decoration: InputDecoration(
+              prefixIcon: Icon(icon, color: AppColors.slateGray, size: 20),
+              filled: true,
+              fillColor: AppColors.lightGray,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _konfirmasiHapus(int id, String username) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Hapus Pegawai?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('Apakah Anda yakin ingin menghapus akun $username secara permanen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: AppColors.slateGray)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _hapusPegawai(id);
+            },
+            child: const Text('Ya, Hapus', style: TextStyle(color: AppColors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // WIDGET UTAMA (BODY)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('Kelola Pegawai', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : dataPegawai.isEmpty
-              ? const Center(child: Text('Belum ada data pegawai.', style: TextStyle(color: Colors.grey)))
-              : RefreshIndicator(
-                  onRefresh: ambilDataPegawai,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.only(top: 15, left: 15, right: 15, bottom: 80),
-                    itemCount: dataPegawai.length,
-                    itemBuilder: (context, index) {
-                      var item = dataPegawai[index];
-                      int idPegawai = int.parse(item['id'].toString());
-                      bool isActive = int.parse(item['is_active'].toString()) == 1;
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        elevation: 2,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          leading: CircleAvatar(
-                            backgroundColor: isActive ? Colors.blueAccent.withAlpha(40) : Colors.red.withAlpha(40),
-                            child: Icon(Icons.person, color: isActive ? Colors.blueAccent : Colors.red),
-                          ),
-                          title: Text(item['username'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 5),
-                              Text('Role: ${item['role'].toString().toUpperCase()}', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
-                              Text('WA: ${item['no_wa'] ?? '-'}', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
-                            ],
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                    color: isActive ? Colors.green.withAlpha(30) : Colors.red.withAlpha(30),
-                                    borderRadius: BorderRadius.circular(10)),
-                                child: Text(isActive ? 'Aktif' : 'Nonaktif',
-                                    style: TextStyle(color: isActive ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ),
-                              PopupMenuButton<String>(
-                                onSelected: (value) {
-                                  if (value == 'status') {
-                                    ubahStatus(idPegawai, isActive ? 1 : 0);
-                                  } else if (value == 'hapus') {
-                                    konfirmasiHapus(idPegawai, item['username']);
-                                  }
-                                },
-                                itemBuilder: (BuildContext context) => [
-                                  PopupMenuItem(
-                                    value: 'status',
-                                    child: Row(
-                                      children: [
-                                        Icon(isActive ? Icons.block : Icons.check_circle, color: isActive ? Colors.orange : Colors.green),
-                                        const SizedBox(width: 10),
-                                        Text(isActive ? 'Nonaktifkan Akun' : 'Aktifkan Akun'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'hapus',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, color: Colors.red),
-                                        SizedBox(width: 10),
-                                        Text('Hapus Permanen', style: TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              )
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+      backgroundColor: AppColors.lightGray,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. HEADER HALAMAN
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 15),
+            color: AppColors.lightGray,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Data Pegawai', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                    SizedBox(height: 4),
+                    Text('Kelola akses pengguna & kasir toko', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  onPressed: _tampilkanFormTambah,
+                  icon: const Icon(Icons.person_add, size: 18),
+                  label: const Text('Tambah'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.smartBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.blueAccent,
-        onPressed: tampilkanFormTambah,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Tambah Kasir', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+
+          // 2. DAFTAR PEGAWAI (KARTU ELEGAN)
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
+                : dataPegawai.isEmpty
+                    ? const Center(child: Text("Belum ada pegawai/kasir.", style: TextStyle(color: AppColors.slateGray)))
+                    : RefreshIndicator(
+                        onRefresh: _ambilDataPegawai,
+                        color: AppColors.teal,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 80, top: 10),
+                          itemCount: dataPegawai.length,
+                          itemBuilder: (context, index) {
+                            var p = dataPegawai[index];
+                            int idPegawai = int.parse(p['id'].toString());
+                            bool isActive = p['is_active'].toString() == '1';
+                            String statusShift = p['status_shift'] ?? 'closed';
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 15),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                                border: Border.all(color: Colors.grey.shade100),
+                              ),
+                              child: Row(
+                                children: [
+                                  // Ikon Profil
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(color: isActive ? AppColors.teal.withOpacity(0.1) : Colors.grey.shade200, shape: BoxShape.circle),
+                                    child: Icon(Icons.person, color: isActive ? AppColors.teal : Colors.grey.shade400, size: 28),
+                                  ),
+                                  const SizedBox(width: 15),
+                                  
+                                  // Informasi Akun
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(p['username'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                                            const SizedBox(width: 8),
+                                            // Badge Shift Kasir
+                                            if (statusShift == 'open')
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(color: AppColors.premiumGold.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+                                                child: const Text('Shift Aktif', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange)),
+                                              )
+                                          ],
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.email, size: 12, color: AppColors.slateGray),
+                                            const SizedBox(width: 4),
+                                            Text(p['email'] ?? 'Tidak ada email', style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // Kontrol Status & Hapus
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Switch(
+                                        value: isActive,
+                                        activeColor: AppColors.emerald,
+                                        inactiveThumbColor: Colors.grey.shade400,
+                                        inactiveTrackColor: Colors.grey.shade200,
+                                        onChanged: (val) {
+                                          setState(() => dataPegawai[index]['is_active'] = val ? 1 : 0);
+                                          _ubahStatusAktif(idPegawai, val ? 1 : 0);
+                                        },
+                                      ),
+                                      InkWell(
+                                        onTap: () => _konfirmasiHapus(idPegawai, p['username']),
+                                        child: const Padding(
+                                          padding: EdgeInsets.only(top: 5, right: 5),
+                                          child: Icon(Icons.delete_outline, size: 20, color: AppColors.red),
+                                        ),
+                                      )
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+          ),
+        ],
       ),
     );
   }
