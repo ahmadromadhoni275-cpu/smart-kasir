@@ -7,13 +7,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-// Memanggil semua halaman
+// --- IMPORT FILE PREMIUM & HALAMAN UTAMA ---
 import 'halaman_login.dart';
-import 'halaman_beranda.dart';
-import 'halaman_kasir.dart';
-import 'halaman_produk.dart';
-import 'halaman_pegawai.dart'; 
-import 'halaman_pengaturan.dart';
+import 'tema.dart'; // Tema warna premium eksklusif
+import 'kerangka_navigasi.dart'; // Kerangka navigasi premium yang baru
 
 // ===================================================================
 // FUNGSI PENANGKAP NOTIFIKASI SAAT APLIKASI DITUTUP (BACKGROUND)
@@ -36,11 +33,9 @@ void main() async {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // ===================================================================
-    // PERBAIKAN 1: MENGGUNAKAN IKON SILUET (ic_notifikasi)
-    // ===================================================================
+    // MENGGUNAKAN IKON SILUET (ic_notifikasi)
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('ic_notifikasi'); // <--- Diubah di sini
+        AndroidInitializationSettings('ic_notifikasi');
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
@@ -76,11 +71,9 @@ void main() async {
               channelDescription: 'Channel khusus untuk notifikasi transaksi',
               importance: Importance.max,
               priority: Priority.high,
-              // ===================================================================
-              // PERBAIKAN 2: WARNA & IKON SAAT APLIKASI DIBUKA (FOREGROUND)
-              // ===================================================================
-              icon: 'ic_notifikasi', // <--- Diubah di sini
-              color: Colors.blueAccent, // <--- Opsi tambahan agar ikon ada warna latarnya
+              // WARNA & IKON SAAT APLIKASI DIBUKA (FOREGROUND)
+              icon: 'ic_notifikasi',
+              color: AppColors.teal, // Menggunakan warna teal premium
             ),
           ),
         );
@@ -103,9 +96,11 @@ class AplikasiKasir extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Kasir',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      // PERUBAHAN: Arahkan home ke HalamanSplashLoading terlebih dahulu
+      title: 'Smart Kasir Premium',
+      // ===================================================================
+      // MENGGUNAKAN TEMA PREMIUM DARI tema.dart
+      // ===================================================================
+      theme: AppTheme.lightTheme,
       home: HalamanSplashLoading(isLoggedIn: isLoggedIn),
       debugShowCheckedModeBanner: false,
     );
@@ -113,7 +108,7 @@ class AplikasiKasir extends StatelessWidget {
 }
 
 // ===================================================================
-// HALAMAN SPLASH SCREEN (LOADING)
+// HALAMAN SPLASH SCREEN (LOADING) PREMIUM
 // ===================================================================
 class HalamanSplashLoading extends StatefulWidget {
   final bool isLoggedIn;
@@ -139,7 +134,8 @@ class _HalamanSplashLoadingState extends State<HalamanSplashLoading> {
     if (widget.isLoggedIn) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const KerangkaNavigasi()),
+        // ARAHKAN KE KERANGKA NAVIGASI PREMIUM YANG BARU
+        MaterialPageRoute(builder: (context) => const KerangkaNavigasiPremium()),
       );
     } else {
       Navigator.pushReplacement(
@@ -154,7 +150,8 @@ class _HalamanSplashLoadingState extends State<HalamanSplashLoading> {
     double lebarLayar = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: Colors.blueAccent, // Ganti warna ini jika background logo bukan biru
+      // MENGGUNAKAN WARNA DEEP NAVY AGAR KESAN PREMIUM TERASA DARI AWAL
+      backgroundColor: AppColors.deepNavy, 
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -166,12 +163,12 @@ class _HalamanSplashLoadingState extends State<HalamanSplashLoading> {
               fit: BoxFit.contain,
             ),
             const SizedBox(height: 40), // Jarak antara logo dan loading
-            // Indikator Putar
+            // Indikator Putar Elegan
             const SizedBox(
               width: 30,
               height: 30,
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.teal), // Aksen Teal
                 strokeWidth: 3.5,
               ),
             ),
@@ -182,100 +179,5 @@ class _HalamanSplashLoadingState extends State<HalamanSplashLoading> {
   }
 }
 
-// ===================================================================
-// KERANGKA NAVIGASI DINAMIS (BERDASARKAN ROLE ADMIN / KASIR)
-// ===================================================================
-class KerangkaNavigasi extends StatefulWidget {
-  const KerangkaNavigasi({super.key});
-
-  @override
-  State<KerangkaNavigasi> createState() => _KerangkaNavigasiState();
-}
-
-class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
-  int _indeksDipilih = 0;
-  String _roleUser = 'kasir';
-  bool _isLoadingRole = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _cekRolePengguna();
-  }
-
-  // Ambil data role dari SharedPreferences saat kerangka dimuat
-  Future<void> _cekRolePengguna() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _roleUser = prefs.getString('role') ?? 'kasir';
-      _isLoadingRole = false;
-    });
-  }
-
-  void _ketukTab(int indeks) {
-    setState(() {
-      _indeksDipilih = indeks;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Jika masih memuat role, tampilkan loading sebentar
-    if (_isLoadingRole) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    // Tentukan daftar halaman & navbar berdasarkan apakah dia 'admin' atau 'kasir'
-    bool isAdmin = (_roleUser == 'admin');
-
-    // List Halaman: Jika Admin (5 menu), Jika Kasir (3 menu: Beranda, Kasir, Produk)
-    final List<Widget> daftarHalaman = isAdmin
-        ? [
-            const HalamanBeranda(),
-            const HalamanKasir(),
-            const HalamanProduk(),
-            const HalamanPegawai(),
-            const HalamanPengaturan(),
-          ]
-        : [
-            const HalamanBeranda(),
-            const HalamanKasir(),
-            const HalamanProduk(), // Kasir bisa akses produk (untuk lihat & search)
-          ];
-
-    // List Item Navbar
-    final List<BottomNavigationBarItem> daftarNavbarItem = isAdmin
-        ? [
-            const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Beranda'),
-            const BottomNavigationBarItem(icon: Icon(Icons.point_of_sale), label: 'Kasir'),
-            const BottomNavigationBarItem(icon: Icon(Icons.inventory_2), label: 'Produk'),
-            const BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Pegawai'),
-            const BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Pengaturan'),
-          ]
-        : [
-            const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Beranda'),
-            const BottomNavigationBarItem(icon: Icon(Icons.point_of_sale), label: 'Kasir'),
-            const BottomNavigationBarItem(icon: Icon(Icons.inventory_2), label: 'Produk'),
-          ];
-
-    // Pastikan index tidak out of bound jika berpindah akun
-    if (_indeksDipilih >= daftarHalaman.length) {
-      _indeksDipilih = 0;
-    }
-
-    return Scaffold(
-      body: daftarHalaman[_indeksDipilih],
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: Colors.blueAccent,
-        unselectedItemColor: Colors.grey,
-        currentIndex: _indeksDipilih,
-        onTap: _ketukTab,
-        items: daftarNavbarItem,
-      ),
-    );
-  }
-}
+// Catatan: Class KerangkaNavigasi yang lama sudah dihapus karena kita
+// sudah beralih menggunakan file kerangka_navigasi.dart sepenuhnya.
