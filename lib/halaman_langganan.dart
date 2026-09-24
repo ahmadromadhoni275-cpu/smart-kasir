@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'package:intl/intl.dart';
 
-// Import halaman riwayat langganan
-import 'HalamanRiwayatLangganan.dart';
+import 'tema.dart'; // Import tema premium eksklusif
 
 class HalamanLangganan extends StatefulWidget {
   const HalamanLangganan({super.key});
@@ -17,260 +16,395 @@ class HalamanLangganan extends StatefulWidget {
 
 class _HalamanLanggananState extends State<HalamanLangganan> {
   final String domainUrl = 'https://smartkasir.shop';
-  bool isManualAktif = false;
-  bool isOtomatisAktif = false;
+  
   bool isLoading = true;
-
-  String namaBank = "-";
-  String rekeningBank = "-";
-  String atasNamaBank = "-";
-  int hargaPerBulan = 50000;
-  int tokoId = 1;
+  bool isSaving = false;
+  
+  int _tokoId = 1;
+  String _masaAktif = '-';
+  int _sisaHari = 0;
+  
+  List _paketList = [];
+  String _rekeningTujuan = 'Memuat informasi rekening...';
+  int? _selectedPaketId;
+  
+  final ImagePicker _picker = ImagePicker();
+  XFile? _imageFile;
 
   @override
   void initState() {
     super.initState();
-    _muatData();
+    _inisialisasiData();
   }
 
-  Future<void> _muatData() async {
+  Future<void> _inisialisasiData() async {
     final prefs = await SharedPreferences.getInstance();
-    tokoId = prefs.getInt('toko_id') ?? 1;
+    setState(() {
+      _tokoId = prefs.getInt('toko_id') ?? 1;
+    });
+    
+    await _ambilDataToko();
+    await _ambilPaketLangganan();
+    
+    setState(() => isLoading = false);
+  }
 
+  // Mengambil informasi masa aktif toko saat ini
+  Future<void> _ambilDataToko() async {
     try {
-      final response = await http.get(
-        Uri.parse('$domainUrl/api/pengaturan'),
-        headers: {'ngrok-skip-browser-warning': 'true'},
-      );
-
+      final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$_tokoId'), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final data = json.decode(response.body)['data'];
-        setState(() {
-          isManualAktif = data['langganan_manual_aktif'] ?? false;
-          isOtomatisAktif = data['langganan_otomatis_aktif'] ?? false;
-          namaBank = data['nama_bank_pusat'] ?? "-";
-          rekeningBank = data['rekening_pusat'] ?? "-";
-          atasNamaBank = data['atas_nama_pusat'] ?? "-";
-          hargaPerBulan = int.tryParse(data['harga_per_bulan'].toString()) ?? 50000;
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
+        if (data['masa_aktif'] != null) {
+          DateTime masaAktifDt = DateTime.parse(data['masa_aktif']);
+          DateTime hariIni = DateTime.now();
+          setState(() {
+            _masaAktif = DateFormat('dd MMMM yyyy', 'id_ID').format(masaAktifDt);
+            _sisaHari = masaAktifDt.difference(hariIni).inDays;
+          });
+        }
       }
     } catch (e) {
-      setState(() => isLoading = false);
+      debugPrint("Gagal memuat status langganan: $e");
     }
   }
 
-  // DIALOG UPLOAD BUKTI TRANSFER UNTUK MANUAL
-  void _tampilkanDialogUploadManual(String namaPaket, int nominal, int durasiHari) {
-    File? selectedImage;
-    bool isUploading = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            Future<void> pilihGambar() async {
-              final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70);
-              if (picked != null) setModalState(() => selectedImage = File(picked.path));
-            }
-
-            Future<void> kirimBukti() async {
-              if (selectedImage == null) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih foto bukti transfer dahulu!'), backgroundColor: Colors.red));
-                return;
-              }
-              setModalState(() => isUploading = true);
-
-              try {
-                var request = http.MultipartRequest('POST', Uri.parse('$domainUrl/api/ajukanLanggananManual'));
-                request.fields['toko_id'] = tokoId.toString();
-                request.fields['nominal'] = nominal.toString();
-                request.fields['durasi_hari'] = durasiHari.toString();
-                request.files.add(await http.MultipartFile.fromPath('bukti_transfer', selectedImage!.path));
-
-                var response = await request.send();
-                if (response.statusCode == 200) {
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil! Menunggu konfirmasi admin.'), backgroundColor: Colors.green));
-                  }
-                } else {
-                  setModalState(() => isUploading = false);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengirim data.'), backgroundColor: Colors.red));
-                }
-              } catch (e) {
-                setModalState(() => isUploading = false);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Terjadi kesalahan jaringan.'), backgroundColor: Colors.red));
-              }
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Konfirmasi Pembayaran', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 15),
-                  Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Silakan transfer sebesar Rp $nominal ke:', style: const TextStyle(fontSize: 13)),
-                        const SizedBox(height: 5),
-                        Text('$namaBank - $rekeningBank', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('A/N $atasNamaBank', style: const TextStyle(fontSize: 14)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  GestureDetector(
-                    onTap: pilihGambar,
-                    child: Container(
-                      height: 150,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey, style: BorderStyle.solid),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: selectedImage == null
-                          ? Column(mainAxisAlignment: MainAxisAlignment.center, children: const [Icon(Icons.camera_alt, size: 40, color: Colors.grey), SizedBox(height: 10), Text('Tap untuk pilih bukti transfer')])
-                          : Image.file(selectedImage!, fit: BoxFit.cover),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  isUploading
-                      ? const CircularProgressIndicator()
-                      : ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-                          onPressed: kirimBukti,
-                          child: const Text('Kirim Bukti Pembayaran', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+  // Mengambil daftar paket langganan dan rekening tujuan dari API
+  Future<void> _ambilPaketLangganan() async {
+    try {
+      final response = await http.get(Uri.parse('$domainUrl/api/getPaketLangganan'), headers: {'Accept': 'application/json'});
+      if (response.statusCode == 200) {
+        final res = json.decode(response.body);
+        setState(() {
+          _paketList = res['data'] ?? [];
+          _rekeningTujuan = res['rekening_tujuan'] ?? 'BCA 123456789 a/n Smart Kasir';
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat paket langganan: $e");
+    }
   }
 
-  void _prosesPaymentOtomatis(String paket, int nominal) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Membuka gerbang pembayaran untuk Rp $nominal...'), backgroundColor: Colors.blueAccent));
-    // Integrasi Tripay Checkout diletakkan di sini nantinya
+  Future<void> _pilihBuktiTransfer() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = pickedFile;
+      });
+    }
   }
 
-  Widget _buildKartuPaket({required String judul, required int durasiHari, required int harga, required Color warna, required IconData ikon, required bool isOtomatis}) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+  Future<void> _prosesPembayaran() async {
+    if (_selectedPaketId == null) {
+      _tampilkanNotif('Pilih Paket', 'Silakan pilih paket langganan terlebih dahulu.', AppColors.premiumGold);
+      return;
+    }
+    if (_imageFile == null) {
+      _tampilkanNotif('Bukti Transfer Kosong', 'Harap unggah bukti transfer pembayaran Anda.', AppColors.red);
+      return;
+    }
+
+    setState(() => isSaving = true);
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$domainUrl/api/beliPaket'));
+      request.fields['toko_id'] = _tokoId.toString();
+      request.fields['paket_id'] = _selectedPaketId.toString();
+      request.fields['metode'] = 'manual';
+
+      final bytes = await _imageFile!.readAsBytes();
+      request.files.add(http.MultipartFile.fromBytes('bukti_bayar', bytes, filename: _imageFile!.name));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final resData = json.decode(response.body);
+        _tampilkanNotif('Berhasil!', resData['message'] ?? 'Bukti pembayaran terkirim. Menunggu verifikasi admin pusat.', AppColors.emerald);
+        
+        // Reset form setelah sukses
+        setState(() {
+          _selectedPaketId = null;
+          _imageFile = null;
+        });
+        
+        // Arahkan kembali ke dashboard atau pop up konfirmasi
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) Navigator.pop(context);
+        });
+      } else {
+        _tampilkanNotif('Gagal', 'Terjadi kesalahan saat memproses pembayaran. (Error: ${response.statusCode})', AppColors.red);
+      }
+    } catch (e) {
+      _tampilkanNotif('Error Jaringan', 'Gagal menghubungi server: $e', AppColors.red);
+    }
+
+    setState(() => isSaving = false);
+  }
+
+  void _tampilkanNotif(String judul, String pesan, Color warna) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(
           children: [
-            Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: warna.withAlpha(30), shape: BoxShape.circle), child: Icon(ikon, color: warna, size: 35)),
-            const SizedBox(width: 15),
+            Icon(warna == AppColors.emerald ? Icons.check_circle : (warna == AppColors.red ? Icons.error_outline : Icons.info_outline), color: AppColors.white),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  Text('$durasiHari Hari', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                  const SizedBox(height: 5),
-                  Text('Rp $harga', style: TextStyle(color: warna, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                  Text(pesan, style: const TextStyle(fontSize: 12, color: AppColors.white)),
                 ],
               ),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: isOtomatis ? Colors.green : warna, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              onPressed: () {
-                if (isOtomatis) {
-                  _prosesPaymentOtomatis(judul, harga);
-                } else {
-                  _tampilkanDialogUploadManual(judul, harga, durasiHari);
-                }
-              },
-              child: Text(isOtomatis ? 'Bayar QRIS' : 'Upload Bukti'),
-            )
           ],
         ),
-      ),
-    );
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    }
   }
 
+  String _formatRupiah(int angka) {
+    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
+  }
+
+  // ==========================================
+  // WIDGET UTAMA (BODY)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
-    if (!isManualAktif && !isOtomatisAktif) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Langganan'), 
-          backgroundColor: Colors.blueAccent
-        ), 
-        body: const Center(child: Text('Fitur langganan dinonaktifkan.'))
-      );
-    }
-
-    int harga1Bulan = hargaPerBulan;
-    int harga3Bulan = (hargaPerBulan * 3) - 15000; // Contoh diskon
-    int harga1Tahun = (hargaPerBulan * 12) - 50000;
-
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: AppColors.lightGray,
       appBar: AppBar(
-        title: const Text('Perpanjang Langganan', style: TextStyle(fontWeight: FontWeight.bold)), 
-        backgroundColor: Colors.blueAccent, 
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.deepNavy,
+        elevation: 0,
+        title: const Text('Langganan Sistem', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+        iconTheme: const IconThemeData(color: AppColors.white),
         actions: [
           IconButton(
-            icon: const Icon(Icons.history_edu),
+            icon: const Icon(Icons.history, color: AppColors.white),
             tooltip: 'Riwayat Pembayaran',
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HalamanRiwayatLangganan()),
-              );
+              // Navigasi ke Riwayat Langganan (Jika ada)
+              _tampilkanNotif('Info', 'Fitur Riwayat Pembayaran akan segera hadir.', AppColors.smartBlue);
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(gradient: const LinearGradient(colors: [Colors.blueAccent, Colors.indigo]), borderRadius: BorderRadius.circular(15)),
-              child: Column(children: const [Icon(Icons.rocket_launch, color: Colors.white, size: 50), SizedBox(height: 10), Text('Upgrade Toko Anda!', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))]),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 100),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- KARTU STATUS MEMBER VIP ---
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(25),
+                    decoration: const BoxDecoration(
+                      color: AppColors.deepNavy,
+                      borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [AppColors.darkBlue, AppColors.smartBlue], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 5))],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('SMART KASIR PRO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.white, letterSpacing: 1.5)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(color: _sisaHari > 0 ? AppColors.emerald : AppColors.red, borderRadius: BorderRadius.circular(20)),
+                                child: Text(_sisaHari > 0 ? 'AKTIF' : 'KEDALUWARSA', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.white)),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 25),
+                          const Text('Masa Aktif Sampai:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          const SizedBox(height: 5),
+                          Text(_masaAktif, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.white)),
+                          const SizedBox(height: 5),
+                          Text(
+                            _sisaHari > 0 ? 'Tersisa $_sisaHari hari lagi' : 'Masa aktif telah habis. Akses kasir terkunci.',
+                            style: TextStyle(color: _sisaHari > 0 ? AppColors.premiumGold : AppColors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 25),
+
+                  // --- PILIHAN PAKET EKSKLUSIF ---
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('Pilih Paket Perpanjangan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                  ),
+                  const SizedBox(height: 15),
+
+                  if (_paketList.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('Belum ada paket tersedia.', style: TextStyle(color: AppColors.slateGray)),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _paketList.length,
+                      itemBuilder: (context, index) {
+                        var paket = _paketList[index];
+                        int idPaket = int.parse(paket['id'].toString());
+                        bool isSelected = _selectedPaketId == idPaket;
+                        int harga = int.parse(paket['harga'].toString());
+
+                        return GestureDetector(
+                          onTap: () => setState(() => _selectedPaketId = idPaket),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: isSelected ? AppColors.teal.withOpacity(0.05) : AppColors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: isSelected ? AppColors.teal : Colors.grey.shade200, width: isSelected ? 2 : 1),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+                            ),
+                            child: Row(
+                              children: [
+                                // Radio Icon
+                                Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: isSelected ? AppColors.teal : AppColors.slateGray),
+                                const SizedBox(width: 15),
+                                
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(paket['nama_paket'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.darkText)),
+                                      const SizedBox(height: 4),
+                                      Text(paket['deskripsi'] ?? 'Perpanjangan sistem full akses', style: const TextStyle(fontSize: 11, color: AppColors.slateGray)),
+                                    ],
+                                  ),
+                                ),
+                                
+                                // Harga
+                                Text(_formatRupiah(harga), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isSelected ? AppColors.teal : AppColors.smartBlue)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                  const SizedBox(height: 25),
+
+                  // --- INFO TRANSFER & UPLOAD BUKTI ---
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('Instruksi Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                  ),
+                  const SizedBox(height: 15),
+
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Transfer ke Rekening Pusat:', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.dash)),
+                          child: SelectableText(
+                            _rekeningTujuan,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        
+                        const Text('Upload Bukti Transfer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
+                        const SizedBox(height: 10),
+                        
+                        InkWell(
+                          onTap: _pilihBuktiTransfer,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            height: 150,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: AppColors.lightGray,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.smartBlue.withOpacity(0.5), width: 1.5, style: BorderStyle.dash),
+                            ),
+                            child: _imageFile != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    // Membaca file lokal menggunakan ImageProvider memori/future (untuk Web & Android)
+                                    child: FutureBuilder(
+                                      future: _imageFile!.readAsBytes(),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
+                                          return Image.memory(snapshot.data as dynamic, fit: BoxFit.cover);
+                                        }
+                                        return const Center(child: CircularProgressIndicator());
+                                      },
+                                    ),
+                                  )
+                                : const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.cloud_upload_outlined, size: 40, color: AppColors.smartBlue),
+                                      SizedBox(height: 10),
+                                      Text('Ketuk untuk unggah foto/screenshot', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 25),
-
-            if (isOtomatisAktif) ...[
-              const Text('Langsung Aktif (Otomatis):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 10),
-              _buildKartuPaket(judul: 'Paket Basic (Auto)', durasiHari: 30, harga: harga1Bulan, warna: Colors.green, ikon: Icons.flash_on, isOtomatis: true),
-              const SizedBox(height: 20),
-            ],
-
-            if (isManualAktif) ...[
-              const Text('Verifikasi Admin (Upload Transfer):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 10),
-              _buildKartuPaket(judul: 'Basic', durasiHari: 30, harga: harga1Bulan, warna: Colors.blue, ikon: Icons.star_border, isOtomatis: false),
-              _buildKartuPaket(judul: 'Pro', durasiHari: 90, harga: harga3Bulan, warna: Colors.orange, ikon: Icons.star_half, isOtomatis: false),
-              _buildKartuPaket(judul: 'Ultimate', durasiHari: 365, harga: harga1Tahun, warna: Colors.redAccent, ikon: Icons.star, isOtomatis: false),
-            ]
-          ],
+            
+      // --- BOTTOM ACTION BUTTON ---
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.teal,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+            onPressed: (isSaving || isLoading) ? null : _prosesPembayaran,
+            child: isSaving
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
+                : const Text('Kirim Bukti Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+          ),
         ),
       ),
     );
