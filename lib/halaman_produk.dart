@@ -1,9 +1,11 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:barcode_scan2/barcode_scan2.dart';
-import 'halaman_kategori.dart'; // Navigasi ke manajemen kategori
+import 'dart:convert';
+
+import 'tema.dart'; // Import tema eksklusif
+import 'halaman_kategori.dart'; // Jika masih digunakan
 
 class HalamanProduk extends StatefulWidget {
   const HalamanProduk({super.key});
@@ -18,16 +20,16 @@ class _HalamanProdukState extends State<HalamanProduk> {
   final String kategoriUrl = 'https://smartkasir.shop/api/kategori';
 
   List dataProduk = [];
-  List filteredProduk = []; 
-  List daftarKategori = []; 
+  List filteredProduk = [];
+  List daftarKategori = [];
   String _userRole = 'kasir';
   bool isLoading = true;
 
+  // Setelan Fitur Admin
   bool _isFiturJasaAktif = true;
   bool _isFiturMejaAktif = false;
-  bool _isFiturTakeawayAktif = false; 
+  bool _isFiturTakeawayAktif = false;
 
-  // Controller untuk fitur pencarian
   TextEditingController searchCtrl = TextEditingController();
 
   @override
@@ -38,28 +40,24 @@ class _HalamanProdukState extends State<HalamanProduk> {
     ambilDaftarKategori();
   }
 
-  // ========================================================
-  // PERBAIKAN: Penarikan setelan fitur toko dengan key "_aktif"
-  // ========================================================
+  // ==========================================
+  // PENGAMBILAN DATA (Sama dengan konsep lama)
+  // ==========================================
   Future<void> _cekRolePengguna() async {
     final prefs = await SharedPreferences.getInstance();
     int tokoId = prefs.getInt('toko_id') ?? 1;
 
     setState(() {
       _userRole = prefs.getString('role') ?? 'kasir';
-      // Load sementara dari lokal (sudah pakai "_aktif")
       _isFiturJasaAktif = prefs.getBool('fitur_jasa_aktif') ?? true;
       _isFiturMejaAktif = prefs.getBool('fitur_meja_aktif') ?? false;
-      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway_aktif') ?? false; 
+      _isFiturTakeawayAktif = prefs.getBool('fitur_takeaway_aktif') ?? false;
     });
 
-    // TARIK DATA ASLI DARI SERVER AGAR SINKRON DENGAN WEB
     try {
       final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$tokoId'), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final dataToko = json.decode(response.body)['data'];
-        
-        // PERBAIKAN: Parsing aman kebal error String vs Integer
         bool dbJasa = dataToko['fitur_jasa'].toString() == '1';
         bool dbMeja = dataToko['fitur_meja'].toString() == '1';
         bool dbTakeaway = dataToko['fitur_takeaway'].toString() == '1';
@@ -70,7 +68,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
           _isFiturTakeawayAktif = dbTakeaway;
         });
 
-        // Simpan ke lokal menggunakan "_aktif" agar dikenali kasir
         await prefs.setBool('fitur_jasa_aktif', dbJasa);
         await prefs.setBool('fitur_meja_aktif', dbMeja);
         await prefs.setBool('fitur_takeaway_aktif', dbTakeaway);
@@ -84,9 +81,8 @@ class _HalamanProdukState extends State<HalamanProduk> {
     try {
       final response = await http.get(Uri.parse(kategoriUrl), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
-        final res = json.decode(response.body);
         setState(() {
-          daftarKategori = res['data'] ?? [];
+          daftarKategori = json.decode(response.body)['data'] ?? [];
         });
       }
     } catch (e) {
@@ -94,77 +90,33 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  // ========================================================
-  // FUNGSI PINTAR SINKRONISASI FITUR (LOKAL + DATABASE SERVER)
-  // ========================================================
-  Future<void> _ubahFiturGlobal(String jenisFitur, bool nilaiBaru, String namaFiturTampil) async {
-    final prefs = await SharedPreferences.getInstance();
-    int tokoId = prefs.getInt('toko_id') ?? 1;
-
-    setState(() {
-      if (jenisFitur == 'fitur_jasa') _isFiturJasaAktif = nilaiBaru;
-      if (jenisFitur == 'fitur_meja') _isFiturMejaAktif = nilaiBaru;
-      if (jenisFitur == 'fitur_takeaway') _isFiturTakeawayAktif = nilaiBaru;
-    });
-
-    // Simpan ke lokal dengan tambahan "_aktif"
-    await prefs.setBool('${jenisFitur}_aktif', nilaiBaru);
-
-    // Kirim sinyal ke Server agar Website ikut berubah
+  Future<void> ambilDataProduk() async {
+    setState(() => isLoading = true);
     try {
-      final url = Uri.parse('$domainUrl/api/updateFiturToko');
-      await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'toko_id': tokoId,
-          'jenis_fitur': jenisFitur,
-          'status': nilaiBaru ? 1 : 0
-        }),
-      );
-    } catch (e) {
-      debugPrint("Gagal kirim status $jenisFitur ke server: $e");
-    }
+      final prefs = await SharedPreferences.getInstance();
+      int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
 
-    tampilkanNotifikasiTengah('Berhasil!', '$namaFiturTampil telah di${nilaiBaru ? "aktifkan" : "nonaktifkan"}.', true);
-  }
-
-  // --- FUNGSI SCAN BARCODE UMUM (Untuk Input / Tambah Barang) ---
-  Future<void> mulaiScanBarcode(TextEditingController targetController) async {
-    try {
-      var result = await BarcodeScanner.scan();
-      String hasilScan = result.rawContent;
-
-      if (hasilScan.isNotEmpty && hasilScan != '-1') {
+      final response = await http.get(Uri.parse('$baseUrl?toko_id=$tokoIdAsli'), headers: {'Accept': 'application/json'});
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
         setState(() {
-          targetController.text = hasilScan;
+          List semuaData = responseData['data'] ?? [];
+          dataProduk = semuaData.where((item) => item['jenis'] != 'jasa' && item['toko_id'].toString() == tokoIdAsli.toString()).toList();
+          filteredProduk = dataProduk;
+          isLoading = false;
         });
+      } else {
+        setState(() => isLoading = false);
       }
     } catch (e) {
-      debugPrint('Error saat scanning barcode: $e');
+      setState(() => isLoading = false);
     }
   }
 
-  // --- FUNGSI SCAN BARCODE KHUSUS UNTUK PENCARIAN ---
-  Future<void> _scanBarcodeUntukPencarian() async {
-    try {
-      var result = await BarcodeScanner.scan();
-      String hasilScan = result.rawContent;
-
-      if (hasilScan.isNotEmpty && hasilScan != '-1') {
-        searchCtrl.text = hasilScan;
-        _filterPencarian(hasilScan); 
-      }
-    } catch (e) {
-      debugPrint('Error saat scanning barcode pencarian: $e');
-    }
-  }
-
-  // --- FUNGSI FILTER PENCARIAN BARANG ---
   void _filterPencarian(String keyword) {
     setState(() {
       if (keyword.isEmpty) {
-        filteredProduk = dataProduk; 
+        filteredProduk = dataProduk;
       } else {
         filteredProduk = dataProduk.where((item) {
           final nama = item['nama']?.toString().toLowerCase() ?? '';
@@ -176,90 +128,12 @@ class _HalamanProdukState extends State<HalamanProduk> {
     });
   }
 
-Future<void> ambilDataProduk() async {
-  setState(() => isLoading = true);
-  
-  try {
-    // 1. Tarik toko_id DULU sebelum memanggil http.get
-    final prefs = await SharedPreferences.getInstance();
-    int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
-
-    // 2. Sisipkan toko_id ke dalam URL request
-    final response = await http.get(
-      Uri.parse('$baseUrl?toko_id=$tokoIdAsli'), 
-      headers: {'Accept': 'application/json'}
-    );
-
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> responseData = json.decode(response.body);
-      
-      setState(() {
-        List semuaData = responseData['data'] ?? [];
-        // Filter produk berdasarkan toko_id yang sedang login dan yang bukan jasa
-        dataProduk = semuaData.where((item) => item['jenis'] != 'jasa' && item['toko_id'].toString() == tokoIdAsli.toString()).toList();
-        filteredProduk = dataProduk; 
-        isLoading = false;
-      });
-    } else {
-      setState(() => isLoading = false);
-    }
-  } catch (e) {
-    debugPrint("Error Ambil Data: $e");
-    setState(() => isLoading = false);
-  }
-}
-
-  void tampilkanNotifikasiTengah(String judul, String pesan, bool sukses) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.rectangle,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 10))],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(color: sukses ? Colors.green.withAlpha(50) : Colors.red.withAlpha(50), shape: BoxShape.circle),
-                  child: Icon(sukses ? Icons.check_circle : Icons.error_outline, color: sukses ? Colors.green : Colors.red, size: 60),
-                ),
-                const SizedBox(height: 20),
-                Text(judul, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                Text(pesan, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: sukses ? Colors.green : Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                )
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // =========================================================================
-  // PERBAIKAN: Menambahkan `toko_id` dinamis & `divisiPrinter`
-  // =========================================================================
+  // ==========================================
+  // FUNGSI CRUD & SCANNER
+  // ==========================================
   Future<void> simpanProduk(int? id, String kodeBarang, String nama, int harga, int stok, int? kategoriId, String divisiPrinter) async {
     final prefs = await SharedPreferences.getInstance();
-    int tokoIdAsli = prefs.getInt('toko_id') ?? 1; // DINAMIS MULTI-TOKO
+    int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
 
     final url = id == null ? Uri.parse(baseUrl) : Uri.parse('$baseUrl/$id');
     final Map<String, dynamic> payload = {
@@ -270,53 +144,66 @@ Future<void> ambilDataProduk() async {
       'harga': harga,
       'stok': stok,
       'kategori_id': kategoriId,
-      'divisi_printer': divisiPrinter, 
+      'divisi_printer': divisiPrinter,
     };
 
     try {
       final response = id == null
-          ? await http.post(url, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: json.encode(payload))
-          : await http.put(url, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: json.encode(payload));
+          ? await http.post(url, headers: {'Content-Type': 'application/json'}, body: json.encode(payload))
+          : await http.put(url, headers: {'Content-Type': 'application/json'}, body: json.encode(payload));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         await ambilDataProduk();
-        if (mounted) tampilkanNotifikasiTengah('Berhasil!', 'Data barang berhasil disimpan.', true);
+        if (mounted) _tampilkanNotif('Berhasil!', 'Data barang disimpan.', true);
       } else {
-        if (mounted) tampilkanNotifikasiTengah('Gagal!', 'Server menolak (Error ${response.statusCode}).', false);
+        if (mounted) _tampilkanNotif('Gagal!', 'Server menolak (Error ${response.statusCode}).', false);
       }
     } catch (e) {
-      if (mounted) tampilkanNotifikasiTengah('Error Jaringan', 'Terjadi kesalahan: $e', false);
+      if (mounted) _tampilkanNotif('Error', 'Kesalahan jaringan: $e', false);
     }
   }
 
-Future<void> hapusProduk(int id) async {
-  try {
-    // Tarik toko_id untuk keamanan fungsi hapus
-    final prefs = await SharedPreferences.getInstance();
-    int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
+  Future<void> hapusProduk(int id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      int tokoIdAsli = prefs.getInt('toko_id') ?? 1;
 
-    // Sisipkan toko_id pada URL delete
-    final response = await http.delete(
-      Uri.parse('$baseUrl/$id?toko_id=$tokoIdAsli'), 
-      headers: {'Accept': 'application/json'}
+      final response = await http.delete(Uri.parse('$baseUrl/$id?toko_id=$tokoIdAsli'), headers: {'Accept': 'application/json'});
+      if (response.statusCode == 200) {
+        await ambilDataProduk();
+        if (mounted) _tampilkanNotif('Terhapus!', 'Produk berhasil dihapus.', true);
+      }
+    } catch (e) {
+      debugPrint("Error Hapus: $e");
+    }
+  }
+
+  void _tampilkanNotif(String judul, String pesan, bool sukses) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(sukses ? Icons.check_circle : Icons.error, color: AppColors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(pesan, style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        backgroundColor: sukses ? AppColors.emerald : AppColors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
     );
-    
-    if (response.statusCode == 200) {
-      await ambilDataProduk();
-      if (mounted) tampilkanNotifikasiTengah('Terhapus!', 'Data telah berhasil dihapus.', true);
-    }
-  } catch (e) {
-    debugPrint("Error Hapus: $e");
   }
-}
+
+  // ==========================================
+  // BOTTOM SHEET FORM (TAMPILAN PREMIUM)
+  // ==========================================
   void tampilkanFormDialog({Map<String, dynamic>? produkInfo}) {
     TextEditingController kodeCtrl = TextEditingController(text: produkInfo?['kode_barang'] ?? '');
     TextEditingController namaCtrl = TextEditingController(text: produkInfo?['nama'] ?? '');
     TextEditingController hargaCtrl = TextEditingController(text: produkInfo?['harga']?.toString() ?? '');
     TextEditingController stokCtrl = TextEditingController(text: produkInfo?['stok']?.toString() ?? '');
     int? selectedKategoriId = produkInfo?['kategori_id'] != null ? int.tryParse(produkInfo!['kategori_id'].toString()) : null;
-    
-    // Default divisi adalah 'kasir' jika tidak ada
     String selectedDivisiPrinter = produkInfo?['divisi_printer']?.toString() ?? 'kasir';
 
     showModalBottomSheet(
@@ -327,108 +214,80 @@ Future<void> hapusProduk(int id) async {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 20, right: 20),
-              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 24, right: 24),
+              decoration: const BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Center(child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-                    const SizedBox(height: 20),
-                    Text(produkInfo == null ? '✨ Tambah Barang Baru' : '✏️ Edit Barang', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: kodeCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Kode Barang / Barcode',
-                        prefixIcon: const Icon(Icons.qr_code),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
-                          onPressed: () {
-                            mulaiScanBarcode(kodeCtrl).then((_) {
-                              setModalState(() {}); 
-                            });
-                          }
-                        ),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    TextField(controller: namaCtrl, decoration: InputDecoration(labelText: 'Nama Barang', prefixIcon: const Icon(Icons.inventory_2), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                    const SizedBox(height: 15),
-                    TextField(controller: hargaCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Harga (Rp)', prefixIcon: const Icon(Icons.attach_money), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                    const SizedBox(height: 15),
-                    TextField(controller: stokCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Jumlah Stok', prefixIcon: const Icon(Icons.layers), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
+                    const SizedBox(height: 25),
+                    Text(produkInfo == null ? 'Tambah Produk Baru' : 'Edit Produk', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                    const SizedBox(height: 25),
+                    
+                    _buildPremiumTextField('Kode Barang / Barcode', Icons.qr_code, kodeCtrl, isScan: true, onScan: () async {
+                      var result = await BarcodeScanner.scan();
+                      if (result.rawContent.isNotEmpty && result.rawContent != '-1') {
+                        setModalState(() => kodeCtrl.text = result.rawContent);
+                      }
+                    }),
+                    _buildPremiumTextField('Nama Barang', Icons.inventory_2, namaCtrl),
+                    _buildPremiumTextField('Harga Jual (Rp)', Icons.attach_money, hargaCtrl, isNumber: true),
+                    _buildPremiumTextField('Stok Awal', Icons.layers, stokCtrl, isNumber: true),
                     
                     if (daftarKategori.isNotEmpty) ...[
-                      const SizedBox(height: 15),
+                      const Text('Kategori Produk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+                      const SizedBox(height: 8),
                       DropdownButtonFormField<int>(
                         value: selectedKategoriId,
                         decoration: InputDecoration(
-                          labelText: 'Kategori Produk',
-                          prefixIcon: const Icon(Icons.category, color: Colors.orange),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                          filled: true,
+                          fillColor: AppColors.lightGray,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         ),
                         items: daftarKategori.map((kat) {
-                          return DropdownMenuItem<int>(
-                            value: int.parse(kat['id'].toString()),
-                            child: Text(kat['nama_kategori']),
-                          );
+                          return DropdownMenuItem<int>(value: int.parse(kat['id'].toString()), child: Text(kat['nama_kategori']));
                         }).toList(),
-                        onChanged: (val) {
-                          setModalState(() {
-                            selectedKategoriId = val;
-                          });
-                        },
+                        onChanged: (val) => setModalState(() => selectedKategoriId = val),
                       ),
+                      const SizedBox(height: 15),
                     ],
 
-                    // =========================================================================
-                    // DROPDOWN DIVISI PRINTER (Tujuan Struk Dapur / Bar)
-                    // =========================================================================
-                    const SizedBox(height: 15),
+                    const Text('Divisi Printer Dapur/Bar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: ['kasir', 'dapur', 'bar'].contains(selectedDivisiPrinter) ? selectedDivisiPrinter : 'kasir',
                       decoration: InputDecoration(
-                        labelText: 'Tujuan Cetak Printer (Divisi)',
-                        prefixIcon: const Icon(Icons.print, color: Colors.blueAccent),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                        filled: true,
+                        fillColor: AppColors.lightGray,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       ),
                       items: const [
                         DropdownMenuItem(value: 'kasir', child: Text('Hanya di Kasir')),
                         DropdownMenuItem(value: 'dapur', child: Text('Kirim ke Printer Dapur')),
                         DropdownMenuItem(value: 'bar', child: Text('Kirim ke Printer Bar')),
                       ],
-                      onChanged: (val) {
-                        setModalState(() {
-                          selectedDivisiPrinter = val ?? 'kasir';
-                        });
-                      },
+                      onChanged: (val) => setModalState(() => selectedDivisiPrinter = val ?? 'kasir'),
                     ),
 
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 30),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                         onPressed: () {
-                          int idBarang = produkInfo != null ? int.parse(produkInfo['id'].toString()) : 0;
                           Navigator.pop(context);
                           simpanProduk(
-                            produkInfo == null ? null : idBarang,
-                            kodeCtrl.text,
-                            namaCtrl.text,
-                            int.tryParse(hargaCtrl.text) ?? 0,
-                            int.tryParse(stokCtrl.text) ?? 0,
-                            selectedKategoriId,
-                            selectedDivisiPrinter, 
+                            produkInfo != null ? int.parse(produkInfo['id'].toString()) : null,
+                            kodeCtrl.text, namaCtrl.text, int.tryParse(hargaCtrl.text) ?? 0,
+                            int.tryParse(stokCtrl.text) ?? 0, selectedKategoriId, selectedDivisiPrinter,
                           );
                         },
-                        child: const Text('Simpan Data Barang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        child: const Text('Simpan Produk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -439,185 +298,216 @@ Future<void> hapusProduk(int id) async {
     );
   }
 
+  Widget _buildPremiumTextField(String label, IconData icon, TextEditingController controller, {bool isNumber = false, bool isScan = false, VoidCallback? onScan}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+            decoration: InputDecoration(
+              prefixIcon: Icon(icon, color: AppColors.slateGray, size: 20),
+              suffixIcon: isScan ? IconButton(icon: const Icon(Icons.qr_code_scanner, color: AppColors.smartBlue), onPressed: onScan) : null,
+              filled: true,
+              fillColor: AppColors.lightGray,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // WIDGET UTAMA (BODY)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     bool isAdmin = _userRole == 'admin' || _userRole == 'superadmin';
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('Katalog Barang', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          if (isAdmin)
-            IconButton(
-              icon: const Icon(Icons.category),
-              tooltip: 'Kelola Kategori / Divisi',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const HalamanKategori()),
-                ).then((_) => ambilDaftarKategori()); 
-              },
-            ),
-        ],
-      ),
+      backgroundColor: AppColors.lightGray,
+      // Tidak menggunakan AppBar karena menempel di KerangkaNavigasi
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: TextField(
-              controller: searchCtrl,
-              onChanged: _filterPencarian, 
-              decoration: InputDecoration(
-                hintText: 'Cari nama atau scan kode...',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
+          // 1. HEADER HALAMAN
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 15),
+            color: AppColors.lightGray,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (searchCtrl.text.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
-                        onPressed: () {
-                          searchCtrl.clear();
-                          _filterPencarian(''); 
-                        },
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent),
-                      onPressed: _scanBarcodeUntukPencarian,
-                    ),
+                    Text('Katalog Produk', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                    SizedBox(height: 4),
+                    Text('Riwayat seluruh produk dan stok toko', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
                   ],
                 ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
+                if (isAdmin)
+                  ElevatedButton.icon(
+                    onPressed: () => tampilkanFormDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Tambah Produk'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.smartBlue,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+              ],
             ),
           ),
 
-          if (isAdmin) ...[
-            Card(
-              margin: const EdgeInsets.symmetric(horizontal: 15),
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
-              child: SwitchListTile(
-                activeColor: Colors.green,
-                title: const Text('Fitur Input Jasa Kasir', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(_isFiturJasaAktif ? 'Aktif (Muncul di layar kasir)' : 'Nonaktif (Disembunyikan)'),
-                secondary: const Icon(Icons.handyman, color: Colors.purple),
-                value: _isFiturJasaAktif,
-                onChanged: (val) => _ubahFiturGlobal('fitur_jasa', val, 'Fitur Input Jasa Kasir'),
-              ),
+          // 2. SEARCH & FILTER SECTION
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: searchCtrl,
+                    onChanged: _filterPencarian,
+                    decoration: InputDecoration(
+                      hintText: 'Cari produk...',
+                      hintStyle: const TextStyle(fontSize: 13, color: AppColors.slateGray),
+                      prefixIcon: const Icon(Icons.search, color: AppColors.slateGray, size: 20),
+                      filled: true,
+                      fillColor: AppColors.white,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        hint: const Text('Kategori', style: TextStyle(fontSize: 13, color: AppColors.slateGray)),
+                        items: const [], // Bisa disambungkan ke filter kategori nanti
+                        onChanged: (val) {},
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            Card(
-              margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 5),
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
-              child: SwitchListTile(
-                activeColor: Colors.blue,
-                title: const Text('Fitur No Meja', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(_isFiturMejaAktif ? 'Aktif (Muncul di layar kasir)' : 'Nonaktif (Disembunyikan)'),
-                secondary: const Icon(Icons.table_restaurant, color: Colors.orange),
-                value: _isFiturMejaAktif,
-                onChanged: (val) => _ubahFiturGlobal('fitur_meja', val, 'Fitur No Meja'),
-              ),
-            ),
-            Card(
-              margin: const EdgeInsets.only(top: 10, left: 15, right: 15, bottom: 15),
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade300)),
-              child: SwitchListTile(
-                activeColor: Colors.orange,
-                title: const Text('Fitur Dine In & Takeaway', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(_isFiturTakeawayAktif ? 'Aktif (Pilihan muncul di tiap item kasir)' : 'Nonaktif (Disembunyikan)'),
-                secondary: const Icon(Icons.takeout_dining, color: Colors.deepOrange),
-                value: _isFiturTakeawayAktif,
-                onChanged: (val) => _ubahFiturGlobal('fitur_takeaway', val, 'Fitur Dine In & Takeaway'),
-              ),
-            ),
-          ],
+          ),
 
+          const SizedBox(height: 10),
+
+          // 3. DAFTAR PRODUK (TABLE-LIKE CARDS)
           Expanded(
             child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : filteredProduk.isEmpty 
-                    ? const Center(child: Text("Barang tidak ditemukan."))
+                ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
+                : filteredProduk.isEmpty
+                    ? const Center(child: Text("Belum ada produk.", style: TextStyle(color: AppColors.slateGray)))
                     : RefreshIndicator(
                         onRefresh: ambilDataProduk,
+                        color: AppColors.teal,
                         child: ListView.builder(
-                          padding: const EdgeInsets.only(top: 5, left: 15, right: 15, bottom: 80),
-                          itemCount: filteredProduk.length, 
+                          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 80),
+                          itemCount: filteredProduk.length,
                           itemBuilder: (context, index) {
-                            var item = filteredProduk[index]; 
+                            var item = filteredProduk[index];
+                            int stok = int.tryParse(item['stok'].toString()) ?? 0;
                             int idItem = int.parse(item['id'].toString());
-                            String divisiItem = item['divisi_printer']?.toString().toUpperCase() ?? 'KASIR';
+
+                            // Logika Status Badge Premium
+                            String statusText = 'Aman';
+                            Color statusColor = AppColors.emerald;
+                            Color statusBg = AppColors.emerald.withOpacity(0.1);
+
+                            if (stok == 0) {
+                              statusText = 'Habis';
+                              statusColor = AppColors.red;
+                              statusBg = AppColors.red.withOpacity(0.1);
+                            } else if (stok <= 10) {
+                              statusText = 'Menipis';
+                              statusColor = AppColors.premiumGold;
+                              statusBg = AppColors.premiumGold.withOpacity(0.15);
+                            }
 
                             return Container(
-                              margin: const EdgeInsets.only(bottom: 15),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withAlpha(30), blurRadius: 10, offset: const Offset(0, 5))]),
-                              child: Padding(
-                                padding: const EdgeInsets.all(15.0),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(color: Colors.blueAccent.withAlpha(25), borderRadius: BorderRadius.circular(15)),
-                                      child: const Icon(Icons.shopping_bag, color: Colors.blueAccent, size: 30),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                                border: Border.all(color: Colors.grey.shade100),
+                              ),
+                              child: Row(
+                                children: [
+                                  // Ikon Placeholder Gambar
+                                  Container(
+                                    width: 45,
+                                    height: 45,
+                                    decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(8)),
+                                    child: const Icon(Icons.inventory_2_outlined, color: AppColors.slateGray),
+                                  ),
+                                  const SizedBox(width: 15),
+                                  
+                                  // Info Utama
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(item['nama'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.darkText)),
+                                        const SizedBox(height: 4),
+                                        Text('Rp ${item['harga']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.slateGray)),
+                                      ],
                                     ),
-                                    const SizedBox(width: 15),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(item['kode_barang'] ?? '-', style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                                          const SizedBox(height: 3),
-                                          Text(item['nama'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                          const SizedBox(height: 5),
-                                          Text('Rp ${item['harga']}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
-                                          const SizedBox(height: 5),
-                                          // Tampilan Stok & Label Divisi
-                                          Row(
-                                            children: [
-                                              Text('Stok: ${item['stok']}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                                              const SizedBox(width: 10),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: divisiItem == 'DAPUR' ? Colors.deepOrange.withOpacity(0.1) : (divisiItem == 'BAR' ? Colors.brown.withOpacity(0.1) : Colors.blue.withOpacity(0.1)),
-                                                  border: Border.all(color: divisiItem == 'DAPUR' ? Colors.deepOrange : (divisiItem == 'BAR' ? Colors.brown : Colors.blueAccent)),
-                                                  borderRadius: BorderRadius.circular(5)
-                                                ),
-                                                child: Text(
-                                                  'Printer: $divisiItem',
-                                                  style: TextStyle(
-                                                    fontSize: 10, 
-                                                    fontWeight: FontWeight.bold,
-                                                    color: divisiItem == 'DAPUR' ? Colors.deepOrange : (divisiItem == 'BAR' ? Colors.brown : Colors.blueAccent)
-                                                  )
-                                                ),
-                                              )
-                                            ],
-                                          ),
-                                        ],
+                                  ),
+
+                                  // Info Stok & Status
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text('$stok pcs', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.darkText)),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(20)),
+                                        child: Text(statusText, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor)),
                                       ),
+                                    ],
+                                  ),
+
+                                  // Tombol Aksi Admin
+                                  if (isAdmin) ...[
+                                    const SizedBox(width: 5),
+                                    PopupMenuButton<String>(
+                                      icon: const Icon(Icons.more_vert, color: AppColors.slateGray),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      onSelected: (String result) {
+                                        if (result == 'edit') {
+                                          tampilkanFormDialog(produkInfo: item);
+                                        } else if (result == 'hapus') {
+                                          hapusProduk(idItem);
+                                        }
+                                      },
+                                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                        const PopupMenuItem<String>(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18, color: AppColors.smartBlue), SizedBox(width: 10), Text('Edit')])),
+                                        const PopupMenuItem<String>(value: 'hapus', child: Row(children: [Icon(Icons.delete, size: 18, color: AppColors.red), SizedBox(width: 10), Text('Hapus', style: TextStyle(color: AppColors.red))])),
+                                      ],
                                     ),
-                                    isAdmin
-                                        ? Column(
-                                            children: [
-                                              IconButton(icon: const Icon(Icons.edit_note, color: Colors.orange, size: 28), onPressed: () => tampilkanFormDialog(produkInfo: item)),
-                                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 28), onPressed: () => hapusProduk(idItem)),
-                                            ],
-                                          )
-                                        : const SizedBox(),
-                                  ],
-                                ),
+                                  ]
+                                ],
                               ),
                             );
                           },
@@ -626,14 +516,6 @@ Future<void> hapusProduk(int id) async {
           ),
         ],
       ),
-      floatingActionButton: isAdmin
-          ? FloatingActionButton.extended(
-              backgroundColor: Colors.blueAccent,
-              onPressed: () => tampilkanFormDialog(),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('Tambah Barang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            )
-          : null,
     );
   }
 }
