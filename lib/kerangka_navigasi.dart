@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart'; // Pastikan file tema.dart dari panduan sebelumnya sudah ada
 
 // Halaman sementara untuk didemonstrasikan di Kerangka
-import 'halaman_dashboard.dart'; // Ganti dengan import halaman Anda
+import 'halaman_beranda.dart'; // Ganti dengan import halaman Anda
 import 'halaman_kasir.dart';
 import 'halaman_transaksi.dart';
 import 'halaman_laporan.dart';
