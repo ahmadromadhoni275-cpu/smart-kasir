@@ -1,460 +1,259 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
-// Memanggil main.dart karena KerangkaNavigasi ada di sana
-import 'main.dart';
-import 'halaman_registrasi.dart';
+import 'tema.dart'; // Import tema eksklusif
+import 'kerangka_navigasi.dart'; // Halaman utama setelah login sukses
+import 'halaman_registrasi.dart'; // Menuju halaman daftar
 
 class HalamanLogin extends StatefulWidget {
-const HalamanLogin({super.key});
+  const HalamanLogin({super.key});
 
-@override
-State<HalamanLogin> createState() => _HalamanLoginState();
+  @override
+  State<HalamanLogin> createState() => _HalamanLoginState();
 }
 
 class _HalamanLoginState extends State<HalamanLogin> {
-// URL telah disesuaikan ke hosting AnymHost Anda
-final String baseUrl = 'https://smartkasir.shop/api';
+  final String domainUrl = 'https://smartkasir.shop';
 
-final TextEditingController _usernameController = TextEditingController();
-final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _usernameCtrl = TextEditingController();
+  final TextEditingController _passwordCtrl = TextEditingController();
 
-bool isLoading = false;
-bool _obscureText = true;
-bool _ingatSaya = false; // Variabel untuk fitur Simpan Akun
+  bool _isObscure = true;
+  bool _isLoading = false;
 
-@override
-void initState() {
-super.initState();
-_muatDataLoginTersimpan(); // Panggil saat layar pertama kali dibuka
-}
+  Future<void> _prosesLogin() async {
+    if (_usernameCtrl.text.isEmpty || _passwordCtrl.text.isEmpty) {
+      _tampilkanNotif('Peringatan', 'Username dan Password wajib diisi!', AppColors.premiumGold);
+      return;
+    }
 
-// --- FUNGSI MEMUAT DATA LOGIN TERSIMPAN ---
-Future<void> _muatDataLoginTersimpan() async {
-final prefs = await SharedPreferences.getInstance();
-setState(() {
-_usernameController.text = prefs.getString('saved_username') ?? '';
-_passwordController.text = prefs.getString('saved_password') ?? '';
-_ingatSaya = prefs.getBool('remember_me') ?? false;
-});
-}
+    setState(() => _isLoading = true);
 
-Future<void> prosesLogin() async {
-if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-content: Text('Username dan Password wajib diisi!'),
-backgroundColor: Colors.red));
-return;
-}
+    try {
+      final response = await http.post(
+        Uri.parse('$domainUrl/api/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': _usernameCtrl.text.trim().replaceAll(' ', ''),
+          'password': _passwordCtrl.text,
+        }),
+      );
 
-setState(() => isLoading = true);
+      final resData = json.decode(response.body);
 
-try {
-final response = await http.post(
-Uri.parse('$baseUrl/login'),
-headers: {
-'Content-Type': 'application/json',
-},
-body: json.encode({
-'username': _usernameController.text,
-'password': _passwordController.text,
-}),
-);
+      if (response.statusCode == 200) {
+        var userData = resData['data'];
+        
+        // Simpan sesi penting ke SharedPreferences (Multi-Admin Multi-Toko)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('user_id', int.parse(userData['id'].toString()));
+        await prefs.setInt('toko_id', int.parse(userData['toko_id'].toString()));
+        await prefs.setString('username', userData['username'] ?? 'Admin');
+        await prefs.setString('role', userData['role'] ?? 'kasir');
+        await prefs.setString('nama_toko', userData['nama_toko'] ?? 'Smart Kasir');
 
-setState(() => isLoading = false);
+        _tampilkanNotif('Login Berhasil!', 'Selamat datang kembali, ${userData['username']} 👋', AppColors.emerald);
 
-if (response.statusCode == 200) {
-final data = json.decode(response.body);
-final user = data['user'];
+        // Arahkan ke Kerangka Navigasi Utama
+        await Future.delayed(const Duration(milliseconds: 1000));
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const KerangkaNavigasiPremium()),
+          );
+        }
+      } else {
+        _tampilkanNotif('Login Gagal', resData['message'] ?? 'Username atau password salah.', AppColors.red);
+      }
+    } catch (e) {
+      _tampilkanNotif('Error Jaringan', 'Gagal menghubungi server: $e', AppColors.red);
+    }
 
-final prefs = await SharedPreferences.getInstance();
+    setState(() => _isLoading = false);
+  }
 
-// --- LOGIKA SIMPAN AKUN ---
-if (_ingatSaya) {
-await prefs.setString('saved_username', _usernameController.text);
-await prefs.setString('saved_password', _passwordController.text);
-await prefs.setBool('remember_me', true);
-} else {
-await prefs.remove('saved_username');
-await prefs.remove('saved_password');
-await prefs.setBool('remember_me', false);
-}
+  void _tampilkanNotif(String judul, String pesan, Color warna) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(
+          children: [
+            Icon(warna == AppColors.emerald ? Icons.check_circle : Icons.error_outline, color: AppColors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                  Text(pesan, style: const TextStyle(fontSize: 12, color: AppColors.white)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    }
+  }
 
-// --- SIMPAN DATA SESI KE MEMORI HP ---
-await prefs.setInt('user_id', int.parse(user['id'].toString()));
-await prefs.setInt('toko_id', int.parse(user['toko_id'].toString()));
-await prefs.setString('username', user['username']);
-await prefs.setString('role', user['role']);
-await prefs.setBool('is_logged_in', true);
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.lightGray,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // --- HEADER DEEP NAVY DENGAN GRADASI ---
+            Stack(
+              children: [
+                Container(
+                  height: 320,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: AppColors.deepNavy,
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(40)),
+                  ),
+                ),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: AppColors.teal.withOpacity(0.2), shape: BoxShape.circle),
+                          child: const Icon(Icons.storefront, color: AppColors.teal, size: 36),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text('Selamat Datang\nDi Smart Kasir', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.white, height: 1.2)),
+                        const SizedBox(height: 10),
+                        Text('Masuk untuk mengelola kasir dan laporan toko Anda.', style: TextStyle(fontSize: 13, color: AppColors.white.withOpacity(0.8))),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
 
-// --- PERBAIKAN: Menggunakan variabel 'user' yang benar ---
-await prefs.setString('referral_code', user['referral_code'] ?? '');
-await prefs.setString('invited_by', user['invited_by']?.toString() ?? '');
-await prefs.setInt('invite_count', int.tryParse(user['invite_count']?.toString() ?? '0') ?? 0);
+            // --- KARTU FORMULIR LOGIN ---
+            Transform.translate(
+              offset: const Offset(0, -50),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.all(25),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Silakan Masuk', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.darkText)),
+                    const SizedBox(height: 5),
+                    const Text('Masukkan akun admin atau kasir Anda.', style: TextStyle(color: AppColors.slateGray, fontSize: 12)),
+                    const SizedBox(height: 25),
 
-// --- MENGIRIM FCM TOKEN KE SERVER ---
-try {
-String? fcmToken = await FirebaseMessaging.instance.getToken();
-if (fcmToken != null) {
-await http.post(
-Uri.parse('$baseUrl/update-fcm-token'),
-headers: {
-'Content-Type': 'application/json',
-},
-body: json.encode({
-'user_id': user['id'],
-'fcm_token': fcmToken,
-}),
-);
-debugPrint("Token berhasil dikirim ke server: $fcmToken");
-}
-} catch (e) {
-debugPrint("Gagal mengambil/mengirim FCM Token: $e");
-}
+                    _buildPremiumTextField('Username', Icons.person, _usernameCtrl),
+                    const SizedBox(height: 15),
+                    _buildPasswordField('Kata Sandi', _passwordCtrl, _isObscure, (val) => setState(() => _isObscure = val)),
 
-// ARAHKAN KE KERANGKA NAVIGASI (MENU BAWAH)
-if (mounted) {
-Navigator.pushReplacement(
-context,
-MaterialPageRoute(builder: (context) => const KerangkaNavigasi()),
-);
-}
-} else {
-final data = json.decode(response.body);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-content: Text(data['message'] ?? 'Login Gagal'),
-backgroundColor: Colors.red));
-}
-}
-} catch (e) {
-setState(() => isLoading = false);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-content: Text('Gagal terhubung ke server: $e'),
-backgroundColor: Colors.red));
-}
-}
-}
+                    const SizedBox(height: 30),
 
-@override
-Widget build(BuildContext context) {
-return Scaffold(
-backgroundColor: Colors.blueAccent,
-body: Center(
-child: SingleChildScrollView(
-padding: const EdgeInsets.all(25.0),
-child: Container(
-padding: const EdgeInsets.all(30),
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(20),
-boxShadow: const [
-BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))
-]),
-child: Column(
-mainAxisSize: MainAxisSize.min,
-children: [
-Image.asset('assets/logo2.png', height: 70),
-const SizedBox(height: 10),
-const Text('Silakan masuk ke akun Anda',
-style: TextStyle(color: Colors.grey)),
-const SizedBox(height: 30),
-TextField(
-controller: _usernameController,
-decoration: InputDecoration(
-labelText: 'Username',
-prefixIcon: const Icon(Icons.person),
-border: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12)),
-),
-),
-const SizedBox(height: 20),
-TextField(
-controller: _passwordController,
-obscureText: _obscureText,
-decoration: InputDecoration(
-labelText: 'Password',
-prefixIcon: const Icon(Icons.lock),
-suffixIcon: IconButton(
-icon: Icon(_obscureText
-? Icons.visibility_off
-: Icons.visibility),
-onPressed: () =>
-setState(() => _obscureText = !_obscureText),
-),
-border: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12)),
-),
-),
-const SizedBox(height: 5),
-// --- BARIS CHECKBOX SIMPAN AKUN & LUPA PASSWORD ---
-Row(
-mainAxisAlignment: MainAxisAlignment.spaceBetween,
-children: [
-Row(
-children: [
-Checkbox(
-value: _ingatSaya,
-activeColor: Colors.blueAccent,
-onChanged: (value) {
-setState(() => _ingatSaya = value!);
-},
-),
-const Text('Simpan Akun', style: TextStyle(fontSize: 13)),
-],
-),
-TextButton(
-onPressed: () {
-Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLupaPassword()));
-},
-child: const Text('Lupa Password?', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13)),
-),
-],
-),
-const SizedBox(height: 15),
-SizedBox(
-width: double.infinity,
-child: ElevatedButton(
-style: ElevatedButton.styleFrom(
-padding: const EdgeInsets.symmetric(vertical: 15),
-backgroundColor: Colors.blueAccent,
-shape: RoundedRectangleBorder(
-borderRadius: BorderRadius.circular(12))),
-onPressed: isLoading ? null : prosesLogin,
-child: isLoading
-? const SizedBox(
-height: 20,
-width: 20,
-child: CircularProgressIndicator(
-color: Colors.white, strokeWidth: 2))
-: const Text('Masuk',
-style: TextStyle(
-fontSize: 16,
-fontWeight: FontWeight.bold,
-color: Colors.white)),
-),
-),
-const SizedBox(height: 20),
-Row(
-mainAxisAlignment: MainAxisAlignment.center,
-children: [
-const Text('Belum punya akun?'),
-TextButton(
-onPressed: () {
-Navigator.push(
-context,
-MaterialPageRoute(
-builder: (context) =>
-const HalamanRegistrasi()));
-},
-child: const Text('Daftar di sini',
-style: TextStyle(fontWeight: FontWeight.bold)),
-)
-],
-)
-],
-),
-),
-),
-),
-);
-}
-}
+                    // Tombol Masuk
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.teal,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        onPressed: _isLoading ? null : _prosesLogin,
+                        child: _isLoading
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
+                            : const Text('Masuk Aplikasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
-// ========================================================
-// --- HALAMAN LUPA PASSWORD DENGAN OTP ---
-// ========================================================
-class HalamanLupaPassword extends StatefulWidget {
-const HalamanLupaPassword({super.key});
+            // Footer Pindah ke Registrasi
+            Transform.translate(
+              offset: const Offset(0, -25),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text("Belum punya toko? ", style: TextStyle(color: AppColors.slateGray, fontSize: 13)),
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const HalamanRegistrasi()),
+                      );
+                    },
+                    child: const Text("Daftar Bisnis Baru", style: TextStyle(color: AppColors.smartBlue, fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
 
-@override
-State<HalamanLupaPassword> createState() => _HalamanLupaPasswordState();
-}
+  Widget _buildPremiumTextField(String label, IconData icon, TextEditingController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: AppColors.slateGray, size: 20),
+            filled: true,
+            fillColor: AppColors.lightGray,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ],
+    );
+  }
 
-class _HalamanLupaPasswordState extends State<HalamanLupaPassword> {
-final String baseUrl = 'https://smartkasir.shop/api';
-final TextEditingController _emailController = TextEditingController();
-final TextEditingController _otpController = TextEditingController();
-final TextEditingController _newPasswordController = TextEditingController();
-bool isLoading = false;
-bool isOtpSent = false;
-bool _obscureText = true;
-
-Future<void> kirimOtpReset() async {
-if (_emailController.text.isEmpty || !_emailController.text.contains('@')) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Masukkan email yang valid!'), backgroundColor: Colors.red));
-return;
-}
-
-setState(() => isLoading = true);
-
-try {
-final response = await http.post(
-Uri.parse('$baseUrl/kirimOtpEmail'),
-headers: {'Content-Type': 'application/json'},
-body: json.encode({'email': _emailController.text, 'jenis': 'lupa_password'}),
-);
-
-setState(() => isLoading = false);
-
-if (response.statusCode == 200) {
-setState(() => isOtpSent = true);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kode OTP berhasil dikirim ke Email Anda!'), backgroundColor: Colors.green));
-}
-} else {
-final data = json.decode(response.body);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message'] ?? 'Gagal mengirim OTP'), backgroundColor: Colors.red));
-}
-}
-} catch (e) {
-setState(() => isLoading = false);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kesalahan jaringan.'), backgroundColor: Colors.red));
-}
-}
-}
-
-Future<void> prosesResetPassword() async {
-if (_otpController.text.isEmpty || _newPasswordController.text.isEmpty) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kode OTP dan Password Baru wajib diisi!'), backgroundColor: Colors.red));
-return;
-}
-
-setState(() => isLoading = true);
-
-try {
-final response = await http.post(
-Uri.parse('$baseUrl/resetPassword'),
-headers: {'Content-Type': 'application/json'},
-body: json.encode({
-'email': _emailController.text,
-'otp': _otpController.text,
-'password_baru': _newPasswordController.text
-}),
-);
-
-setState(() => isLoading = false);
-
-if (response.statusCode == 200) {
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password berhasil diperbarui! Silakan login.'), backgroundColor: Colors.green));
-Navigator.pop(context); // Kembali ke halaman Login
-}
-} else {
-final data = json.decode(response.body);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message'] ?? 'Gagal mereset password'), backgroundColor: Colors.red));
-}
-}
-} catch (e) {
-setState(() => isLoading = false);
-if (mounted) {
-ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kesalahan jaringan.'), backgroundColor: Colors.red));
-}
-}
-}
-
-@override
-Widget build(BuildContext context) {
-return Scaffold(
-backgroundColor: Colors.blueAccent,
-appBar: AppBar(
-title: const Text('Reset Password'),
-backgroundColor: Colors.transparent,
-elevation: 0,
-foregroundColor: Colors.white,
-),
-body: Center(
-child: SingleChildScrollView(
-padding: const EdgeInsets.all(25.0),
-child: Container(
-padding: const EdgeInsets.all(30),
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(20),
-boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))]
-),
-child: Column(
-mainAxisSize: MainAxisSize.min,
-children: [
-const Icon(Icons.lock_reset, size: 60, color: Colors.blueAccent),
-const SizedBox(height: 15),
-const Text('Lupa Password?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-const SizedBox(height: 10),
-Text(
-isOtpSent ? 'Masukkan kode OTP yang dikirim ke email Anda beserta password baru.' : 'Masukkan email Anda yang terdaftar. Kami akan mengirimkan kode OTP.',
-textAlign: TextAlign.center,
-style: const TextStyle(color: Colors.grey),
-),
-const SizedBox(height: 25),
-
-// 1. INPUT EMAIL
-TextField(
-controller: _emailController,
-enabled: !isOtpSent,
-keyboardType: TextInputType.emailAddress,
-decoration: InputDecoration(
-labelText: 'Email Terdaftar',
-prefixIcon: const Icon(Icons.email),
-border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-),
-),
-// 2. TAMPILKAN JIKA OTP SUDAH DIKIRIM
-if (isOtpSent) ...[
-const SizedBox(height: 15),
-TextField(
-controller: _otpController,
-keyboardType: TextInputType.number,
-textAlign: TextAlign.center,
-style: const TextStyle(letterSpacing: 5, fontSize: 18, fontWeight: FontWeight.bold),
-decoration: InputDecoration(
-labelText: 'Kode OTP',
-border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-),
-),
-const SizedBox(height: 15),
-TextField(
-controller: _newPasswordController,
-obscureText: _obscureText,
-decoration: InputDecoration(
-labelText: 'Password Baru',
-prefixIcon: const Icon(Icons.lock),
-suffixIcon: IconButton(
-icon: Icon(_obscureText ? Icons.visibility_off : Icons.visibility),
-onPressed: () => setState(() => _obscureText = !_obscureText),
-),
-border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-),
-),
-],
-
-const SizedBox(height: 25),
-
-// 3. TOMBOL AKSI BERDASARKAN STATUS
-SizedBox(
-width: double.infinity,
-child: ElevatedButton(
-style: ElevatedButton.styleFrom(
-padding: const EdgeInsets.symmetric(vertical: 15),
-backgroundColor: isOtpSent ? Colors.green : Colors.blueAccent,
-shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-onPressed: isLoading ? null : (isOtpSent ? prosesResetPassword : kirimOtpReset),
-child: isLoading
-? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-: Text(isOtpSent ? 'Simpan Password Baru' : 'Kirim Kode OTP', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-),
-),
-],
-),
-),
-),
-),
-);
-}
+  Widget _buildPasswordField(String label, TextEditingController controller, bool isObscure, Function(bool) onToggle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          obscureText: isObscure,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.lock_outline, color: AppColors.slateGray, size: 20),
+            suffixIcon: IconButton(
+              icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: AppColors.smartBlue, size: 20),
+              onPressed: () => onToggle(!isObscure),
+            ),
+            filled: true,
+            fillColor: AppColors.lightGray,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ],
+    );
+  }
 }
