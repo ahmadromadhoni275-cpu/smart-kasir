@@ -26,7 +26,7 @@ class AppTheme {
         iconTheme: IconThemeData(color: AppColors.white),
         titleTextStyle: TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: AppColors.white,
         elevation: 2,
         shadowColor: Colors.black.withOpacity(0.05),

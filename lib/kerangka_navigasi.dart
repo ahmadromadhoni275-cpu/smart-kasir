@@ -70,7 +70,7 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
               Container(
                 width: 50,
                 height: 5,
-                margin: const EdgeInsets.bottom(15),
+                margin: const EdgeInsets.only(bottom: 15),
                 decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
               ),
               
