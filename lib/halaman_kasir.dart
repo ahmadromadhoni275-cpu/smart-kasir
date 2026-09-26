@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import 'tema.dart'; // Import tema eksklusif
 import 'halaman_struk.dart'; // Import halaman struk
+import 'kerangka_navigasi.dart';
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -18,7 +19,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
   final String domainUrl = 'https://smartkasir.shop';
   
   bool isLoading = true;
-  bool isShiftTerbuka = true; // Set ke true jika shift diabaikan untuk admin
+  bool isShiftTerbuka = false; // <-- Diubah ke false agar terkunci secara default
+  
   int _tokoId = 1;
   int _userId = 1;
   int _ppnPersen = 0;
@@ -43,11 +45,34 @@ class _HalamanKasirState extends State<HalamanKasir> {
     _tokoId = prefs.getInt('toko_id') ?? 1;
     _userId = prefs.getInt('user_id') ?? 1;
 
-    await _ambilDataToko();
-    await _ambilDataKategori();
-    await _ambilDataProduk();
+    // 1. CEK STATUS SHIFT TERLEBIH DAHULU
+    await _cekStatusShift();
+
+    // 2. JIKA SHIFT DIBUKA, BARU LOAD DATA PRODUK DAN TOKO
+    if (isShiftTerbuka) {
+      await _ambilDataToko();
+      await _ambilDataKategori();
+      await _ambilDataProduk();
+    }
 
     setState(() => isLoading = false);
+  }
+
+  // ==========================================
+  // FUNGSI CEK STATUS SHIFT
+  // ==========================================
+  Future<void> _cekStatusShift() async {
+    try {
+      final res = await http.get(Uri.parse('$domainUrl/api/cekStatusShift/$_userId'), headers: {'Accept': 'application/json'});
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body)['data'];
+        setState(() {
+          isShiftTerbuka = data['status_shift'] == 'open';
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal cek shift: $e");
+    }
   }
 
   Future<void> _ambilDataToko() async {
@@ -181,6 +206,51 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Widget build(BuildContext context) {
     if (isLoading) return const Scaffold(backgroundColor: AppColors.lightGray, body: Center(child: CircularProgressIndicator(color: AppColors.teal)));
 
+    // ==========================================
+    // UI LAYAR TERKUNCI JIKA SHIFT BELUM DIBUKA
+    // ==========================================
+    if (!isShiftTerbuka) {
+      return Scaffold(
+        backgroundColor: AppColors.lightGray,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(25),
+                  decoration: BoxDecoration(color: AppColors.red.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.lock_outline, size: 80, color: AppColors.red),
+                ),
+                const SizedBox(height: 25),
+                const Text('Kasir Terkunci', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                const SizedBox(height: 15),
+                const Text('Anda belum membuka shift kasir hari ini. Silakan atur modal awal dan buka shift terlebih dahulu untuk mulai bertransaksi.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.slateGray, fontSize: 13, height: 1.5)),
+                const SizedBox(height: 30),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.teal,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    // Arahkan ke menu laporan menggunakan kerangka navigasi
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const KerangkaNavigasiPremium()), (route) => false);
+                  },
+                  icon: const Icon(Icons.open_in_new, color: AppColors.white, size: 18),
+                  label: const Text('Buka Menu Laporan / Shift', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ==========================================
+    // UI KASIR NORMAL (TERBUKA)
+    // ==========================================
     return Scaffold(
       backgroundColor: AppColors.lightGray,
       body: LayoutBuilder(
@@ -349,7 +419,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
     return GridView.builder(
       padding: const EdgeInsets.all(15),
-      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 180, // Ukuran kartu produk
         childAspectRatio: 0.8, // Rasio Tinggi vs Lebar
         crossAxisSpacing: 15,
@@ -529,7 +599,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   // Floating Bottom Bar untuk HP
   Widget _buildBottomBarKeranjangHP() {
     if (keranjang.isEmpty) return const SizedBox.shrink();
-    
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -599,7 +668,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             int kembalian = (int.tryParse(bayarCtrl.text) ?? 0) - total;
-            
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Text('Proses Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
@@ -667,7 +735,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     }
 
                     setDialogState(() => isProcessing = true);
-                    
                     // Siapkan Data JSON
                     Map<String, dynamic> payload = {
                       "toko_id": _tokoId,
@@ -696,7 +763,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
                       if (response.statusCode == 200 || response.statusCode == 201) {
                         if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                        
                         List<Map<String, dynamic>> keranjangSnapshot = List.from(keranjang);
                         _kosongkanKeranjang();
                         await _ambilDataProduk(); // Update Stok

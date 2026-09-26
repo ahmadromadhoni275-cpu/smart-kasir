@@ -11,6 +11,9 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:image/image.dart' as img; 
 
+import 'tema.dart'; // Import tema premium
+import 'kerangka_navigasi.dart';
+
 class HalamanStruk extends StatefulWidget {
   final List keranjang;
   final dynamic totalBelanja;
@@ -46,18 +49,18 @@ class HalamanStruk extends StatefulWidget {
 class _HalamanStrukState extends State<HalamanStruk> {
   final String domainUrl = 'https://smartkasir.shop';
 
-  String namaToko = 'Nama Toko';
-  String alamatToko = 'Alamat Toko';
+  String namaToko = 'Memuat...';
+  String alamatToko = '-';
   String waToko = '-';
   String namaBank = '';
   String rekeningBank = '';
   String atasNama = '';
   String qrQrisPath = ''; 
 
-  String namaPetugas = 'Kasir/Admin';
-  String waSuperadmin = 'Memuat...';
-
+  String namaPetugas = 'Kasir';
+  String waSuperadmin = '081234567890';
   bool isLoading = true;
+  bool isPrinting = false;
 
   @override
   void initState() {
@@ -67,43 +70,24 @@ class _HalamanStrukState extends State<HalamanStruk> {
 
   Future<void> _inisialisasiData() async {
     await _muatDataTokoDanPetugas();
-    await _ambilWaSuperadmin();
     setState(() => isLoading = false);
-  }
-
-  Future<void> _ambilWaSuperadmin() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$domainUrl/api/pengaturan'),
-        headers: {'Accept': 'application/json'},
-      );
-      if (response.statusCode == 200) {
-        final res = json.decode(response.body);
-        setState(() => waSuperadmin = res['data']['wa_superadmin'] ?? '081234567890');
-      } else {
-        setState(() => waSuperadmin = '081234567890');
-      }
-    } catch (e) {
-      setState(() => waSuperadmin = '081234567890');
-    }
   }
 
   Future<void> _muatDataTokoDanPetugas() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      namaPetugas = prefs.getString('nama') ?? prefs.getString('username') ?? 'Kasir/Admin';
+      namaPetugas = prefs.getString('username') ?? 'Kasir';
     });
 
     int tokoId = prefs.getInt('toko_id') ?? 1;
 
     try {
-      final response = await http.get(Uri.parse('$domainUrl/api/toko/$tokoId'),
-          headers: {'Accept': 'application/json'});
+      final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$tokoId'), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final data = json.decode(response.body)['data'];
         setState(() {
           namaToko = data['nama_toko'] ?? 'Toko Saya';
-          alamatToko = data['alamat'] ?? 'Jl. Raya No. 1';
+          alamatToko = data['alamat'] ?? '-';
           waToko = data['no_hp'] ?? '-';
           namaBank = data['nama_bank'] ?? '';
           rekeningBank = data['rekening_bank'] ?? '';
@@ -124,121 +108,48 @@ class _HalamanStrukState extends State<HalamanStruk> {
   }
 
   String _formatRp(dynamic angka) {
-    int nilai = _parseInt(angka);
-    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(nilai);
+    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(_parseInt(angka));
   }
 
-  Future<void> _kirimWhatsApp() async {
-    int subtotalVal = _parseInt(widget.subtotal);
-    if (subtotalVal == 0) {
-      for (var item in widget.keranjang) {
-        if (item['id'] != 0) subtotalVal += _parseInt(item['subtotal']);
-      }
-    }
-
-    int jasaVal = _parseInt(widget.biayaJasa);
-    int ppnVal = _parseInt(widget.ppnNominal);
-    int totalVal = _parseInt(widget.totalBelanja);
-    int tunaiVal = _parseInt(widget.uangDiterima);
-    int kembaliVal = _parseInt(widget.uangKembalian);
-
-    String pesan = "*STRUK BELANJA*\n";
-    pesan += "*${namaToko.toUpperCase()}*\n";
-    pesan += "$alamatToko\n";
-    pesan += "WA: $waToko\n";
-    pesan += "--------------------------------------\n";
-    pesan += "No. : ${widget.noStruk}\n";
-    pesan += "Tgl : ${widget.tanggal}\n";
-    if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
-      pesan += "Meja: *${widget.noMeja}*\n";
-    }
-    pesan += "Oleh : $namaPetugas\n";
-    pesan += "Bayar : ${widget.metodePembayaran}\n";
-    pesan += "--------------------------------------\n";
-
-    for (var item in widget.keranjang) {
-      String namaItem = item['nama']?.toString() ?? 'Produk';
-      int itemHarga = _parseInt(item['harga']);
-      int itemQty = _parseInt(item['qty']);
-      int itemSub = _parseInt(item['subtotal']);
-      if (itemSub == 0 && itemHarga > 0 && itemQty > 0) {
-        itemSub = itemHarga * itemQty;
-      }
-      pesan += "$namaItem\n";
-      pesan += "$itemQty x ${_formatRp(itemHarga)} = ${_formatRp(itemSub)}\n";
-    }
-
-    pesan += "--------------------------------------\n";
-    pesan += "Subtotal : ${_formatRp(subtotalVal)}\n";
-    if (jasaVal > 0) pesan += "Biaya Jasa : ${_formatRp(jasaVal)}\n";
-    if (ppnVal > 0) pesan += "PPN : ${_formatRp(ppnVal)}\n";
-    pesan += "*Total : ${_formatRp(totalVal)}*\n";
-
-    if (widget.metodePembayaran == 'Tunai') {
-      pesan += "Tunai : ${_formatRp(tunaiVal)}\n";
-      pesan += "Kembali : ${_formatRp(kembaliVal)}\n";
-    } else {
-      pesan += "\n*💳 INFO PEMBAYARAN NON-TUNAI:*\n";
-      pesan += "Bank : $namaBank\n";
-      pesan += "No. Rek : $rekeningBank\n";
-      pesan += "A/N : $atasNama\n";
-    }
-    pesan += "--------------------------------------\n\n";
-    pesan += "Terima kasih telah berbelanja di *${namaToko.toUpperCase()}*! 😊\n\n";
-    pesan += "🚀 _Kasir rapi, omset meroket bersama *Smart Kasir*_!\n";
-    pesan += "_Buat toko Anda makin profesional. Hubungi admin kami di WA: *$waSuperadmin*_ 😉";
-
-    String textEncoded = Uri.encodeComponent(pesan);
-    final Uri waUrl = Uri.parse("https://wa.me/?text=$textEncoded");
-
-    try {
-      if (await canLaunchUrl(waUrl)) {
-        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tidak dapat membuka WhatsApp.'), backgroundColor: Colors.red));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuka WhatsApp.'), backgroundColor: Colors.red));
-    }
-  }
-
+  // ===================================================================
+  // FUNGSI CETAK FISIK LANGSUNG (SILENT AUTO-CONNECT)
+  // ===================================================================
   Future<void> _mulaiProsesCetak() async {
-    if (kIsWeb) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cetak fisik tidak bisa dilakukan di Web.'), backgroundColor: Colors.orange));
-      return;
-    }
-    if (Platform.isIOS) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Printer kasir tidak didukung di iOS.'), backgroundColor: Colors.orange));
+    if (kIsWeb || Platform.isIOS) {
+      _tampilkanNotif('Cetak fisik belum didukung di Web/iOS.', AppColors.premiumGold);
       return;
     }
 
+    setState(() => isPrinting = true);
     final prefs = await SharedPreferences.getInstance();
-    String alamatUtama = prefs.getString('printer_alamat_utama') ?? '';
+    
+    // Ambil settingan dari Halaman Printer
+    String alamatUtama = prefs.getString('printer_alamat_utama') ?? prefs.getString('mac_printer') ?? '';
 
     if (alamatUtama.isEmpty) {
-      _tampilkanDialogPilihPrinterBluetoothLama(); 
-    } else {
-      _eksekusiMultiPrinter(prefs); 
+      _tampilkanNotif('Printer belum diatur! Silakan atur di menu Pengaturan Printer.', AppColors.red);
+      setState(() => isPrinting = false);
+      return;
     }
-  }
 
-  Future<void> _eksekusiMultiPrinter(SharedPreferences prefs) async {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memproses cetak ke berbagai rute...'), backgroundColor: Colors.blueAccent));
+    _tampilkanNotif('Mencetak struk...', AppColors.smartBlue);
 
+    // 1. Cetak Struk Lengkap ke Kasir
     List<int> bytesUtama = await _generateBytesStrukLengkap();
     await _kirimDataKePrinter(prefs, 'utama', bytesUtama, 'Kasir');
 
+    // 2. Pemisahan Tiket Pesanan (Dapur & Bar)
     Map<String, List<dynamic>> pesananDivisi = {};
     for (var item in widget.keranjang) {
-      String divisi = item['divisi_printer']?.toString().toLowerCase() ?? 'dapur';
-      if (!pesananDivisi.containsKey(divisi)) {
-        pesananDivisi[divisi] = [];
+      String divisi = item['divisi_printer']?.toString().toLowerCase() ?? 'kasir';
+      if (divisi != 'kasir') {
+        if (!pesananDivisi.containsKey(divisi)) pesananDivisi[divisi] = [];
+        pesananDivisi[divisi]!.add(item);
       }
-      pesananDivisi[divisi]!.add(item);
     }
 
     for (var divisi in pesananDivisi.keys) {
-      List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[divisi]!);
+      List<int> bytesDivisi = await _generateBytesStrukDivisi(pesananDivisi[divisi]!, divisi);
       String ipDivisi = prefs.getString('ip_printer_$divisi') ?? '';
       if (ipDivisi.isNotEmpty) {
         try {
@@ -247,19 +158,17 @@ class _HalamanStrukState extends State<HalamanStruk> {
           await socket.flush();
           socket.destroy();
         } catch (e) {
-          debugPrint("Gagal cetak ke printer divisi $divisi ($ipDivisi): $e");
+          debugPrint("Gagal cetak ke $divisi ($ipDivisi): $e");
         }
       }
     }
+
+    setState(() => isPrinting = false);
   }
 
-  // ===================================================================
-  // PERBAIKAN UTAMA: KONEKSI BLUETOOTH LEBIH AMAN & TIDAK HANG
-  // ===================================================================
   Future<void> _kirimDataKePrinter(SharedPreferences prefs, String idSlot, List<int> bytes, String namaRute) async {
     String tipe = prefs.getString('printer_tipe_$idSlot') ?? 'bluetooth';
-    String alamat = prefs.getString('printer_alamat_$idSlot') ?? '';
-
+    String alamat = prefs.getString('printer_alamat_$idSlot') ?? prefs.getString('mac_printer') ?? '';
     if (alamat.isEmpty) return; 
 
     try {
@@ -275,33 +184,29 @@ class _HalamanStrukState extends State<HalamanStruk> {
         } catch (_) {}
 
         if (!isConnected) {
-          bool connected = false;
-          try {
-            connected = await PrintBluetoothThermal.connect(macPrinterAddress: alamat)
-                .timeout(const Duration(seconds: 5), onTimeout: () => false);
-          } catch (_) {
-            connected = false;
+          bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: alamat).timeout(const Duration(seconds: 8), onTimeout: () => false);
+          
+          if (!connected) {
+             await PrintBluetoothThermal.disconnect;
+             await Future.delayed(const Duration(seconds: 1));
+             connected = await PrintBluetoothThermal.connect(macPrinterAddress: alamat).timeout(const Duration(seconds: 8), onTimeout: () => false);
           }
 
           if (!connected) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Gagal terhubung ke printer $namaRute. Periksa perangkat!'), backgroundColor: Colors.red),
-              );
-            }
+            _tampilkanNotif('Gagal terhubung ke printer $namaRute. Pastikan perangkat menyala.', AppColors.red);
             return;
           }
         }
 
-        await PrintBluetoothThermal.writeBytes(bytes);
+        bool printed = await PrintBluetoothThermal.writeBytes(bytes);
+        if (!printed) {
+           await PrintBluetoothThermal.disconnect;
+           bool retryConnect = await PrintBluetoothThermal.connect(macPrinterAddress: alamat).timeout(const Duration(seconds: 7), onTimeout: () => false);
+           if (retryConnect) await PrintBluetoothThermal.writeBytes(bytes);
+        }
       }
     } catch (e) {
-      debugPrint("Gagal cetak rute $namaRute: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal mengirim data ke printer.'), backgroundColor: Colors.red),
-        );
-      }
+      _tampilkanNotif('Gagal mengirim data ke printer.', AppColors.red);
     }
   }
 
@@ -310,34 +215,32 @@ class _HalamanStrukState extends State<HalamanStruk> {
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
-    bytes += generator.text(namaToko.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2));
+    bytes += generator.text(namaToko.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
     bytes += generator.text(alamatToko, styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("WA: $waToko", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
     bytes += generator.row([
       PosColumn(text: "No: ${widget.noStruk}", width: 6),
-      PosColumn(text: "Tgl: ${widget.tanggal.split(' ')[0]}", width: 6, styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(text: widget.tanggal.split(' ')[0], width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
-    if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
+    if (widget.noMeja != null && widget.noMeja!.isNotEmpty && widget.noMeja != '-') {
       bytes += generator.feed(1);
-      bytes += generator.text("MEJA: ${widget.noMeja}", styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
+      bytes += generator.text("MEJA / INFO: ${widget.noMeja}", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
       bytes += generator.feed(1);
     }
     bytes += generator.row([
       PosColumn(text: "Kasir: $namaPetugas", width: 6),
-      PosColumn(text: "Bayar: ${widget.metodePembayaran}", width: 6, styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(text: widget.metodePembayaran, width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-    int subtotalFix = 0;
     for (var item in widget.keranjang) {
       String namaItem = item['nama']?.toString() ?? 'Produk';
       int itemHarga = _parseInt(item['harga']);
       int itemQty = _parseInt(item['qty']);
       int itemSub = _parseInt(item['subtotal']);
       if (itemSub == 0 && itemHarga > 0 && itemQty > 0) itemSub = itemHarga * itemQty;
-      if (item['id'] != 0) subtotalFix += itemSub;
 
       bytes += generator.text(namaItem, styles: const PosStyles(align: PosAlign.left));
       bytes += generator.row([
@@ -347,19 +250,10 @@ class _HalamanStrukState extends State<HalamanStruk> {
     }
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
-    int subtotalParam = _parseInt(widget.subtotal) > 0 ? _parseInt(widget.subtotal) : subtotalFix;
-
     bytes += generator.row([
       PosColumn(text: "Subtotal", width: 6),
-      PosColumn(text: _formatRp(subtotalParam), width: 6, styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(text: _formatRp(widget.subtotal), width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
-
-    if (_parseInt(widget.biayaJasa) > 0) {
-      bytes += generator.row([
-        PosColumn(text: "Biaya Jasa", width: 6),
-        PosColumn(text: _formatRp(widget.biayaJasa), width: 6, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-    }
     if (_parseInt(widget.ppnNominal) > 0) {
       bytes += generator.row([
         PosColumn(text: "PPN", width: 6),
@@ -371,7 +265,7 @@ class _HalamanStrukState extends State<HalamanStruk> {
       PosColumn(text: _formatRp(widget.totalBelanja), width: 6, styles: const PosStyles(bold: true, align: PosAlign.right)),
     ]);
 
-    if (widget.metodePembayaran == 'Tunai') {
+    if (widget.metodePembayaran.toLowerCase() == 'tunai') {
       bytes += generator.row([
         PosColumn(text: "Tunai", width: 6),
         PosColumn(text: _formatRp(widget.uangDiterima), width: 6, styles: const PosStyles(align: PosAlign.right)),
@@ -381,57 +275,46 @@ class _HalamanStrukState extends State<HalamanStruk> {
         PosColumn(text: _formatRp(widget.uangKembalian), width: 6, styles: const PosStyles(align: PosAlign.right)),
       ]);
     } else {
-      bytes += generator.text("Pembayaran Non-Tunai:", styles: const PosStyles(align: PosAlign.left));
-      bytes += generator.text("$namaBank - $rekeningBank", styles: const PosStyles(align: PosAlign.left));
-      bytes += generator.text("A/N: $atasNama", styles: const PosStyles(align: PosAlign.left));
-
+      bytes += generator.feed(1);
+      bytes += generator.text("--- DIBAYAR NON-TUNAI ---", styles: const PosStyles(align: PosAlign.center, bold: true));
       if (qrQrisPath.isNotEmpty) {
         try {
           String cleanPath = qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath;
-          String finalQrUrl = qrQrisPath.startsWith('http') 
-              ? qrQrisPath 
-              : (cleanPath.contains('uploads/qr') ? '$domainUrl/$cleanPath' : '$domainUrl/uploads/qr/$cleanPath');
+          String finalQrUrl = qrQrisPath.startsWith('http') ? qrQrisPath : '$domainUrl/uploads/qr/$cleanPath';
           final resImg = await http.get(Uri.parse(finalQrUrl));
           if (resImg.statusCode == 200) {
             img.Image? originalImage = img.decodeImage(resImg.bodyBytes);
             if (originalImage != null) {
               img.Image resized = img.copyResize(originalImage, width: 300);
               bytes += generator.feed(1);
-              bytes += generator.text("SCAN QRIS DI BAWAH INI", styles: const PosStyles(align: PosAlign.center, bold: true));
               bytes += generator.imageRaster(resized, align: PosAlign.center);
             }
           }
-        } catch(e) {
-          debugPrint("Gagal memuat gambar QR: $e");
-        }
+        } catch(e) { debugPrint("Gagal muat QR: $e"); }
       }
     }
+    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.feed(1);
     bytes += generator.text("Terima kasih telah berbelanja", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("di ${namaToko.toUpperCase()}! :-)", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.feed(1);
-    bytes += generator.text("---", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("Kasir rapi, omset meroket", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("bersama SMART KASIR!", styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text("di ${namaToko.toUpperCase()}", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(2);
 
     return bytes;
   }
 
-  Future<List<int>> _generateBytesStrukDivisi(List items) async {
+  Future<List<int>> _generateBytesStrukDivisi(List items, String divisi) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
-    bytes += generator.text("TIKET PESANAN", styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
+    bytes += generator.text("TIKET ${divisi.toUpperCase()}", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
     bytes += generator.feed(1);
     bytes += generator.text("No: ${widget.noStruk}", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("Waktu: ${widget.tanggal.split(' ')[1]}", styles: const PosStyles(align: PosAlign.center)); 
+    bytes += generator.text("Tgl: ${widget.tanggal}", styles: const PosStyles(align: PosAlign.center)); 
 
-    if (widget.noMeja != null && widget.noMeja!.isNotEmpty) {
+    if (widget.noMeja != null && widget.noMeja!.isNotEmpty && widget.noMeja != '-') {
       bytes += generator.feed(1);
-      bytes += generator.text("MEJA: ${widget.noMeja}", styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
+      bytes += generator.text("MEJA: ${widget.noMeja}", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
     }
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
@@ -446,241 +329,246 @@ class _HalamanStrukState extends State<HalamanStruk> {
     return bytes;
   }
 
-  Future<void> _tampilkanDialogPilihPrinterBluetoothLama() async {
+  // ===================================================================
+  // FUNGSI KIRIM WHATSAPP
+  // ===================================================================
+  Future<void> _kirimWhatsApp() async {
+    String pesan = "*STRUK DIGITAL*\n";
+    pesan += "*${namaToko.toUpperCase()}*\n$alamatToko\nWA: $waToko\n";
+    pesan += "--------------------------------\n";
+    pesan += "No: ${widget.noStruk}\nTgl: ${widget.tanggal}\nKasir: $namaPetugas\n";
+    pesan += "--------------------------------\n";
+
+    for (var item in widget.keranjang) {
+      pesan += "${item['nama']}\n${item['qty']} x ${_formatRp(item['harga'])} = ${_formatRp(item['subtotal'])}\n";
+    }
+
+    pesan += "--------------------------------\n";
+    pesan += "Subtotal : ${_formatRp(widget.subtotal)}\n";
+    if (_parseInt(widget.ppnNominal) > 0) pesan += "PPN : ${_formatRp(widget.ppnNominal)}\n";
+    pesan += "*Total : ${_formatRp(widget.totalBelanja)}*\n";
+
+    if (widget.metodePembayaran.toLowerCase() == 'tunai') {
+      pesan += "Tunai : ${_formatRp(widget.uangDiterima)}\nKembali : ${_formatRp(widget.uangKembalian)}\n";
+    } else {
+      pesan += "\n*💳 INFO PEMBAYARAN NON-TUNAI:*\nBank: $namaBank\nNo. Rek: $rekeningBank\nA/N: $atasNama\n";
+    }
+    pesan += "--------------------------------\n";
+    pesan += "Terima kasih telah berbelanja di *${namaToko.toUpperCase()}*! 😊\n";
+
+    String textEncoded = Uri.encodeComponent(pesan);
+    final Uri waUrl = Uri.parse("https://wa.me/?text=$textEncoded");
+
     try {
-      List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text('Pilih Printer Bluetooth', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              content: SizedBox(
-                height: 300,
-                width: 300,
-                child: devices.isEmpty
-                    ? const Center(child: Text("Belum ada perangkat terpasang (paired).", textAlign: TextAlign.center))
-                    : ListView.builder(
-                        itemCount: devices.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            leading: const Icon(Icons.print, color: Colors.blueAccent),
-                            title: Text(devices[index].name),
-                            subtitle: Text(devices[index].macAdress),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Menghubungkan ke ${devices[index].name}...')));
-                              try {
-                                bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: devices[index].macAdress)
-                                    .timeout(const Duration(seconds: 5), onTimeout: () => false);
-                                    
-                                if (terhubung) {
-                                  final prefs = await SharedPreferences.getInstance();
-                                  await prefs.setString('printer_tipe_utama', 'bluetooth');
-                                  await prefs.setString('printer_alamat_utama', devices[index].macAdress);
-                                  _eksekusiMultiPrinter(prefs);
-                                } else {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Gagal terhubung ke printer Bluetooth.'), backgroundColor: Colors.red),
-                                    );
-                                  }
-                                }
-                              } catch (e) {
-                                debugPrint("Error koneksi: $e");
-                              }
-                            },
-                          );
-                        },
-                      ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal', style: TextStyle(color: Colors.red)))
-              ],
-            );
-          },
-        );
+      if (await canLaunchUrl(waUrl)) {
+        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+      } else {
+        _tampilkanNotif('Tidak dapat membuka WhatsApp.', AppColors.red);
       }
     } catch (e) {
-      debugPrint("Error dialog bluetooth: $e");
+      _tampilkanNotif('Gagal membuka WhatsApp.', AppColors.red);
     }
   }
 
+  void _tampilkanNotif(String pesan, Color warna) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  // ==========================================
+  // WIDGET UTAMA (BODY)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(backgroundColor: AppColors.lightGray, body: Center(child: CircularProgressIndicator(color: AppColors.teal)));
     }
-
-    int subtotalVal = _parseInt(widget.subtotal);
-    if (subtotalVal == 0) {
-      for (var item in widget.keranjang) {
-        if (item['id'] != 0) subtotalVal += _parseInt(item['subtotal']);
-      }
-    }
-
-    int jasaVal = _parseInt(widget.biayaJasa);
-    int ppnVal = _parseInt(widget.ppnNominal);
-    int totalVal = _parseInt(widget.totalBelanja);
-    int tunaiVal = _parseInt(widget.uangDiterima);
-    int kembaliVal = _parseInt(widget.uangKembalian);
 
     return Scaffold(
-      backgroundColor: Colors.grey[200],
+      backgroundColor: AppColors.lightGray,
       appBar: AppBar(
-        title: const Text('Detail Struk Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
+        title: const Text('Detail Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.deepNavy,
         elevation: 0,
+        foregroundColor: AppColors.white,
+        automaticallyImplyLeading: false, // Sembunyikan tombol back bawaan
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Expanded(
+      body: Column(
+        children: [
+          // STRUK KERTAS DIGITAL (Tampilan Utama)
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
               child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(25),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [BoxShadow(color: Colors.grey.withAlpha(50), blurRadius: 10, spreadRadius: 2)],
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))],
                 ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Column(
-                          children: [
-                            const Icon(Icons.check_circle, color: Colors.green, size: 50),
-                            const SizedBox(height: 5),
-                            const Text('Transaksi Berhasil!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            Text('No: ${widget.noStruk}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            if (widget.noMeja != null && widget.noMeja!.isNotEmpty)
-                              Container(
-                                margin: const EdgeInsets.only(top: 10),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                                decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(20)),
-                                child: Text('Meja: ${widget.noMeja}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-                              )
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 25, thickness: 1),
-                      const Text('Rincian Belanja:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      const SizedBox(height: 5),
-                      if (widget.keranjang.isNotEmpty)
-                        ...widget.keranjang.map((item) {
-                          String namaItem = item['nama']?.toString() ?? 'Produk';
-                          int itemHarga = _parseInt(item['harga']);
-                          int itemQty = _parseInt(item['qty']);
-                          int itemSub = _parseInt(item['subtotal']);
-
-                          if (itemSub == 0 && itemHarga > 0 && itemQty > 0) itemSub = itemHarga * itemQty;
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(child: Text("$namaItem (${itemQty}x)", style: const TextStyle(fontSize: 13))),
-                                Text(_formatRp(itemSub), style: const TextStyle(fontSize: 13)),
-                              ],
-                            ),
-                          );
-                        })
-                      else
-                        const Text('Tidak ada item', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      const Divider(height: 25, thickness: 1),
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRp(subtotalVal))]),
-                      if (jasaVal > 0) ...[const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Biaya Jasa'), Text(_formatRp(jasaVal))])],
-                      if (ppnVal > 0) ...[const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('PPN Otomatis'), Text(_formatRp(ppnVal))])],
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Icon Berhasil
+                    Center(
+                      child: Column(
                         children: [
-                          const Text('Total Belanja', style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text(_formatRp(totalVal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueAccent))
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(color: AppColors.emerald.withOpacity(0.15), shape: BoxShape.circle),
+                            child: const Icon(Icons.check_circle, color: AppColors.emerald, size: 50),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text('Transaksi Berhasil!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                          Text(widget.noStruk, style: const TextStyle(color: AppColors.slateGray, fontSize: 13)),
                         ],
                       ),
+                    ),
+                    
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(color: AppColors.lightGray, thickness: 2)),
+                    
+                    // Rincian Barang
+                    const Text('Rincian Pembelanjaan:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.slateGray)),
+                    const SizedBox(height: 10),
+                    ...widget.keranjang.map((item) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(item['nama'] ?? 'Produk', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                                  Text("${item['qty']} x ${_formatRp(item['harga'])}", style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                                ],
+                              ),
+                            ),
+                            Text(_formatRp(item['subtotal']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                          ],
+                        ),
+                      );
+                    }),
+                    
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider(color: AppColors.lightGray, thickness: 2)),
+                    
+                    // Total & Pembayaran
+                    _buildRingkasanRow('Subtotal', _formatRp(widget.subtotal)),
+                    if (_parseInt(widget.ppnNominal) > 0) ...[
                       const SizedBox(height: 6),
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Pembayaran'), Text(widget.metodePembayaran, style: const TextStyle(fontWeight: FontWeight.bold))]),
-                      const SizedBox(height: 4),
-                      if (widget.metodePembayaran == 'Tunai') ...[
-                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Tunai'), Text(_formatRp(tunaiVal))]),
-                        const SizedBox(height: 4),
-                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Kembalian'), Text(_formatRp(kembaliVal), style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))]),
-                      ] else ...[
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          margin: const EdgeInsets.only(top: 5),
-                          decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Transfer / QRIS Ke:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
-                              Text('$namaBank - $rekeningBank', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                              Text('a/n $atasNama', style: const TextStyle(fontSize: 11)),
-                              if (qrQrisPath.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                Center(
-                                  child: Image.network(
-                                    qrQrisPath.startsWith('http') 
-                                        ? qrQrisPath 
-                                        : (qrQrisPath.contains('uploads/qr') 
-                                            ? '$domainUrl/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}' 
-                                            : '$domainUrl/uploads/qr/${qrQrisPath.startsWith('/') ? qrQrisPath.substring(1) : qrQrisPath}'),
-                                    height: 150,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) => const Text(
-                                      'Gagal memuat QRIS',
-                                      style: TextStyle(color: Colors.red, fontSize: 10),
-                                    ),
-                                  ),
-                                ),
-                              ]
-                            ],
-                          ),
-                        )
-                      ],
-                      Divider(height: 25, thickness: 1, color: Colors.grey.shade400),
-                      Center(child: Text('Kasir/Admin: $namaPetugas', style: const TextStyle(color: Colors.grey, fontSize: 11))),
+                      _buildRingkasanRow('PPN Otomatis', _formatRp(widget.ppnNominal)),
                     ],
-                  ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Belanja', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                        Text(_formatRp(widget.totalBelanja), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.smartBlue)),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildRingkasanRow('Metode Pembayaran', widget.metodePembayaran, isBold: true),
+                          const SizedBox(height: 8),
+                          if (widget.metodePembayaran.toLowerCase() == 'tunai') ...[
+                            _buildRingkasanRow('Tunai', _formatRp(widget.uangDiterima)),
+                            const SizedBox(height: 4),
+                            _buildRingkasanRow('Kembalian', _formatRp(widget.uangKembalian), colorValue: AppColors.emerald),
+                          ] else ...[
+                            const Text('Transfer ke:', style: TextStyle(fontSize: 11, color: AppColors.slateGray)),
+                            Text('$namaBank - $rekeningBank', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.darkText)),
+                            Text('a/n $atasNama', style: const TextStyle(fontSize: 12, color: AppColors.darkText)),
+                          ]
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 25),
+                    Center(child: Text('Dilayani oleh: $namaPetugas', style: const TextStyle(color: AppColors.slateGray, fontSize: 11))),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 15),
-            Row(
+          ),
+
+          // PANEL TOMBOL BAWAH
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+            ),
+            child: Column(
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    onPressed: _mulaiProsesCetak, 
-                    icon: const Icon(Icons.print, size: 18),
-                    label: const Text('Cetak Fisik', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
+                Row(
+                  children: [
+                    // Tombol Cetak Fisik
+                    Expanded(
+                      flex: 6,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                        onPressed: isPrinting ? null : _mulaiProsesCetak, 
+                        icon: isPrinting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2)) : const Icon(Icons.print, size: 18, color: AppColors.white),
+                        label: const Text('Cetak Struk Fisik', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Tombol Kirim WA
+                    Expanded(
+                      flex: 4,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.emerald, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                        onPressed: _kirimWhatsApp,
+                        icon: const Icon(Icons.chat, size: 18, color: AppColors.white),
+                        label: const Text('Kirim WA', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    onPressed: _kirimWhatsApp,
-                    icon: const Icon(Icons.share, size: 18),
-                    label: const Text('Kirim WA', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 15),
+                // Tombol Kembali ke Kasir
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: AppColors.smartBlue),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const KerangkaNavigasiPremium()), (route) => false);
+                    },
+                    child: const Text('Transaksi Baru', style: TextStyle(color: AppColors.smartBlue, fontWeight: FontWeight.bold)),
                   ),
-                ),
+                )
               ],
             ),
-            const SizedBox(height: 5),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Transaksi Baru', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 14)),
-            )
-          ],
-        ),
+          )
+        ],
       ),
+    );
+  }
+
+  Widget _buildRingkasanRow(String label, String value, {bool isBold = false, Color colorValue = AppColors.darkText}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: AppColors.slateGray, fontSize: 13)),
+        Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.w600, color: colorValue, fontSize: 13)),
+      ],
     );
   }
 }

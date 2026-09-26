@@ -22,7 +22,12 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
   final String domainUrl = 'https://smartkasir.shop';
   bool isLoading = true;
   int _tokoId = 1;
+  int _userId = 1;
   String _namaToko = 'Toko Anda';
+
+  // State untuk Shift
+  String _statusShift = 'closed';
+  int _modalAwal = 0;
 
   DateTime _tglAwal = DateTime.now().subtract(const Duration(days: 7));
   DateTime _tglAkhir = DateTime.now();
@@ -47,11 +52,108 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _tokoId = prefs.getInt('toko_id') ?? 1;
+      _userId = prefs.getInt('user_id') ?? 1;
       _namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
     });
-    _ambilDataLaporan();
+    
+    await _cekStatusShift();
+    await _ambilDataLaporan();
   }
 
+  // ==========================================
+  // FUNGSI MANAJEMEN SHIFT
+  // ==========================================
+  Future<void> _cekStatusShift() async {
+    try {
+      final res = await http.get(Uri.parse('$domainUrl/api/cekStatusShift/$_userId'), headers: {'Accept': 'application/json'});
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body)['data'];
+        setState(() {
+          _statusShift = data['status_shift'] ?? 'closed';
+          _modalAwal = int.tryParse(data['modal_awal']?.toString() ?? '0') ?? 0;
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal cek shift: $e");
+    }
+  }
+
+  void _tampilkanDialogBukaShift() {
+    TextEditingController modalCtrl = TextEditingController(text: '0');
+    bool isProses = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Buka Shift Kasir', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Masukkan modal awal (uang kembalian) yang ada di laci kasir saat ini.', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: modalCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Modal Awal (Rp)',
+                    prefixIcon: const Icon(Icons.account_balance_wallet, color: AppColors.slateGray),
+                    filled: true, fillColor: AppColors.lightGray,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: isProses ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.slateGray))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.emerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                onPressed: isProses ? null : () async {
+                  setDialogState(() => isProses = true);
+                  try {
+                    await http.post(
+                      Uri.parse('$domainUrl/api/bukaShift'),
+                      headers: {'Content-Type': 'application/json'},
+                      body: json.encode({'user_id': _userId, 'modal_awal': int.tryParse(modalCtrl.text) ?? 0})
+                    );
+                    await _cekStatusShift();
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    _tampilkanNotif('Shift Dibuka! Kasir siap digunakan.', AppColors.emerald);
+                  } catch (e) {
+                    _tampilkanNotif('Gagal membuka shift', AppColors.red);
+                  }
+                  setDialogState(() => isProses = false);
+                },
+                child: isProses ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2)) : const Text('Buka Shift', style: TextStyle(color: AppColors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _tutupShift() async {
+    try {
+      await http.post(
+        Uri.parse('$domainUrl/api/tutupShift'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'user_id': _userId})
+      );
+      await _cekStatusShift();
+      _tampilkanNotif('Shift Ditutup. Laci kasir terkunci.', AppColors.smartBlue);
+    } catch (e) {
+      _tampilkanNotif('Gagal menutup shift', AppColors.red);
+    }
+  }
+
+  // ==========================================
+  // FUNGSI LAPORAN & CETAK
+  // ==========================================
   Future<void> _ambilDataLaporan() async {
     setState(() => isLoading = true);
     String strAwal = DateFormat('yyyy-MM-dd').format(_tglAwal);
@@ -114,9 +216,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
   }
 
-  // ===================================================================
-  // FUNGSI CETAK FISIK LANGSUNG TANPA DIALOG (SILENT RECONNECT)
-  // ===================================================================
   Future<void> _cetakLaporanFisik() async {
     if (kIsWeb || Platform.isIOS) {
       _tampilkanNotif('Platform tidak didukung untuk cetak Bluetooth.', AppColors.red);
@@ -151,14 +250,12 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
         if (!isConnected) {
           bool reconnected = await PrintBluetoothThermal.connect(macPrinterAddress: alamat)
               .timeout(const Duration(seconds: 10), onTimeout: () => false);
-          
           if (!reconnected) {
             await PrintBluetoothThermal.disconnect;
             await Future.delayed(const Duration(seconds: 1));
             reconnected = await PrintBluetoothThermal.connect(macPrinterAddress: alamat)
-              .timeout(const Duration(seconds: 10), onTimeout: () => false);
+                .timeout(const Duration(seconds: 10), onTimeout: () => false);
           }
-
           if (!reconnected) {
             _tampilkanNotif('Gagal terhubung ke printer. Periksa & nyalakan printer Anda.', AppColors.red);
             return;
@@ -167,9 +264,9 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
 
         bool printed = await PrintBluetoothThermal.writeBytes(bytes);
         if (!printed) {
-           await PrintBluetoothThermal.disconnect;
-           bool retry = await PrintBluetoothThermal.connect(macPrinterAddress: alamat).timeout(const Duration(seconds: 7), onTimeout: () => false);
-           if (retry) await PrintBluetoothThermal.writeBytes(bytes);
+          await PrintBluetoothThermal.disconnect;
+          bool retry = await PrintBluetoothThermal.connect(macPrinterAddress: alamat).timeout(const Duration(seconds: 7), onTimeout: () => false);
+          if (retry) await PrintBluetoothThermal.writeBytes(bytes);
         }
       }
     } catch (e) {
@@ -189,7 +286,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     bytes += generator.text("LAPORAN PENJUALAN", styles: const PosStyles(align: PosAlign.center, bold: true));
     bytes += generator.text("Periode: $strAwal - $strAkhir", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-    
     bytes += generator.row([
       PosColumn(text: "Total Omzet", width: 6),
       PosColumn(text: _formatRupiah(metrik['omzet']), width: 6, styles: const PosStyles(align: PosAlign.right)),
@@ -202,7 +298,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
       PosColumn(text: "Laba Bersih", width: 6),
       PosColumn(text: _formatRupiah(metrik['laba_bersih']), width: 6, styles: const PosStyles(align: PosAlign.right)),
     ]);
-    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("10 PRODUK TERLARIS:", styles: const PosStyles(align: PosAlign.left, bold: true));
     bytes += generator.feed(1);
@@ -263,7 +358,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                           Text('Analisis penjualan dan performa bisnis', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
                         ],
                       ),
-                      // Tombol Date Picker
                       InkWell(
                         onTap: _pilihRentangTanggal,
                         child: Container(
@@ -292,6 +386,39 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // --- KARTU MANAJEMEN SHIFT ---
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 25),
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: _statusShift == 'open' ? AppColors.emerald.withOpacity(0.1) : AppColors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: _statusShift == 'open' ? AppColors.emerald : AppColors.red),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_statusShift == 'open' ? 'Shift Sedang Berjalan' : 'Kasir Terkunci', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _statusShift == 'open' ? AppColors.emerald : AppColors.red)),
+                                    const SizedBox(height: 4),
+                                    Text(_statusShift == 'open' ? 'Modal Awal: ${_formatRupiah(_modalAwal)}' : 'Buka shift untuk mulai transaksi', style: const TextStyle(fontSize: 11, color: AppColors.darkText)),
+                                  ],
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _statusShift == 'open' ? AppColors.red : AppColors.emerald,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: _statusShift == 'open' ? _tutupShift : _tampilkanDialogBukaShift,
+                                  child: Text(_statusShift == 'open' ? 'Tutup Shift' : 'Buka Shift', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                                )
+                              ],
+                            ),
+                          ),
+
                           // --- 3 METRIK UTAMA ---
                           Row(
                             children: [
@@ -308,7 +435,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Kiri: Grafik Penjualan
                               Expanded(
                                 flex: 3,
                                 child: Container(
@@ -324,8 +450,8 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                                         child: grafikData.isEmpty 
                                           ? const Center(child: Text('Tidak ada data', style: TextStyle(color: AppColors.slateGray)))
                                           : SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            child: Row(
+                                              scrollDirection: Axis.horizontal,
+                                              child: Row(
                                                 crossAxisAlignment: CrossAxisAlignment.end,
                                                 children: grafikData.map((data) {
                                                   double tinggiTiang = (data['total'] / grafikMax) * 120;
@@ -347,15 +473,13 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                                                   );
                                                 }).toList(),
                                               ),
-                                          ),
+                                            ),
                                       )
                                     ],
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 15),
-                              
-                              // Kanan: Produk Terlaris
                               Expanded(
                                 flex: 4,
                                 child: Container(
@@ -374,7 +498,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                                             padding: const EdgeInsets.only(bottom: 12),
                                             child: Row(
                                               children: [
-                                                // Icon/Gambar kecil
                                                 Container(
                                                   width: 30,
                                                   height: 30,
@@ -409,7 +532,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                 ),
               ],
             ),
-      // Tombol Mengambang (FAB) Untuk Cetak Fisik Instan
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 15),
         child: FloatingActionButton.extended(
