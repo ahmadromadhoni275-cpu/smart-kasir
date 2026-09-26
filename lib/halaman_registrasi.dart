@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'tema.dart'; // Import tema eksklusif
-import 'halaman_login.dart'; // Arahkan kembali ke login setelah sukses
+import 'halaman_login.dart';
 
 class HalamanRegistrasi extends StatefulWidget {
   const HalamanRegistrasi({super.key});
@@ -28,9 +28,9 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
   bool _isLoading = false;
 
   Future<void> _prosesDaftar() async {
-    // Validasi form dasar
-    if (_tokoCtrl.text.isEmpty || _usernameCtrl.text.isEmpty || _passwordCtrl.text.isEmpty) {
-      _tampilkanNotif('Data Belum Lengkap', 'Nama Toko, Username, dan Password wajib diisi.', AppColors.premiumGold);
+    // Validasi form (Email sekarang WAJIB)
+    if (_tokoCtrl.text.isEmpty || _usernameCtrl.text.isEmpty || _passwordCtrl.text.isEmpty || _emailCtrl.text.isEmpty) {
+      _tampilkanNotif('Data Belum Lengkap', 'Nama Toko, Username, Email, dan Password wajib diisi.', AppColors.premiumGold);
       return;
     }
 
@@ -47,7 +47,7 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'nama_toko': _tokoCtrl.text,
-          'username': _usernameCtrl.text.replaceAll(' ', ''), // Hapus spasi untuk username
+          'username': _usernameCtrl.text.replaceAll(' ', ''),
           'no_wa': _waCtrl.text,
           'email': _emailCtrl.text,
           'password': _passwordCtrl.text,
@@ -58,12 +58,10 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
       final resData = json.decode(response.body);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        _tampilkanNotif('Berhasil!', resData['message'] ?? 'Registrasi berhasil.', AppColors.emerald);
-        
-        // Jeda sebentar lalu arahkan ke halaman login
-        await Future.delayed(const Duration(seconds: 2));
+        // Jika sukses, jangan langsung pindah ke login, tapi tampilkan Dialog OTP
+        _tampilkanNotif('Cek Email Anda', resData['message'] ?? 'Kode OTP berhasil dikirim.', AppColors.smartBlue);
         if (mounted) {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HalamanLogin()));
+          _tampilkanDialogOTP(_emailCtrl.text);
         }
       } else {
         _tampilkanNotif('Pendaftaran Gagal', resData['message'] ?? 'Terjadi kesalahan.', AppColors.red);
@@ -73,6 +71,88 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
     }
 
     setState(() => _isLoading = false);
+  }
+
+  // ==========================================
+  // LOGIKA DAN UI DIALOG OTP
+  // ==========================================
+  void _tampilkanDialogOTP(String emailTujuan) {
+    TextEditingController otpCtrl = TextEditingController();
+    bool isVerifying = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Verifikasi Email', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Masukkan 6 digit kode OTP yang telah dikirim ke email: $emailTujuan', style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: otpCtrl,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 20, letterSpacing: 5, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      hintText: '000000',
+                      filled: true, fillColor: AppColors.lightGray,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isVerifying ? null : () => Navigator.pop(dialogCtx), 
+                  child: const Text('Nanti Saja', style: TextStyle(color: AppColors.slateGray))
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: isVerifying ? null : () async {
+                    if (otpCtrl.text.length < 6) {
+                      _tampilkanNotif('Kode tidak valid', 'OTP harus 6 digit.', AppColors.red);
+                      return;
+                    }
+                    
+                    setDialogState(() => isVerifying = true);
+                    
+                    try {
+                      final response = await http.post(
+                        Uri.parse('$domainUrl/api/verifyOtp'),
+                        headers: {'Content-Type': 'application/json'},
+                        body: json.encode({'email': emailTujuan, 'otp_code': otpCtrl.text}),
+                      );
+
+                      if (response.statusCode == 200) {
+                        _tampilkanNotif('Verifikasi Berhasil!', 'Akun Anda telah aktif, silakan masuk.', AppColors.emerald);
+                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                        if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HalamanLogin()));
+                      } else {
+                        final res = json.decode(response.body);
+                        _tampilkanNotif('Verifikasi Gagal', res['message'] ?? 'Kode OTP salah.', AppColors.red);
+                      }
+                    } catch (e) {
+                      _tampilkanNotif('Kesalahan Jaringan', 'Gagal memverifikasi OTP', AppColors.red);
+                    }
+                    if (dialogCtx.mounted) setDialogState(() => isVerifying = false);
+                  },
+                  child: isVerifying 
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2)) 
+                    : const Text('Verifikasi OTP', style: TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            );
+          },
+        );
+      }
+    );
   }
 
   void _tampilkanNotif(String judul, String pesan, Color warna) {
@@ -101,6 +181,9 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
     }
   }
 
+  // ==========================================
+  // WIDGET UTAMA (BODY)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,7 +191,6 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- HEADER DEEP NAVY ---
             Stack(
               children: [
                 Container(
@@ -144,7 +226,6 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
               ],
             ),
 
-            // --- KARTU FORMULIR REGISTRASI ---
             Transform.translate(
               offset: const Offset(0, -60),
               child: Container(
@@ -164,11 +245,11 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
                     
                     const Divider(height: 30, color: AppColors.lightGray),
                     
-                    const Text('Data Pemilik (Admin)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                    const Text('Data Pemilik (Wajib Diisi)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
                     const SizedBox(height: 15),
                     _buildPremiumTextField('Username (Tanpa Spasi)', Icons.person, _usernameCtrl),
+                    _buildPremiumTextField('Email Aktif (Untuk Verifikasi OTP)', Icons.email, _emailCtrl, isEmail: true), // <--- Email Wajib
                     _buildPremiumTextField('Nomor WhatsApp', Icons.phone, _waCtrl, isNumber: true),
-                    _buildPremiumTextField('Email Bisnis (Opsional)', Icons.email, _emailCtrl, isEmail: true),
                     
                     const SizedBox(height: 5),
                     _buildPasswordField('Kata Sandi', _passwordCtrl, _isObscure, (val) => setState(() => _isObscure = val)),
@@ -182,7 +263,6 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
 
                     const SizedBox(height: 30),
                     
-                    // Tombol Daftar
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -195,7 +275,7 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
                         onPressed: _isLoading ? null : _prosesDaftar,
                         child: _isLoading
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
-                            : const Text('Daftar Sekarang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+                            : const Text('Kirim OTP & Daftar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
                       ),
                     ),
                   ],
@@ -203,7 +283,6 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
               ),
             ),
             
-            // Footer Text
             Transform.translate(
               offset: const Offset(0, -40),
               child: Row(
