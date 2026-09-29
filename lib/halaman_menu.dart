@@ -145,7 +145,7 @@ class _HalamanMenuState extends State<HalamanMenu> {
     );
   }
 
-  Widget _buildMenuItem(IconData icon, String title, Color color, VoidCallback onTap, {bool isLogout = false}) {
+    Widget _buildMenuItem(IconData icon, String title, Color color, VoidCallback onTap, {bool isLogout = false}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -153,17 +153,30 @@ class _HalamanMenuState extends State<HalamanMenu> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, color: color, size: 20),
+      child: Material(
+        color: Colors.transparent, // Transparan agar warna Container terlihat
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16), // Efek klik melengkung mengikuti kotak
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isLogout ? AppColors.red : AppColors.darkText)),
+                ),
+                if (!isLogout) const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.slateGray),
+              ],
+            ),
+          ),
         ),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isLogout ? AppColors.red : AppColors.darkText)),
-        trailing: isLogout ? null : const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.slateGray),
       ),
     );
   }
-}
+
