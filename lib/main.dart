@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async'; // Tambahan untuk fungsi Timer/Delay
+import 'package:intl/date_symbol_data_local.dart';
 
 // --- TAMBAHAN IMPORT FIREBASE & NOTIFIKASI ---
 import 'package:firebase_core/firebase_core.dart';
@@ -25,7 +26,7 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  await initializeDateFormatting('id_ID', null);
   // ===================================================================
   // MESIN FIREBASE & PERIZINAN NOTIFIKASI
   // ===================================================================
