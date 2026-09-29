@@ -7,6 +7,7 @@ import 'halaman_beranda.dart'; // Ganti dengan import halaman Anda
 import 'halaman_kasir.dart';
 import 'halaman_transaksi.dart';
 import 'halaman_laporan.dart';
+import 'halaman_menu.dart';
 
 class KerangkaNavigasiPremium extends StatefulWidget {
   const KerangkaNavigasiPremium({super.key});
@@ -22,13 +23,14 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
   String _namaToko = 'Toko Sukses';
 
   // Daftar halaman yang akan ditampilkan berdasarkan index Navbar Bawah
-  final List<Widget> _halaman = [
-    const Center(child: Text('Halaman Dashboard', style: TextStyle(fontSize: 20))), // Index 0
-    const Center(child: Text('Halaman Kasir', style: TextStyle(fontSize: 20))),     // Index 1
-    const Center(child: Text('Halaman Transaksi', style: TextStyle(fontSize: 20))), // Index 2
-    const Center(child: Text('Halaman Laporan', style: TextStyle(fontSize: 20))),   // Index 3
-    // Index 4 (Menu) tidak butuh halaman karena akan memunculkan BottomSheet
+    final List<Widget> _halaman = [
+    const HalamanBeranda(), // Pastikan Anda punya file halaman_dashboard.dart
+    const HalamanKasir(),     // <-- Ini akan memanggil UI Kasir Premium kita
+    const HalamanTransaksi(), // Pastikan Anda punya file halaman_transaksi.dart
+    const HalamanLaporan(),   // <-- Ini akan memanggil UI Laporan & Shift kita
+    const HalamanMenu(),      // Pastikan Anda punya file halaman_menu.dart
   ];
+
 
   @override
   void initState() {
