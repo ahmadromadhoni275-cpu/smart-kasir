@@ -289,7 +289,7 @@ class _HalamanPengaturanState extends State<HalamanPengaturan> {
                             decoration: BoxDecoration(
                               color: AppColors.lightGray,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.smartBlue.withOpacity(0.5), width: 1.5, style: BorderStyle.dash),
+                              border: Border.all(color: AppColors.smartBlue.withOpacity(0.5), width: 1.5, style: BorderStyle.solid),
                             ),
                             child: _imageFile != null
                                 ? ClipRRect(
