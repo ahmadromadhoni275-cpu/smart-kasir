@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
-import 'tema.dart'; // Import tema eksklusif
+import 'tema.dart'; 
 
 class HalamanBeranda extends StatefulWidget {
   const HalamanBeranda({super.key});
@@ -25,7 +25,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     'produk_terjual': 0,
     'laba_bersih': 0
   };
-  
   List grafikData = [];
   int grafikMax = 1;
   List transaksiTerbaru = [];
@@ -53,18 +52,25 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
       if (response.statusCode == 200) {
         final res = json.decode(response.body)['data'];
         setState(() {
-          metrik = res['metrik'];
-          grafikData = res['grafik']['data_harian'];
-          grafikMax = res['grafik']['nilai_tertinggi'] == 0 ? 1 : res['grafik']['nilai_tertinggi'];
-          transaksiTerbaru = res['transaksi_terbaru'];
-          stokMenipis = res['stok_menipis'];
-          produkTerlaris = res['produk_terlaris'];
-          isLoading = false;
+          metrik = res['metrik'] ?? metrik;
+          grafikData = res['grafik']?['data_harian'] ?? [];
+          // Mencegah error pembagian 0 pada grafik
+          grafikMax = (res['grafik']?['nilai_tertinggi'] == null || res['grafik']?['nilai_tertinggi'] == 0) 
+                      ? 1 : res['grafik']['nilai_tertinggi'];
+          transaksiTerbaru = res['transaksi_terbaru'] ?? [];
+          stokMenipis = res['stok_menipis'] ?? [];
+          produkTerlaris = res['produk_terlaris'] ?? [];
         });
+      } else {
+        debugPrint("Error dari server: ${response.statusCode} - ${response.body}");
       }
     } catch (e) {
       debugPrint("Gagal memuat dashboard: $e");
-      setState(() => isLoading = false);
+    } finally {
+      // INI KUNCINYA: Pastikan loading selalu berhenti apa pun hasilnya
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
@@ -88,7 +94,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // --- HEADER GREETING ---
-                    Text('Dashboard', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                    const Text('Dashboard', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.darkText)),
                     const SizedBox(height: 5),
                     Text('Selamat datang kembali, $namaAdmin 👋', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.smartBlue)),
                     Text(tanggalHariIni, style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
@@ -97,7 +103,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                     // --- 4 KOTAK METRIK UTAMA ---
                     Row(
                       children: [
-                        Expanded(child: _buildMetrikCard('Total Omzet', _formatRupiah(metrik['omzet']), Icons.account_balance_wallet, AppColors.premiumGold)),
+                        Expanded(child: _buildMetrikCard('Total Omzet', _formatRupiah(int.parse(metrik['omzet'].toString())), Icons.account_balance_wallet, AppColors.premiumGold)),
                         const SizedBox(width: 15),
                         Expanded(child: _buildMetrikCard('Total Transaksi', '${metrik['total_transaksi']}', Icons.receipt_long, AppColors.smartBlue)),
                       ],
@@ -107,7 +113,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                       children: [
                         Expanded(child: _buildMetrikCard('Produk Terjual', '${metrik['produk_terjual']}', Icons.inventory, AppColors.emerald)),
                         const SizedBox(width: 15),
-                        Expanded(child: _buildMetrikCard('Laba Bersih', _formatRupiah(metrik['laba_bersih']), Icons.trending_up, AppColors.teal)),
+                        Expanded(child: _buildMetrikCard('Laba Bersih', _formatRupiah(int.parse(metrik['laba_bersih'].toString())), Icons.trending_up, AppColors.teal)),
                       ],
                     ),
                     const SizedBox(height: 25),
@@ -121,29 +127,31 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                         children: [
                           const Text('Penjualan 7 Hari Terakhir', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
                           const SizedBox(height: 25),
-                          SizedBox(
-                            height: 150,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: grafikData.map((data) {
-                                double tinggiTiang = (data['total'] / grafikMax) * 120; // 120 adalah tinggi max container visual
-                                if (data['total'] > 0 && tinggiTiang < 10) tinggiTiang = 10; // Minimal tinggi jika ada penjualan
-                                return Column(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    Container(
-                                      width: 15,
-                                      height: tinggiTiang,
-                                      decoration: BoxDecoration(color: AppColors.teal, borderRadius: BorderRadius.circular(4)),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(data['hari_singkat'], style: const TextStyle(fontSize: 10, color: AppColors.slateGray)),
-                                  ],
-                                );
-                              }).toList(),
-                            ),
-                          )
+                          grafikData.isEmpty 
+                              ? const Center(child: Text("Belum ada data penjualan", style: TextStyle(color: AppColors.slateGray)))
+                              : SizedBox(
+                                  height: 150,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: grafikData.map((data) {
+                                      double tinggiTiang = (double.parse(data['total'].toString()) / grafikMax) * 120; 
+                                      if (double.parse(data['total'].toString()) > 0 && tinggiTiang < 10) tinggiTiang = 10; 
+                                      return Column(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          Container(
+                                            width: 15,
+                                            height: tinggiTiang,
+                                            decoration: BoxDecoration(color: AppColors.teal, borderRadius: BorderRadius.circular(4)),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Text(data['hari_singkat'], style: const TextStyle(fontSize: 10, color: AppColors.slateGray)),
+                                        ],
+                                      );
+                                    }).toList(),
+                                  ),
+                                )
                         ],
                       ),
                     ),
@@ -163,24 +171,28 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                               children: [
                                 const Text('Transaksi Terbaru', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
                                 const SizedBox(height: 15),
-                                ...transaksiTerbaru.map((trx) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text('TRX-${trx['id']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.darkText)),
-                                            Text(DateFormat('dd MMM - HH:mm').format(DateTime.parse(trx['tanggal'])), style: const TextStyle(fontSize: 9, color: AppColors.slateGray)),
-                                          ],
-                                        ),
-                                        Text(_formatRupiah(int.parse(trx['total_harga'].toString())), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.smartBlue)),
-                                      ],
-                                    ),
-                                  );
-                                }),
+                                transaksiTerbaru.isEmpty
+                                    ? const Text('Belum ada transaksi', style: TextStyle(fontSize: 11, color: AppColors.slateGray))
+                                    : Column(
+                                        children: transaksiTerbaru.map((trx) {
+                                          return Padding(
+                                            padding: const EdgeInsets.only(bottom: 12),
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text('TRX-${trx['id']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.darkText)),
+                                                    Text(DateFormat('dd MMM - HH:mm').format(DateTime.parse(trx['tanggal'])), style: const TextStyle(fontSize: 9, color: AppColors.slateGray)),
+                                                  ],
+                                                ),
+                                                Text(_formatRupiah(int.parse(trx['total_harga'].toString())), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.smartBlue)),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
                               ],
                             ),
                           ),
@@ -198,23 +210,27 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                                   children: [
                                     const Text('Stok Hampir Habis', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
                                     const SizedBox(height: 15),
-                                    ...stokMenipis.map((stok) {
-                                      int jml = int.parse(stok['stok'].toString());
-                                      return Padding(
-                                        padding: const EdgeInsets.only(bottom: 12),
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(child: Text(stok['nama'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkText))),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(color: jml == 0 ? AppColors.red.withOpacity(0.1) : AppColors.premiumGold.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                                              child: Text('$jml pcs', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: jml == 0 ? AppColors.red : AppColors.premiumGold)),
-                                            )
-                                          ],
-                                        ),
-                                      );
-                                    }),
+                                    stokMenipis.isEmpty
+                                        ? const Text('Stok aman', style: TextStyle(fontSize: 11, color: AppColors.slateGray))
+                                        : Column(
+                                            children: stokMenipis.map((stok) {
+                                              int jml = int.parse(stok['stok'].toString());
+                                              return Padding(
+                                                padding: const EdgeInsets.only(bottom: 12),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Expanded(child: Text(stok['nama'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkText))),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(color: jml == 0 ? AppColors.red.withOpacity(0.1) : AppColors.premiumGold.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                                      child: Text('$jml pcs', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: jml == 0 ? AppColors.red : AppColors.premiumGold)),
+                                                    )
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
                                   ],
                                 ),
                               ),
