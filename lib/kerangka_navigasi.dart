@@ -6,10 +6,11 @@ import 'halaman_beranda.dart';
 import 'halaman_kasir.dart';
 import 'halaman_transaksi.dart';
 import 'halaman_laporan.dart';
-import 'halaman_login.dart'; // Diperlukan untuk proses Logout
-import 'halaman_pengaturan.dart'; // Import halaman lainnya
+import 'halaman_login.dart'; 
+import 'halaman_pengaturan.dart'; 
 import 'halaman_printer.dart';
 import 'halaman_pelanggan.dart';
+import 'halaman_langganan.dart'; // Tambahkan import halaman langganan
 
 class KerangkaNavigasiPremium extends StatefulWidget {
   const KerangkaNavigasiPremium({super.key});
@@ -151,7 +152,7 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
                   title: const Text('Langganan Sistem', style: TextStyle(fontWeight: FontWeight.bold)),
                   onTap: () {
                     Navigator.pop(context);
-                    _tampilkanNotifBelumTersedia('Langganan Sistem');
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLangganan())); // <-- Arahkan ke Halaman Langganan
                   },
                 ),
               const Divider(thickness: 1, color: AppColors.lightGray),
@@ -168,7 +169,7 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
                 title: const Text('Keluar Akun', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.red)),
                 onTap: () {
                   Navigator.pop(context);
-                  _prosesLogout(); // <-- Panggil fungsi logout
+                  _prosesLogout(); 
                 },
               ),
             ],
@@ -241,12 +242,12 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
             constraints: const BoxConstraints(),
             padding: const EdgeInsets.symmetric(horizontal: 8),
             onPressed: () {
-               _tampilkanNotifBelumTersedia('Pusat Bantuan');
+              _tampilkanNotifBelumTersedia('Pusat Bantuan');
             },
           ),
           // PROFIL USER (BISA DI-KLIK UNTUK LOGOUT/PROFIL)
           InkWell(
-            onTap: _prosesLogout, // <-- Klik area profil untuk Logout/opsi lain
+            onTap: _prosesLogout, 
             child: Padding(
               padding: const EdgeInsets.only(right: 15, left: 5),
               child: Row(

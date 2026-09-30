@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Untuk fitur Copy to Clipboard
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
-import 'tema.dart'; // Import tema premium eksklusif
+import 'tema.dart'; 
 
 class HalamanLangganan extends StatefulWidget {
   const HalamanLangganan({super.key});
@@ -16,20 +17,23 @@ class HalamanLangganan extends StatefulWidget {
 
 class _HalamanLanggananState extends State<HalamanLangganan> {
   final String domainUrl = 'https://smartkasir.shop';
-  
   bool isLoading = true;
   bool isSaving = false;
   
   int _tokoId = 1;
+  int _userId = 1;
   String _masaAktif = '-';
   int _sisaHari = 0;
-  
   List _paketList = [];
   String _rekeningTujuan = 'Memuat informasi rekening...';
   int? _selectedPaketId;
   
   final ImagePicker _picker = ImagePicker();
   XFile? _imageFile;
+
+  // --- Variabel Referral ---
+  String _kodeReferral = '';
+  List _invitedUsers = [];
 
   @override
   void initState() {
@@ -41,15 +45,16 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _tokoId = prefs.getInt('toko_id') ?? 1;
+      _userId = prefs.getInt('user_id') ?? 1; 
     });
     
     await _ambilDataToko();
     await _ambilPaketLangganan();
+    await _ambilDataReferral(); 
     
     setState(() => isLoading = false);
   }
 
-  // Mengambil informasi masa aktif toko saat ini
   Future<void> _ambilDataToko() async {
     try {
       final response = await http.get(Uri.parse('$domainUrl/api/detailToko/$_tokoId'), headers: {'Accept': 'application/json'});
@@ -69,7 +74,6 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
     }
   }
 
-  // Mengambil daftar paket langganan dan rekening tujuan dari API
   Future<void> _ambilPaketLangganan() async {
     try {
       final response = await http.get(Uri.parse('$domainUrl/api/getPaketLangganan'), headers: {'Accept': 'application/json'});
@@ -82,6 +86,22 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
       }
     } catch (e) {
       debugPrint("Gagal memuat paket langganan: $e");
+    }
+  }
+
+  // Mengambil Kode Undangan dan Data Orang yang Diundang
+  Future<void> _ambilDataReferral() async {
+    try {
+      final response = await http.get(Uri.parse('$domainUrl/api/langgananReferral/$_userId'), headers: {'Accept': 'application/json'});
+      if (response.statusCode == 200) {
+        final resData = json.decode(response.body)['data'];
+        setState(() {
+          _kodeReferral = resData['referral_code'] ?? '';
+          _invitedUsers = resData['invited_users'] ?? [];
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat data referral: $e");
     }
   }
 
@@ -121,14 +141,10 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final resData = json.decode(response.body);
         _tampilkanNotif('Berhasil!', resData['message'] ?? 'Bukti pembayaran terkirim. Menunggu verifikasi admin pusat.', AppColors.emerald);
-        
-        // Reset form setelah sukses
         setState(() {
           _selectedPaketId = null;
           _imageFile = null;
         });
-        
-        // Arahkan kembali ke dashboard atau pop up konfirmasi
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) Navigator.pop(context);
         });
@@ -140,6 +156,12 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
     }
 
     setState(() => isSaving = false);
+  }
+
+  void _salinLinkUndangan() {
+    String link = '$domainUrl/register?ref=$_kodeReferral';
+    Clipboard.setData(ClipboardData(text: link));
+    _tampilkanNotif('Disalin!', 'Link undangan berhasil disalin.', AppColors.emerald);
   }
 
   void _tampilkanNotif(String judul, String pesan, Color warna) {
@@ -189,7 +211,6 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
             icon: const Icon(Icons.history, color: AppColors.white),
             tooltip: 'Riwayat Pembayaran',
             onPressed: () {
-              // Navigasi ke Riwayat Langganan (Jika ada)
               _tampilkanNotif('Info', 'Fitur Riwayat Pembayaran akan segera hadir.', AppColors.smartBlue);
             },
           ),
@@ -285,10 +306,8 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
                             ),
                             child: Row(
                               children: [
-                                // Radio Icon
                                 Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: isSelected ? AppColors.teal : AppColors.slateGray),
                                 const SizedBox(width: 15),
-                                
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,8 +318,6 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
                                     ],
                                   ),
                                 ),
-                                
-                                // Harga
                                 Text(_formatRupiah(harga), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isSelected ? AppColors.teal : AppColors.smartBlue)),
                               ],
                             ),
@@ -330,7 +347,7 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.dash)),
+                          decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid)), // Perbaikan: dash ke solid
                           child: SelectableText(
                             _rekeningTujuan,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText),
@@ -338,10 +355,8 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        
                         const Text('Upload Bukti Transfer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
                         const SizedBox(height: 10),
-                        
                         InkWell(
                           onTap: _pilihBuktiTransfer,
                           borderRadius: BorderRadius.circular(12),
@@ -351,12 +366,11 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
                             decoration: BoxDecoration(
                               color: AppColors.lightGray,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.smartBlue.withOpacity(0.5), width: 1.5, style: BorderStyle.dash),
+                              border: Border.all(color: AppColors.smartBlue.withOpacity(0.5), width: 1.5, style: BorderStyle.solid), // Perbaikan: dash ke solid
                             ),
                             child: _imageFile != null
                                 ? ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
-                                    // Membaca file lokal menggunakan ImageProvider memori/future (untuk Web & Android)
                                     child: FutureBuilder(
                                       future: _imageFile!.readAsBytes(),
                                       builder: (context, snapshot) {
@@ -380,10 +394,96 @@ class _HalamanLanggananState extends State<HalamanLangganan> {
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 30),
+
+                  // --- KARTU KODE REFERRAL ---
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('Program Referral / Undangan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                  ),
+                  const SizedBox(height: 15),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                    child: Column(
+                      children: [
+                        const Text('Undang teman untuk berlangganan Smart Kasir menggunakan link Anda dan dapatkan saldo/bonus tambahan!', textAlign: TextAlign.center, style: TextStyle(color: AppColors.slateGray, fontSize: 12)),
+                        const SizedBox(height: 15),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                          decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid)),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '$domainUrl/register?ref=$_kodeReferral',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.smartBlue),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              InkWell(
+                                onTap: _salinLinkUndangan,
+                                child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.teal.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.copy, size: 18, color: AppColors.teal)),
+                              )
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 25),
+
+                  // --- TABEL BERHASIL DIUNDANG ---
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('Telah Berlangganan (Dari Undangan)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+                  ),
+                  const SizedBox(height: 15),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                    child: _invitedUsers.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  Icon(Icons.group_off, color: AppColors.slateGray, size: 40),
+                                  SizedBox(height: 10),
+                                  Text('Belum ada undangan yang berlangganan.', style: TextStyle(color: AppColors.slateGray, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _invitedUsers.length,
+                            separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.lightGray),
+                            itemBuilder: (context, index) {
+                              var user = _invitedUsers[index];
+                              return ListTile(
+                                leading: CircleAvatar(backgroundColor: AppColors.emerald.withOpacity(0.1), child: const Icon(Icons.check_circle, color: AppColors.emerald, size: 20)),
+                                title: Text(user['nama_toko'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                subtitle: Text('Admin: ${user['username']}', style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: AppColors.premiumGold.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                                  child: Text(user['paket_langganan'] ?? 'Aktif', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
                 ],
               ),
             ),
-            
+
       // --- BOTTOM ACTION BUTTON ---
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(20),
