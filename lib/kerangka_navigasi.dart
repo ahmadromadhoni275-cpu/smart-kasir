@@ -10,7 +10,8 @@ import 'halaman_login.dart';
 import 'halaman_pengaturan.dart'; 
 import 'halaman_printer.dart';
 import 'halaman_pelanggan.dart';
-import 'halaman_langganan.dart'; // Tambahkan import halaman langganan
+import 'halaman_langganan.dart'; 
+import 'halaman_produk.dart'; // <-- TAMBAHAN IMPORT HALAMAN PRODUK
 
 class KerangkaNavigasiPremium extends StatefulWidget {
   const KerangkaNavigasiPremium({super.key});
@@ -120,6 +121,15 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPelanggan()));
                 },
               ),
+              // <-- TAMBAHAN MENU MANAJEMEN PRODUK -->
+              ListTile(
+                leading: const Icon(Icons.inventory_2_outlined, color: AppColors.emerald),
+                title: const Text('Manajemen Produk', style: TextStyle(fontWeight: FontWeight.bold)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanProduk()));
+                },
+              ),
               const Divider(thickness: 1, color: AppColors.lightGray),
               ListTile(
                 leading: const Icon(Icons.settings, color: AppColors.slateGray),
@@ -152,7 +162,7 @@ class _KerangkaNavigasiPremiumState extends State<KerangkaNavigasiPremium> {
                   title: const Text('Langganan Sistem', style: TextStyle(fontWeight: FontWeight.bold)),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLangganan())); // <-- Arahkan ke Halaman Langganan
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanLangganan()));
                   },
                 ),
               const Divider(thickness: 1, color: AppColors.lightGray),
