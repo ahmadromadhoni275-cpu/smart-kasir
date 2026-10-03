@@ -4,9 +4,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
-import 'tema.dart'; // Import tema eksklusif
-import 'halaman_struk.dart'; // Import halaman struk
+import 'tema.dart'; 
+import 'halaman_struk.dart'; 
 import 'kerangka_navigasi.dart';
+import 'halaman_laporan.dart'; // <-- Pastikan ini di-import
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -17,10 +18,8 @@ class HalamanKasir extends StatefulWidget {
 
 class _HalamanKasirState extends State<HalamanKasir> {
   final String domainUrl = 'https://smartkasir.shop';
-  
   bool isLoading = true;
-  bool isShiftTerbuka = false; // <-- Diubah ke false agar terkunci secara default
-  
+  bool isShiftTerbuka = false; 
   int _tokoId = 1;
   int _userId = 1;
   int _ppnPersen = 0;
@@ -30,7 +29,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   List filteredProduk = [];
   List<Map<String, dynamic>> keranjang = [];
 
-  int _kategoriTerpilih = 0; // 0 = Semua
+  int _kategoriTerpilih = 0; 
   String kataKunci = "";
   TextEditingController searchCtrl = TextEditingController();
 
@@ -55,7 +54,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
       await _ambilDataProduk();
     }
 
-    setState(() => isLoading = false);
+    if (mounted) {
+      setState(() => isLoading = false);
+    }
   }
 
   // ==========================================
@@ -234,9 +235,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: () {
-                    // Arahkan ke menu laporan menggunakan kerangka navigasi
-                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const KerangkaNavigasiPremium()), (route) => false);
+                  onPressed: () async {
+                    // PERBAIKAN: Arahkan ke Laporan, tunggu sampai kembali, lalu refresh data
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const HalamanLaporan()),
+                    );
+                    
+                    // Setelah kembali dari Halaman Laporan, loading sebentar & cek status shift terbaru
+                    setState(() => isLoading = true);
+                    _inisialisasiData();
                   },
                   icon: const Icon(Icons.open_in_new, color: AppColors.white, size: 18),
                   label: const Text('Buka Menu Laporan / Shift', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
@@ -420,8 +428,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
     return GridView.builder(
       padding: const EdgeInsets.all(15),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 180, // Ukuran kartu produk
-        childAspectRatio: 0.8, // Rasio Tinggi vs Lebar
+        maxCrossAxisExtent: 180, 
+        childAspectRatio: 0.8, 
         crossAxisSpacing: 15,
         mainAxisSpacing: 15,
       ),
@@ -439,7 +447,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Gambar Placeholder
                 Expanded(
                   child: Container(
                     width: double.infinity,
@@ -473,7 +480,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Widget _buildPanelKeranjang({bool isDesktop = false}) {
     return Column(
       children: [
-        // Header Keranjang
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -498,7 +504,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ),
         ),
 
-        // List Item di Keranjang
         Expanded(
           child: keranjang.isEmpty
               ? const Center(
@@ -536,7 +541,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               ],
                             ),
                           ),
-                          // Control Qty
                           Row(
                             children: [
                               InkWell(
@@ -560,7 +564,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 ),
         ),
 
-        // Summary & Tombol Bayar
         if (keranjang.isNotEmpty)
           Container(
             padding: const EdgeInsets.all(20),
@@ -618,7 +621,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             onPressed: () {
-              // Buka BottomSheet untuk detail keranjang HP
               showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
@@ -735,7 +737,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     }
 
                     setDialogState(() => isProcessing = true);
-                    // Siapkan Data JSON
+                    
                     Map<String, dynamic> payload = {
                       "toko_id": _tokoId,
                       "user_id": _userId,
@@ -765,7 +767,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         if (dialogCtx.mounted) Navigator.pop(dialogCtx);
                         List<Map<String, dynamic>> keranjangSnapshot = List.from(keranjang);
                         _kosongkanKeranjang();
-                        await _ambilDataProduk(); // Update Stok
+                        await _ambilDataProduk(); 
 
                         if (context.mounted) {
                           Navigator.push(context, MaterialPageRoute(builder: (context) => HalamanStruk(
@@ -795,7 +797,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
             );
           },
         );
-      }
+      },
     );
   }
 }
