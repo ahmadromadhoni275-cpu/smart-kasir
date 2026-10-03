@@ -5,6 +5,7 @@ import 'tema.dart'; // Import tema eksklusif
 import 'halaman_pengaturan.dart';
 import 'halaman_printer.dart';
 import 'halaman_pelanggan.dart';
+import 'halaman_produk.dart'; // <-- TAMBAHAN: Import halaman produk
 import 'halaman_login.dart';
 
 class HalamanMenu extends StatefulWidget {
@@ -48,7 +49,6 @@ class _HalamanMenuState extends State<HalamanMenu> {
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear(); // Hapus semua sesi
-              
               if (mounted) {
                 Navigator.pushAndRemoveUntil(
                   context,
@@ -124,6 +124,11 @@ class _HalamanMenuState extends State<HalamanMenu> {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPelanggan()));
                     }),
                     
+                    // <-- TAMBAHAN: Menu Manajemen Produk -->
+                    _buildMenuItem(Icons.inventory_2_outlined, 'Manajemen Produk', AppColors.emerald, () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanProduk()));
+                    }),
+                    
                     const SizedBox(height: 20),
                     const Text('Perangkat & Sistem', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.slateGray, fontSize: 13)),
                     const SizedBox(height: 10),
@@ -145,7 +150,7 @@ class _HalamanMenuState extends State<HalamanMenu> {
     );
   }
 
-    Widget _buildMenuItem(IconData icon, String title, Color color, VoidCallback onTap, {bool isLogout = false}) {
+  Widget _buildMenuItem(IconData icon, String title, Color color, VoidCallback onTap, {bool isLogout = false}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -154,10 +159,10 @@ class _HalamanMenuState extends State<HalamanMenu> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Material(
-        color: Colors.transparent, // Transparan agar warna Container terlihat
+        color: Colors.transparent, 
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16), // Efek klik melengkung mengikuti kotak
+          borderRadius: BorderRadius.circular(16), 
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
@@ -179,4 +184,4 @@ class _HalamanMenuState extends State<HalamanMenu> {
       ),
     );
   }
-
+}
