@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tema.dart';
 import 'halaman_registrasi.dart';
-import 'halaman_beranda.dart'; // Ganti dengan rute Dashboard/Kerangka Anda
+import 'halaman_beranda.dart'; 
 
 class HalamanLogin extends StatefulWidget {
   const HalamanLogin({super.key});
@@ -17,7 +17,6 @@ class HalamanLogin extends StatefulWidget {
 class _HalamanLoginState extends State<HalamanLogin> {
   // Ganti dengan URL API Anda (Codespaces URL atau domain)
   final String domainUrl = 'https://smartkasir.shop/api'; 
-  
   final TextEditingController _emailCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
   bool _isLoading = false;
@@ -45,22 +44,49 @@ class _HalamanLoginState extends State<HalamanLogin> {
 
       if (response.statusCode == 200) {
         final data = resData['data'];
-        
-        // Simpan sesi berstandar struktur DB baru Anda
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('user_id', int.parse(data['user_id'].toString()));
-        await prefs.setInt('store_id', int.parse(data['store_id'].toString()));
-        await prefs.setInt('business_id', int.parse(data['business_id'].toString()));
-        await prefs.setString('username', data['name']);
-        await prefs.setString('nama_toko', data['store_name']);
-        await prefs.setString('role', data['role']); // OWNER, MANAGER, KASIR
-        await prefs.setBool('is_logged_in', true);
+        final List stores = data['stores'] ?? [];
+        final String token = resData['token'] ?? '';
 
-        if (mounted) {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HalamanBeranda()));
+        if (stores.isEmpty) {
+          _showNotif('Anda tidak memiliki akses ke toko mana pun.', AppColors.error);
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        
+        // 1. SIMPAN IDENTITAS UNIVERSAL & JWT TOKEN
+        await prefs.setString('jwt_token', token);
+        await prefs.setInt('user_id', int.parse(data['user_id'].toString()));
+        await prefs.setString('username', data['name']);
+
+        // 2. CEK JUMLAH CABANG UNTUK ROUTING
+        if (stores.length == 1) {
+          // ALUR AUTO (Hanya punya 1 cabang)
+          final store = stores[0];
+          await prefs.setInt('store_id', int.parse(store['store_id'].toString()));
+          await prefs.setInt('business_id', int.parse(store['business_id'].toString()));
+          await prefs.setString('nama_toko', store['store_name']);
+          await prefs.setString('role', store['role']); // OWNER, MANAGER, KASIR
+          await prefs.setBool('is_logged_in', true);
+
+          if (mounted) {
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HalamanBeranda()));
+          }
+        } else {
+          // ALUR PILIH CABANG (> 1 Cabang)
+          await prefs.setString('daftar_cabang', json.encode(stores));
+          
+          if (mounted) {
+            // Arahkan ke halaman pilih cabang
+            // Pastikan Anda sudah mendaftarkan '/pilih_cabang' di routes MaterialApp (main.dart)
+            Navigator.pushReplacementNamed(context, '/pilih_cabang');
+          }
         }
       } else {
-        _showNotif(resData['messages']?['error'] ?? 'Login Gagal', AppColors.error);
+        // Tangkap pesan error dari CI4 (baik format custom resData['message'] maupun bawaan CI4 resData['messages']['error'])
+        String errorMsg = resData['message'] ?? (resData['messages'] != null ? resData['messages']['error'] : 'Login Gagal');
+        _showNotif(errorMsg, AppColors.error);
       }
     } catch (e) {
       _showNotif('Koneksi ke server gagal', AppColors.error);
@@ -155,7 +181,6 @@ class _HalamanLoginState extends State<HalamanLogin> {
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primaryEmerald, width: 1.5)),
                       ),
                     ),
-                    
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
@@ -165,7 +190,7 @@ class _HalamanLoginState extends State<HalamanLogin> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Tombol Login (Responsive Emerald -> Navy Hover effect handled by ButtonStyle)
+                    // Tombol Login
                     SizedBox(
                       width: double.infinity,
                       height: 50,

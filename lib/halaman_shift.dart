@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
-import 'dart:io';
+import 'tema.dart';
+import 'services/api_service.dart';
 
 class HalamanShift extends StatefulWidget {
   const HalamanShift({super.key});
@@ -16,28 +14,15 @@ class HalamanShift extends StatefulWidget {
 }
 
 class _HalamanShiftState extends State<HalamanShift> {
-  final String baseUrl = 'https://smartkasir.shop/api';
-  bool isLoading = false;
+  bool _isLoading = true;
+  Map<String, dynamic>? _activeShift;
+  
+  String _namaKasir = '';
+  String _namaCabang = '';
 
-  // Variabel Sesi User & Toko
-  int tokoId = 1;
-  int userId = 1;
-  String namaKasir = 'Kasir';
-
-  // Variabel Data Shift
-  bool isShiftBuka = false;
-  int shiftId = 0; 
-  int modalAwal = 0;
-  String waktuBuka = '';
-
-  // Data dari API Rekap Harian
-  int totalTunaiSistem = 0;
-  int totalNonTunaiSistem = 0;
-
-  // Controller Input
-  TextEditingController modalAwalCtrl = TextEditingController();
-  TextEditingController uangFisikCtrl = TextEditingController();
-  TextEditingController catatanShiftCtrl = TextEditingController();
+  // Controller Buka Shift
+  final TextEditingController _openingCashCtrl = TextEditingController();
+  final TextEditingController _openNoteCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -46,437 +31,347 @@ class _HalamanShiftState extends State<HalamanShift> {
   }
 
   Future<void> _inisialisasiData() async {
-    setState(() => isLoading = true);
     final prefs = await SharedPreferences.getInstance();
-    tokoId = prefs.getInt('toko_id') ?? 1;
-    userId = prefs.getInt('user_id') ?? 1;
-    namaKasir = prefs.getString('username') ?? 'Kasir';
-
-    await _cekStatusShiftApi();
+    setState(() {
+      _namaKasir = prefs.getString('username') ?? 'Kasir';
+      _namaCabang = prefs.getString('nama_toko') ?? 'Cabang';
+    });
+    await _cekShiftAktif();
   }
 
-  Future<void> _cekStatusShiftApi() async {
+  Future<void> _cekShiftAktif() async {
+    setState(() => _isLoading = true);
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/shift/status/$tokoId/$userId'),
-        headers: {'Accept': 'application/json'}
-      );
+      final response = await ApiService.get('shifts/current');
       if (response.statusCode == 200) {
-        final res = json.decode(response.body);
-        if (res['status'] == true && res['data'] != null) {
-          setState(() {
-            isShiftBuka = true;
-            // PERBAIKAN BUG 1: HARUS MEMAKAI 'shift_id', BUKAN 'id'
-            shiftId = int.parse(res['data']['shift_id'].toString());
-            modalAwal = int.parse(res['data']['modal_awal'].toString());
-            
-            DateTime parsedDate = DateTime.parse(res['data']['waktu_buka']);
-            waktuBuka = DateFormat('dd MMM yyyy, HH:mm').format(parsedDate);
-          });
-          
-          await _tarikTunaiSistem();
-        } else {
-          setState(() {
-            isShiftBuka = false;
-            shiftId = 0;
-            modalAwal = 0;
-            waktuBuka = '';
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint('Error cek status shift: $e');
-    }
-    setState(() => isLoading = false);
-  }
-
-  Future<void> _tarikTunaiSistem() async {
-    try {
-      // PERBAIKAN BUG 2: TAMBAHKAN ?toko_id=$tokoId AGAR OMSET TIDAK NYASAR KE TOKO 1
-      final response = await http.get(
-        Uri.parse('$baseUrl/rekap?toko_id=$tokoId'),
-        headers: {'Accept': 'application/json'}
-      );
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final totals = data['totals'];
+        final resData = json.decode(response.body);
         setState(() {
-          totalTunaiSistem = int.tryParse(totals['tunai'].toString() == 'null' ? '0' : totals['tunai'].toString()) ?? 0;
-          totalNonTunaiSistem = int.tryParse(totals['non_tunai'].toString() == 'null' ? '0' : totals['non_tunai'].toString()) ?? 0;
+          _activeShift = resData['data']; // null jika tidak ada shift aktif
         });
       }
     } catch (e) {
-      debugPrint('Error get rekap tunai: $e');
+      _showNotif('Gagal memuat status shift', AppColors.error);
     }
+    setState(() => _isLoading = false);
   }
 
+  String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
+
+  void _showNotif(String pesan, Color warna) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
+  }
+
+  // =========================================================
+  // AKSI API: BUKA SHIFT
+  // =========================================================
   Future<void> _prosesBukaShift() async {
-    if (modalAwalCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Modal awal tidak boleh kosong!'), backgroundColor: Colors.red));
+    if (_openingCashCtrl.text.isEmpty) {
+      _showNotif('Modal awal wajib diisi', AppColors.error);
       return;
     }
 
-    setState(() => isLoading = true);
-    int inputModal = int.tryParse(modalAwalCtrl.text) ?? 0;
-
+    setState(() => _isLoading = true);
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/shift/buka'),
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: json.encode({
-          'toko_id': tokoId,
-          'user_id': userId,
-          'modal_awal': inputModal
-        })
-      );
+      final payload = {
+        'opening_cash': double.tryParse(_openingCashCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+        'notes': _openNoteCtrl.text.isEmpty ? null : _openNoteCtrl.text,
+      };
 
-      final res = json.decode(response.body);
-      if ((response.statusCode == 200 || response.statusCode == 201) && res['status'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Shift Kasir Berhasil Dibuka!'), backgroundColor: Colors.green),
-        );
-        modalAwalCtrl.clear();
-        await _cekStatusShiftApi(); 
+      final response = await ApiService.post('shifts/open', payload);
+      final resData = json.decode(response.body);
+
+      if (response.statusCode == 201) {
+        _showNotif('Shift berhasil dibuka!', AppColors.greenAccent);
+        _openingCashCtrl.clear();
+        _openNoteCtrl.clear();
+        await _cekShiftAktif(); // Refresh tampilan ke mode Shift Aktif
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Gagal membuka shift'), backgroundColor: Colors.red));
-        setState(() => isLoading = false);
+        _showNotif(resData['message'] ?? 'Gagal membuka shift', AppColors.error);
       }
     } catch (e) {
-      setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error server saat membuka shift'), backgroundColor: Colors.red));
+      _showNotif('Terjadi kesalahan sistem', AppColors.error);
     }
+    setState(() => _isLoading = false);
   }
 
-  void _konfirmasiTutupShift() {
-    int uangFisik = int.tryParse(uangFisikCtrl.text) ?? 0;
-    int uangSeharusnya = modalAwal + totalTunaiSistem; 
-    int selisih = uangFisik - uangSeharusnya;
+  // =========================================================
+  // MODAL & AKSI API: TUTUP SHIFT (Dengan Hitung Selisih Real-time)
+  // =========================================================
+  void _tampilkanModalTutupShift() {
+    if (_activeShift == null) return;
 
-    showDialog(
+    final TextEditingController actualCashCtrl = TextEditingController();
+    final TextEditingController closeNoteCtrl = TextEditingController();
+    
+    double expectedCash = double.parse(_activeShift!['expected_cash'].toString());
+    bool isProcessing = false;
+
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Tutup Shift', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Modal Awal Laci: ${_formatRp(modalAwal)}', style: const TextStyle(color: Colors.grey)),
-            Text('Total Tunai Masuk: ${_formatRp(totalTunaiSistem)}', style: const TextStyle(color: Colors.grey)),
-            const Divider(thickness: 1),
-            Text('Sistem Seharusnya: ${_formatRp(uangSeharusnya)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text('Fisik Laci: ${_formatRp(uangFisik)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const Divider(thickness: 1),
-            Text(
-              selisih == 0 
-                  ? 'STATUS: BALANCE (SESUAI) ✅' 
-                  : selisih > 0 
-                      ? 'STATUS: LEBIH ${_formatRp(selisih)} ⚠️' 
-                      : 'STATUS: MINUS / KURANG ${_formatRp(selisih.abs())} ❌',
-              style: TextStyle(
-                fontWeight: FontWeight.bold, 
-                color: selisih == 0 ? Colors.green : Colors.red
-              )
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          double actualCash = double.tryParse(actualCashCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+          double difference = actualCash - expectedCash;
+          
+          Color diffColor = difference < 0 ? AppColors.error : (difference > 0 ? AppColors.greenAccent : AppColors.textSecondary);
+
+          return Container(
+            padding: EdgeInsets.only(top: 24, left: 24, right: 24, bottom: MediaQuery.of(context).viewInsets.bottom + 24),
+            decoration: const BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Tutup Shift', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  const SizedBox(height: 24),
+
+                  // Ringkasan Sistem
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+                    child: Column(
+                      children: [
+                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Modal Awal', style: TextStyle(color: AppColors.textSecondary)), Text(_formatRupiah(double.parse(_activeShift!['opening_cash'].toString())), style: const TextStyle(fontWeight: FontWeight.bold))]),
+                        const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
+                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Expected Cash (Sistem)', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)), Text(_formatRupiah(expectedCash), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 16))]),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Input Kasir
+                  TextField(
+                    controller: actualCashCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      labelText: 'Uang Fisik di Laci (Actual Cash)',
+                      prefixText: 'Rp ',
+                      filled: true, fillColor: AppColors.background,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                    onChanged: (val) => setModalState(() {}), // Trigger hitung ulang selisih
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Indikator Selisih Real-time
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: diffColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Selisih:', style: TextStyle(color: diffColor, fontWeight: FontWeight.bold)),
+                        Text(_formatRupiah(difference), style: TextStyle(color: diffColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    controller: closeNoteCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Catatan Penutupan (Opsional)',
+                      filled: true, fillColor: AppColors.background,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity, height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      onPressed: isProcessing ? null : () async {
+                        if (actualCashCtrl.text.isEmpty) {
+                          _showNotif('Uang fisik wajib diisi', AppColors.error);
+                          return;
+                        }
+
+                        setModalState(() => isProcessing = true);
+                        
+                        try {
+                          final payload = {
+                            'actual_cash': actualCash,
+                            'notes': closeNoteCtrl.text.isEmpty ? null : closeNoteCtrl.text,
+                          };
+
+                          final res = await ApiService.post('shifts/${_activeShift!['shift_id']}/close', payload);
+                          final resData = json.decode(res.body);
+
+                          if (res.statusCode == 200) {
+                            Navigator.pop(ctx);
+                            _showNotif('Shift berhasil ditutup dan laporan tersimpan', AppColors.greenAccent);
+                            await _cekShiftAktif();
+                          } else {
+                            _showNotif(resData['message'] ?? 'Gagal menutup shift', AppColors.error);
+                            setModalState(() => isProcessing = false);
+                          }
+                        } catch (e) {
+                          _showNotif('Terjadi kesalahan jaringan', AppColors.error);
+                          setModalState(() => isProcessing = false);
+                        }
+                      },
+                      child: isProcessing ? const CircularProgressIndicator(color: Colors.white) : const Text('KONFIRMASI TUTUP SHIFT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
-              child: Text('Info: Ada transaksi Non-Tunai sebesar ${_formatRp(totalNonTunaiSistem)} yang langsung masuk ke rekening.', 
-                  style: const TextStyle(fontSize: 10, color: Colors.purple, fontStyle: FontStyle.italic)),
-            )
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: const Text('Batal')
+          );
+        }
+      )
+    );
+  }
+
+  // =========================================================
+  // UI: STATE 1 - FORM BUKA SHIFT
+  // =========================================================
+  Widget _buildOpenShiftView() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.border)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.lock_clock, color: AppColors.navyActive, size: 28),
+                  SizedBox(width: 12),
+                  Text('Buka Shift Baru', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Cabang', style: TextStyle(color: AppColors.textSecondary)), Text(_namaCabang, style: const TextStyle(fontWeight: FontWeight.bold))]),
+              const SizedBox(height: 12),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Kasir', style: TextStyle(color: AppColors.textSecondary)), Text(_namaKasir, style: const TextStyle(fontWeight: FontWeight.bold))]),
+              const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
+
+              TextField(
+                controller: _openingCashCtrl,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Modal Awal (Rp)',
+                  filled: true, fillColor: AppColors.background,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _openNoteCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Catatan (Opsional)',
+                  filled: true, fillColor: AppColors.background,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity, height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: _prosesBukaShift,
+                  child: const Text('BUKA SHIFT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              )
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
-              Navigator.pop(context);
-              _prosesTutupShift(uangFisik, uangSeharusnya, selisih);
-            },
-            child: const Text('Tutup & Cetak', style: TextStyle(color: Colors.white)),
-          )
-        ],
+        ),
       ),
     );
   }
 
-  Future<void> _prosesTutupShift(int uangFisik, int uangSeharusnya, int selisih) async {
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+  // =========================================================
+  // UI: STATE 2 - PANEL SHIFT AKTIF
+  // =========================================================
+  Widget _buildActiveShiftView() {
+    double openingCash = double.parse(_activeShift!['opening_cash'].toString());
+    double expectedCash = double.parse(_activeShift!['expected_cash'].toString());
+    double pergerakanKas = expectedCash - openingCash; // Penjualan Cash + Cash In - Cash Out
 
-    String catatan = catatanShiftCtrl.text.isEmpty ? '-' : catatanShiftCtrl.text;
+    // Format Tanggal Buka
+    DateTime openedAt = DateTime.parse(_activeShift!['opened_at']).toLocal();
+    String formattedDate = DateFormat('dd MMM yyyy • HH:mm', 'id_ID').format(openedAt);
 
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/shift/tutup'),
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: json.encode({
-          'shift_id': shiftId,
-          'total_tunai_sistem': totalTunaiSistem,
-          'total_non_tunai_sistem': totalNonTunaiSistem,
-          'uang_fisik': uangFisik,
-          'selisih': selisih,
-          'catatan': catatan
-        })
-      );
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 450),
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.border), boxShadow: [BoxShadow(color: AppColors.primaryEmerald.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: AppColors.greenAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: const Text('🟢 SHIFT AKTIF', style: TextStyle(color: AppColors.greenAccent, fontWeight: FontWeight.bold, letterSpacing: 1))),
+              const SizedBox(height: 24),
 
-      final res = json.decode(response.body);
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Cabang', style: TextStyle(color: AppColors.textSecondary)), Text(_namaCabang, style: const TextStyle(fontWeight: FontWeight.bold))]),
+              const SizedBox(height: 12),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Kasir', style: TextStyle(color: AppColors.textSecondary)), Text(_namaKasir, style: const TextStyle(fontWeight: FontWeight.bold))]),
+              const SizedBox(height: 12),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Waktu Mulai', style: TextStyle(color: AppColors.textSecondary)), Text(formattedDate, style: const TextStyle(fontWeight: FontWeight.bold))]),
+              
+              const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
 
-      if ((response.statusCode == 200 || response.statusCode == 201) && res['status'] == true) {
-        await _cetakStrukShift(uangFisik, uangSeharusnya, selisih, catatan);
-        uangFisikCtrl.clear();
-        catatanShiftCtrl.clear();
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Modal Awal', style: TextStyle(color: AppColors.textSecondary)), Text(_formatRupiah(openingCash), style: const TextStyle(fontWeight: FontWeight.bold))]),
+              const SizedBox(height: 12),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Pergerakan Kas', style: TextStyle(color: AppColors.textSecondary)), Text(pergerakanKas >= 0 ? '+ ${_formatRupiah(pergerakanKas)}' : _formatRupiah(pergerakanKas), style: TextStyle(fontWeight: FontWeight.bold, color: pergerakanKas >= 0 ? AppColors.greenAccent : AppColors.error))]),
+              
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Expected Cash', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                    Text(_formatRupiah(expectedCash), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
 
-        if (mounted) Navigator.pop(context); // Tutup Loading
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift Berhasil Ditutup & Tersimpan di Sistem!'), backgroundColor: Colors.green));
-        
-        await _cekStatusShiftApi();
-      } else {
-        if (mounted) Navigator.pop(context); 
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Gagal menutup shift'), backgroundColor: Colors.red));
-      }
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error jaringan saat menutup shift'), backgroundColor: Colors.red));
-    }
-  }
-
-  Future<void> _cetakStrukShift(int uangFisik, int uangSeharusnya, int selisih, String catatan) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      String waktuTutup = DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now());
-      String ipPrinter = prefs.getString('ip_printer') ?? '';
-      String macPrinter = prefs.getString('mac_printer') ?? '';
-
-      final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm58, profile);
-      List<int> bytes = [];
-
-      bytes += generator.text("LAPORAN TUTUP SHIFT", styles: const PosStyles(align: PosAlign.center, bold: true));
-      bytes += generator.text("Kasir: $namaKasir", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Buka : $waktuBuka", styles: const PosStyles(align: PosAlign.left));
-      bytes += generator.text("Tutup: $waktuTutup", styles: const PosStyles(align: PosAlign.left));
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "Modal Awal", width: 6), PosColumn(text: _formatRp(modalAwal), width: 6, styles: const PosStyles(align: PosAlign.right))]);
-      bytes += generator.row([PosColumn(text: "Tunai Masuk", width: 6), PosColumn(text: _formatRp(totalTunaiSistem), width: 6, styles: const PosStyles(align: PosAlign.right))]);
-      bytes += generator.row([PosColumn(text: "Non-Tunai", width: 6), PosColumn(text: _formatRp(totalNonTunaiSistem), width: 6, styles: const PosStyles(align: PosAlign.right))]);
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "Sistem (Harus)", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRp(uangSeharusnya), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      bytes += generator.row([PosColumn(text: "Fisik (Laci)", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRp(uangFisik), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      String status = selisih == 0 ? "BALANCE" : selisih > 0 ? "LEBIH" : "KURANG";
-      bytes += generator.row([PosColumn(text: "Selisih ($status)", width: 6), PosColumn(text: _formatRp(selisih.abs()), width: 6, styles: const PosStyles(align: PosAlign.right))]);
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Catatan:", styles: const PosStyles(bold: true));
-      bytes += generator.text(catatan, styles: const PosStyles(align: PosAlign.left));
-      bytes += generator.feed(2);
-
-      bool terhubungBluetooth = await PrintBluetoothThermal.connectionStatus;
-      if (terhubungBluetooth) {
-        await PrintBluetoothThermal.writeBytes(bytes);
-      } else if (macPrinter.isNotEmpty) {
-        bool terhubungUlang = await PrintBluetoothThermal.connect(macPrinterAddress: macPrinter);
-        if (terhubungUlang) await PrintBluetoothThermal.writeBytes(bytes);
-      } else if (ipPrinter.isNotEmpty) {
-        final socket = await Socket.connect(ipPrinter, 9100, timeout: const Duration(seconds: 3));
-        socket.add(bytes);
-        socket.destroy();
-      }
-    } catch (e) {
-      debugPrint("Gagal cetak fisik: $e");
-    }
-  }
-
-  String _formatRp(int angka) {
-    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
+              SizedBox(
+                width: double.infinity, height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: _tampilkanModalTutupShift,
+                  child: const Text('TUTUP SHIFT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Manajemen Shift Kasir', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: isShiftBuka ? Colors.green : Colors.blueAccent,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        title: const Text('Manajemen Shift', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
+        iconTheme: const IconThemeData(color: AppColors.navyActive),
       ),
-      body: isLoading 
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: !isShiftBuka ? _buildFormBukaShift() : _buildFormTutupShift(),
+      body: _isLoading 
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: _activeShift == null ? _buildOpenShiftView() : _buildActiveShiftView(),
             ),
-    );
-  }
-
-  Widget _buildFormBukaShift() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.lock_clock, size: 80, color: Colors.blueAccent),
-        const SizedBox(height: 20),
-        const Text('Shift Anda Belum Dibuka', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-        const Text('Masukkan nominal uang kembalian (modal awal) yang ada di laci kasir saat ini.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-        const SizedBox(height: 30),
-        TextField(
-          controller: modalAwalCtrl,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: 'Modal Awal Laci (Rp)',
-            prefixIcon: const Icon(Icons.money, color: Colors.green),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-            filled: true,
-            fillColor: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueAccent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-            ),
-            onPressed: _prosesBukaShift,
-            child: const Text('Buka Shift Sekarang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-          ),
-        )
-      ],
-    );
-  }
-
-  Widget _buildFormTutupShift() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.green.shade300)
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.green, size: 40),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Shift Aktif', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 18)),
-                      Text('Dibuka pada: $waktuBuka', style: const TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                )
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Data Sistem Saat Ini', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Modal Awal:'),
-                      Text(_formatRp(modalAwal), style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Penjualan Tunai Laci:'),
-                      Text(_formatRp(totalTunaiSistem), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Non-Tunai (Ke Rekening):', style: TextStyle(color: Colors.grey)),
-                      Text(_formatRp(totalNonTunaiSistem), style: const TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                  const Divider(thickness: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Target Uang Fisik Laci:', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-                      Text(_formatRp(modalAwal + totalTunaiSistem), style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 18)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text('Hitung Uang Fisik', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const Text('Masukkan jumlah fisik uang yang ada di laci saat ini', style: TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: uangFisikCtrl,
-            keyboardType: TextInputType.number,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              labelText: 'Total Uang Fisik Laci (Rp)',
-              prefixIcon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 15),
-
-          TextField(
-            controller: catatanShiftCtrl,
-            maxLines: 2,
-            decoration: InputDecoration(
-              hintText: 'Catatan tambahan (Opsional)\nCth: Minus karena kurang kembalian 2rb...',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-          ),
-
-          const SizedBox(height: 30),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-              ),
-              onPressed: () {
-                if (uangFisikCtrl.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uang fisik wajib diisi!'), backgroundColor: Colors.red));
-                  return;
-                }
-                _konfirmasiTutupShift();
-              },
-              icon: const Icon(Icons.lock, color: Colors.white),
-              label: const Text('Validasi & Tutup Shift', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-            ),
-          )
-        ],
-      ),
     );
   }
 }

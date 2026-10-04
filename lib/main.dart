@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'core/constants/app_colors.dart';
 import 'presentation/layouts/main_layout.dart';
 
+// TODO: Import file-file halaman Anda di sini
+// import 'halaman_login.dart';
+// import 'halaman_pilih_cabang.dart';
+
 void main() {
   runApp(const SmartKasirApp());
 }
@@ -20,8 +24,27 @@ class SmartKasirApp extends StatelessWidget {
         primaryColor: AppColors.primaryEmerald,
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primaryEmerald),
       ),
-      // Memanggil layout utama, isOwner diset true untuk simulasi akun Owner
+      
+      // ========================================================
+      // SISTEM ROUTING SMART KASIR
+      // ========================================================
+      // Untuk sementara, jika Anda masih mendevelop UI dan belum mau lewat login, 
+      // biarkan 'home' aktif dan comment 'initialRoute' & 'routes'.
+      
       home: const MainLayout(isOwner: true), 
+      
+      /*
+      initialRoute: '/login', // Aplikasi akan pertama kali membuka halaman login
+      routes: {
+        '/login': (context) => const HalamanLogin(),
+        
+        // Halaman ini akan dipanggil otomatis oleh HalamanLogin jika cabang > 1
+        '/pilih_cabang': (context) => const HalamanPilihCabang(),
+        
+        // '/home' ini memanggil Kerangka/Layout Utama Anda
+        '/home': (context) => const MainLayout(isOwner: true), 
+      },
+      */
     );
   }
 }
