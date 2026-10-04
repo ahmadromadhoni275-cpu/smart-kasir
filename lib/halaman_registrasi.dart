@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-import 'tema.dart'; // Import tema eksklusif
-import 'halaman_login.dart';
+import 'tema.dart';
+import 'halaman_otp.dart'; // <-- Import halaman OTP
 
 class HalamanRegistrasi extends StatefulWidget {
   const HalamanRegistrasi({super.key});
@@ -13,29 +13,21 @@ class HalamanRegistrasi extends StatefulWidget {
 }
 
 class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
-  final String domainUrl = 'https://smartkasir.shop';
-
-  final TextEditingController _tokoCtrl = TextEditingController();
-  final TextEditingController _usernameCtrl = TextEditingController();
-  final TextEditingController _waCtrl = TextEditingController();
+  final String domainUrl = 'https://smartkasir.shop/api'; 
+  
+  final TextEditingController _namaCtrl = TextEditingController();
+  final TextEditingController _bisnisCtrl = TextEditingController();
   final TextEditingController _emailCtrl = TextEditingController();
+  final TextEditingController _phoneCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
-  final TextEditingController _konfirmasiCtrl = TextEditingController();
-  final TextEditingController _referralCtrl = TextEditingController();
-
-  bool _isObscure = true;
-  bool _isObscureConfirm = true;
+  final TextEditingController _referralCtrl = TextEditingController(); // <-- Controller Referral
+  
   bool _isLoading = false;
+  bool _obscureText = true;
 
   Future<void> _prosesDaftar() async {
-    // Validasi form (Email sekarang WAJIB)
-    if (_tokoCtrl.text.isEmpty || _usernameCtrl.text.isEmpty || _passwordCtrl.text.isEmpty || _emailCtrl.text.isEmpty) {
-      _tampilkanNotif('Data Belum Lengkap', 'Nama Toko, Username, Email, dan Password wajib diisi.', AppColors.premiumGold);
-      return;
-    }
-
-    if (_passwordCtrl.text != _konfirmasiCtrl.text) {
-      _tampilkanNotif('Password Tidak Cocok', 'Pastikan konfirmasi password sama persis.', AppColors.red);
+    if (_namaCtrl.text.isEmpty || _emailCtrl.text.isEmpty || _passwordCtrl.text.isEmpty || _bisnisCtrl.text.isEmpty) {
+      _showNotif('Harap lengkapi semua form wajib', AppColors.error);
       return;
     }
 
@@ -43,316 +35,142 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
 
     try {
       final response = await http.post(
-        Uri.parse('$domainUrl/api/registrasi'),
+        Uri.parse('$domainUrl/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'nama_toko': _tokoCtrl.text,
-          'username': _usernameCtrl.text.replaceAll(' ', ''),
-          'no_wa': _waCtrl.text,
-          'email': _emailCtrl.text,
+          'name': _namaCtrl.text,
+          'business_name': _bisnisCtrl.text,
+          'email': _emailCtrl.text.trim(),
+          'phone': _phoneCtrl.text,
           'password': _passwordCtrl.text,
-          'referral_code': _referralCtrl.text.trim().toUpperCase(),
+          'referral_code': _referralCtrl.text.trim(), // <-- Kirim ke server
         }),
       );
 
       final resData = json.decode(response.body);
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        // Jika sukses, jangan langsung pindah ke login, tapi tampilkan Dialog OTP
-        _tampilkanNotif('Cek Email Anda', resData['message'] ?? 'Kode OTP berhasil dikirim.', AppColors.smartBlue);
+      if (response.statusCode == 201) {
+        // Tampilkan OTP di notif HANYA UNTUK TESTING. Di production, OTP dikirim via WA/Email.
+        _showNotif('Cek OTP Anda: ${resData['dev_otp_code']}', AppColors.greenAccent);
+        
         if (mounted) {
-          _tampilkanDialogOTP(_emailCtrl.text);
+          // Arahkan ke halaman verifikasi OTP
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HalamanOTP(email: _emailCtrl.text.trim())));
         }
       } else {
-        _tampilkanNotif('Pendaftaran Gagal', resData['message'] ?? 'Terjadi kesalahan.', AppColors.red);
+        _showNotif(resData['messages']?['error'] ?? 'Pendaftaran Gagal', AppColors.error);
       }
     } catch (e) {
-      _tampilkanNotif('Error Jaringan', 'Gagal menghubungi server: $e', AppColors.red);
+      _showNotif('Koneksi ke server gagal', AppColors.error);
     }
 
     setState(() => _isLoading = false);
   }
 
-  // ==========================================
-  // LOGIKA DAN UI DIALOG OTP
-  // ==========================================
-  void _tampilkanDialogOTP(String emailTujuan) {
-    TextEditingController otpCtrl = TextEditingController();
-    bool isVerifying = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Verifikasi Email', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Masukkan 6 digit kode OTP yang telah dikirim ke email: $emailTujuan', style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: otpCtrl,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 20, letterSpacing: 5, fontWeight: FontWeight.bold),
-                    decoration: InputDecoration(
-                      hintText: '000000',
-                      filled: true, fillColor: AppColors.lightGray,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isVerifying ? null : () => Navigator.pop(dialogCtx), 
-                  child: const Text('Nanti Saja', style: TextStyle(color: AppColors.slateGray))
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  onPressed: isVerifying ? null : () async {
-                    if (otpCtrl.text.length < 6) {
-                      _tampilkanNotif('Kode tidak valid', 'OTP harus 6 digit.', AppColors.red);
-                      return;
-                    }
-                    
-                    setDialogState(() => isVerifying = true);
-                    
-                    try {
-                      final response = await http.post(
-                        Uri.parse('$domainUrl/api/verifyOtp'),
-                        headers: {'Content-Type': 'application/json'},
-                        body: json.encode({'email': emailTujuan, 'otp_code': otpCtrl.text}),
-                      );
-
-                      if (response.statusCode == 200) {
-                        _tampilkanNotif('Verifikasi Berhasil!', 'Akun Anda telah aktif, silakan masuk.', AppColors.emerald);
-                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                        if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HalamanLogin()));
-                      } else {
-                        final res = json.decode(response.body);
-                        _tampilkanNotif('Verifikasi Gagal', res['message'] ?? 'Kode OTP salah.', AppColors.red);
-                      }
-                    } catch (e) {
-                      _tampilkanNotif('Kesalahan Jaringan', 'Gagal memverifikasi OTP', AppColors.red);
-                    }
-                    if (dialogCtx.mounted) setDialogState(() => isVerifying = false);
-                  },
-                  child: isVerifying 
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2)) 
-                    : const Text('Verifikasi OTP', style: TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
-                )
-              ],
-            );
-          },
-        );
-      }
-    );
-  }
-
-  void _tampilkanNotif(String judul, String pesan, Color warna) {
+  void _showNotif(String pesan, Color warna) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Row(
-          children: [
-            Icon(warna == AppColors.emerald ? Icons.check_circle : Icons.error_outline, color: AppColors.white),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-                  Text(pesan, style: const TextStyle(fontSize: 12, color: AppColors.white)),
-                ],
-              ),
-            ),
-          ],
-        ),
+        content: Text(pesan, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: warna,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
     }
   }
 
-  // ==========================================
-  // WIDGET UTAMA (BODY)
-  // ==========================================
+  Widget _buildTextField(String label, String hint, IconData icon, TextEditingController controller, {bool isPassword = false, TextInputType type = TextInputType.text}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          obscureText: isPassword ? _obscureText : false,
+          keyboardType: type,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: AppColors.textSecondary),
+            prefixIcon: Icon(icon, color: AppColors.textSecondary),
+            suffixIcon: isPassword ? IconButton(
+              icon: Icon(_obscureText ? Icons.visibility_off : Icons.visibility, color: AppColors.textSecondary),
+              onPressed: () => setState(() => _obscureText = !_obscureText),
+            ) : null,
+            filled: true,
+            fillColor: AppColors.background,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primaryEmerald, width: 1.5)),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.lightGray,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Stack(
-              children: [
-                Container(
-                  height: 280,
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    color: AppColors.deepNavy,
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(40)),
-                  ),
-                ),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InkWell(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: AppColors.white.withOpacity(0.1), shape: BoxShape.circle),
-                            child: const Icon(Icons.arrow_back, color: AppColors.white, size: 20),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        const Text('Mulai Bisnis Anda', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.white)),
-                        const SizedBox(height: 5),
-                        Text('Daftarkan toko Anda dan nikmati fitur Smart Kasir Pro secara gratis (Trial).', style: TextStyle(fontSize: 13, color: AppColors.white.withOpacity(0.8), height: 1.5)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            Transform.translate(
-              offset: const Offset(0, -60),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.navyActive),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 450),
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                padding: const EdgeInsets.all(25),
+                padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: [BoxShadow(color: AppColors.navyActive.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Informasi Toko', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
-                    const SizedBox(height: 15),
-                    _buildPremiumTextField('Nama Bisnis / Toko', Icons.store, _tokoCtrl),
-                    
-                    const Divider(height: 30, color: AppColors.lightGray),
-                    
-                    const Text('Data Pemilik (Wajib Diisi)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
-                    const SizedBox(height: 15),
-                    _buildPremiumTextField('Username (Tanpa Spasi)', Icons.person, _usernameCtrl),
-                    _buildPremiumTextField('Email Aktif (Untuk Verifikasi OTP)', Icons.email, _emailCtrl, isEmail: true), // <--- Email Wajib
-                    _buildPremiumTextField('Nomor WhatsApp', Icons.phone, _waCtrl, isNumber: true),
-                    
-                    const SizedBox(height: 5),
-                    _buildPasswordField('Kata Sandi', _passwordCtrl, _isObscure, (val) => setState(() => _isObscure = val)),
-                    _buildPasswordField('Konfirmasi Kata Sandi', _konfirmasiCtrl, _isObscureConfirm, (val) => setState(() => _isObscureConfirm = val)),
-                    
-                    const Divider(height: 30, color: AppColors.lightGray),
-                    
-                    const Text('Program Referral', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
-                    const SizedBox(height: 15),
-                    _buildPremiumTextField('Kode Referral (Opsional)', Icons.group_add, _referralCtrl, hint: 'Contoh: REF123', isLast: true),
+                    const Text('Buat Akun Baru', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                    const SizedBox(height: 8),
+                    const Text('Mulai kelola kasir dan inventori bisnis Anda dari sekarang.', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                    const SizedBox(height: 32),
 
-                    const SizedBox(height: 30),
+                    _buildTextField('Nama Lengkap', 'Masukkan nama Anda', Icons.person_outline, _namaCtrl),
+                    _buildTextField('Nama Bisnis/Toko', 'Misal: Kedai Kopi Senja', Icons.storefront_outlined, _bisnisCtrl),
+                    _buildTextField('Email', 'nama@email.com', Icons.email_outlined, _emailCtrl, type: TextInputType.emailAddress),
+                    _buildTextField('Nomor WhatsApp', '0812xxxxxx', Icons.phone_outlined, _phoneCtrl, type: TextInputType.phone),
+                    _buildTextField('Password', 'Buat password aman', Icons.lock_outline, _passwordCtrl, isPassword: true),
                     
+                    // Input Referral Code Opsional
+                    _buildTextField('Kode Referral (Opsional)', 'Masukkan kode undangan', Icons.card_giftcard, _referralCtrl),
+
+                    const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
+                      height: 50,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.teal,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          backgroundColor: AppColors.primaryEmerald,
+                          foregroundColor: Colors.white,
                           elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _isLoading ? null : _prosesDaftar,
-                        child: _isLoading
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
-                            : const Text('Kirim OTP & Daftar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+                        child: _isLoading 
+                            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Daftar Sekarang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            
-            Transform.translate(
-              offset: const Offset(0, -40),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text("Sudah mendaftarkan toko? ", style: TextStyle(color: AppColors.slateGray, fontSize: 13)),
-                  InkWell(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text("Masuk di sini", style: TextStyle(color: AppColors.smartBlue, fontWeight: FontWeight.bold, fontSize: 13)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildPremiumTextField(String label, IconData icon, TextEditingController controller, {String hint = '', bool isNumber = false, bool isEmail = false, bool isLast = false}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            keyboardType: isNumber ? TextInputType.phone : (isEmail ? TextInputType.emailAddress : TextInputType.text),
-            decoration: InputDecoration(
-              prefixIcon: Icon(icon, color: AppColors.slateGray, size: 20),
-              hintText: hint,
-              hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
-              filled: true,
-              fillColor: AppColors.lightGray,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPasswordField(String label, TextEditingController controller, bool isObscure, Function(bool) onToggle) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            obscureText: isObscure,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.lock_outline, color: AppColors.slateGray, size: 20),
-              suffixIcon: IconButton(
-                icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: AppColors.smartBlue, size: 20),
-                onPressed: () => onToggle(!isObscure),
-              ),
-              filled: true,
-              fillColor: AppColors.lightGray,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-        ],
       ),
     );
   }

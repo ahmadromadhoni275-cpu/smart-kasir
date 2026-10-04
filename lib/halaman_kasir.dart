@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:intl/intl.dart';
-
-import 'tema.dart'; 
-import 'halaman_struk.dart'; 
-import 'kerangka_navigasi.dart';
-import 'halaman_laporan.dart'; // <-- Pastikan ini di-import
+import 'dart:convert';
+import 'tema.dart';
+import 'services/api_service.dart';
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -17,543 +12,438 @@ class HalamanKasir extends StatefulWidget {
 }
 
 class _HalamanKasirState extends State<HalamanKasir> {
-  final String domainUrl = 'https://smartkasir.shop';
-  bool isLoading = true;
-  bool isShiftTerbuka = false; 
-  int _tokoId = 1;
-  int _userId = 1;
-  int _ppnPersen = 0;
-
-  List dataProduk = [];
-  List dataKategori = [];
-  List filteredProduk = [];
-  List<Map<String, dynamic>> keranjang = [];
-
-  int _kategoriTerpilih = 0; 
-  String kataKunci = "";
-  TextEditingController searchCtrl = TextEditingController();
+  bool _isLoading = true;
+  List<dynamic> _products = [];
+  String _searchQuery = '';
+  
+  // State Keranjang
+  List<Map<String, dynamic>> _cart = [];
+  String? _selectedTable;
+  double _discount = 0;
+  
+  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _inisialisasiData();
+    _muatProduk();
   }
 
-  Future<void> _inisialisasiData() async {
-    final prefs = await SharedPreferences.getInstance();
-    _tokoId = prefs.getInt('toko_id') ?? 1;
-    _userId = prefs.getInt('user_id') ?? 1;
-
-    // 1. CEK STATUS SHIFT TERLEBIH DAHULU
-    await _cekStatusShift();
-
-    // 2. JIKA SHIFT DIBUKA, BARU LOAD DATA PRODUK DAN TOKO
-    if (isShiftTerbuka) {
-      await _ambilDataToko();
-      await _ambilDataKategori();
-      await _ambilDataProduk();
-    }
-
-    if (mounted) {
-      setState(() => isLoading = false);
-    }
-  }
-
-  // ==========================================
-  // FUNGSI CEK STATUS SHIFT
-  // ==========================================
-  Future<void> _cekStatusShift() async {
+  Future<void> _muatProduk() async {
+    setState(() => _isLoading = true);
     try {
-      final res = await http.get(Uri.parse('$domainUrl/api/cekStatusShift/$_userId'), headers: {'Accept': 'application/json'});
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body)['data'];
+      final response = await ApiService.get('cashier/products?search=$_searchQuery');
+      if (response.statusCode == 200) {
         setState(() {
-          isShiftTerbuka = data['status_shift'] == 'open';
+          _products = json.decode(response.body)['data'];
         });
       }
-    } catch (e) {
-      debugPrint("Gagal cek shift: $e");
-    }
+    } catch (e) {}
+    setState(() => _isLoading = false);
   }
 
-  Future<void> _ambilDataToko() async {
-    try {
-      final res = await http.get(Uri.parse('$domainUrl/api/detailToko/$_tokoId'), headers: {'Accept': 'application/json'});
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body)['data'];
-        setState(() {
-          _ppnPersen = int.tryParse(data['ppn_persen']?.toString() ?? '0') ?? 0;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error load toko: $e");
-    }
-  }
+  String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
-  Future<void> _ambilDataKategori() async {
-    try {
-      final res = await http.get(Uri.parse('$domainUrl/api/kategori'), headers: {'Accept': 'application/json'});
-      if (res.statusCode == 200) {
-        setState(() {
-          dataKategori = json.decode(res.body)['data'] ?? [];
-        });
-      }
-    } catch (e) {
-      debugPrint("Error load kategori: $e");
-    }
-  }
-
-  Future<void> _ambilDataProduk() async {
-    try {
-      final res = await http.get(Uri.parse('$domainUrl/api/produk?toko_id=$_tokoId'), headers: {'Accept': 'application/json'});
-      if (res.statusCode == 200) {
-        setState(() {
-          List semua = json.decode(res.body)['data'] ?? [];
-          dataProduk = semua.where((item) => item['jenis'] != 'jasa').toList();
-          filteredProduk = dataProduk;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error load produk: $e");
-    }
-  }
-
-  void _filterProduk() {
-    setState(() {
-      filteredProduk = dataProduk.where((item) {
-        bool matchKategori = _kategoriTerpilih == 0 || (item['kategori_id'] != null && int.parse(item['kategori_id'].toString()) == _kategoriTerpilih);
-        bool matchSearch = kataKunci.isEmpty || item['nama'].toString().toLowerCase().contains(kataKunci.toLowerCase());
-        return matchKategori && matchSearch;
-      }).toList();
-    });
-  }
-
-  // ==========================================
+  // =========================================================
   // LOGIKA KERANJANG
-  // ==========================================
-  void _tambahKeKeranjang(Map<String, dynamic> produk) {
-    int stokTersedia = int.tryParse(produk['stok'].toString()) ?? 0;
-    int index = keranjang.indexWhere((item) => item['id'] == produk['id']);
-    int harga = int.tryParse(produk['harga'].toString()) ?? 0;
+  // =========================================================
+  void _addToCart(dynamic product) {
+    if (product['product_type'] == 'PRODUCT' && product['stock'] <= 0) {
+      _showNotif('Stok habis!', AppColors.error);
+      return;
+    }
 
     setState(() {
+      int index = _cart.indexWhere((item) => item['product_id'] == product['product_id'] && item['order_type'] == 'DINE_IN' && item['note'] == null);
       if (index != -1) {
-        if (keranjang[index]['qty'] >= stokTersedia) {
-          _tampilkanNotif('Stok ${produk['nama']} tidak mencukupi!', AppColors.red);
+        if (product['product_type'] == 'PRODUCT' && _cart[index]['quantity'] >= product['stock']) {
+          _showNotif('Melebihi batas stok', AppColors.error);
           return;
         }
-        keranjang[index]['qty'] += 1;
-        keranjang[index]['subtotal'] = keranjang[index]['qty'] * harga;
+        _cart[index]['quantity']++;
       } else {
-        if (stokTersedia < 1) {
-          _tampilkanNotif('Stok ${produk['nama']} habis!', AppColors.red);
-          return;
-        }
-        keranjang.add({
-          'id': produk['id'],
-          'nama': produk['nama'],
-          'harga': harga,
-          'qty': 1,
-          'subtotal': harga,
-          'stok_maksimal': stokTersedia,
-          'divisi_printer': produk['divisi_printer'] ?? 'kasir',
+        _cart.add({
+          'product_id': product['product_id'],
+          'name': product['name'],
+          'price': double.parse(product['selling_price'].toString()),
+          'quantity': 1,
+          'order_type': 'DINE_IN', // Default
+          'note': null,
+          'type': product['product_type'],
+          'max_stock': product['stock']
         });
       }
     });
   }
 
-  void _kurangiDariKeranjang(int index) {
-    setState(() {
-      if (keranjang[index]['qty'] > 1) {
-        keranjang[index]['qty'] -= 1;
-        int harga = keranjang[index]['harga'];
-        keranjang[index]['subtotal'] = keranjang[index]['qty'] * harga;
-      } else {
-        keranjang.removeAt(index);
-      }
-    });
+  double get _subtotal {
+    double total = 0;
+    for (var item in _cart) { total += (item['price'] * item['quantity']); }
+    return total;
   }
 
-  int _getSubtotal() {
-    return keranjang.fold(0, (sum, item) => sum + (item['subtotal'] as int));
-  }
+  double get _grandTotal => _subtotal - _discount;
 
-  int _getPpnNominal() {
-    return (_getSubtotal() * _ppnPersen) ~/ 100;
-  }
+  // =========================================================
+  // MODAL JASA MANUAL
+  // =========================================================
+  void _tampilkanFormJasaManual() {
+    TextEditingController namaCtrl = TextEditingController();
+    TextEditingController hargaCtrl = TextEditingController();
+    TextEditingController qtyCtrl = TextEditingController(text: '1');
+    TextEditingController catatanCtrl = TextEditingController();
 
-  int _getGrandTotal() {
-    return _getSubtotal() + _getPpnNominal();
-  }
-
-  void _kosongkanKeranjang() {
-    setState(() => keranjang.clear());
-  }
-
-  void _tampilkanNotif(String pesan, Color warna) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-        backgroundColor: warna,
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
-  }
-
-  // ==========================================
-  // WIDGET UTAMA (RESPONSIVE)
-  // ==========================================
-  @override
-  Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(backgroundColor: AppColors.lightGray, body: Center(child: CircularProgressIndicator(color: AppColors.teal)));
-
-    // ==========================================
-    // UI LAYAR TERKUNCI JIKA SHIFT BELUM DIBUKA
-    // ==========================================
-    if (!isShiftTerbuka) {
-      return Scaffold(
-        backgroundColor: AppColors.lightGray,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(25),
-                  decoration: BoxDecoration(color: AppColors.red.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.lock_outline, size: 80, color: AppColors.red),
-                ),
-                const SizedBox(height: 25),
-                const Text('Kasir Terkunci', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                const SizedBox(height: 15),
-                const Text('Anda belum membuka shift kasir hari ini. Silakan atur modal awal dan buka shift terlebih dahulu untuk mulai bertransaksi.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.slateGray, fontSize: 13, height: 1.5)),
-                const SizedBox(height: 30),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.teal,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () async {
-                    // PERBAIKAN: Arahkan ke Laporan, tunggu sampai kembali, lalu refresh data
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const HalamanLaporan()),
-                    );
-                    
-                    // Setelah kembali dari Halaman Laporan, loading sebentar & cek status shift terbaru
-                    setState(() => isLoading = true);
-                    _inisialisasiData();
-                  },
-                  icon: const Icon(Icons.open_in_new, color: AppColors.white, size: 18),
-                  label: const Text('Buka Menu Laporan / Shift', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-                )
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // ==========================================
-    // UI KASIR NORMAL (TERBUKA)
-    // ==========================================
-    return Scaffold(
-      backgroundColor: AppColors.lightGray,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          bool isDesktop = constraints.maxWidth >= 800; // Threshold untuk Tablet/Desktop
-
-          if (isDesktop) {
-            // MODE HORIZONTAL (Tablet/Web)
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // PANEL KIRI: KATEGORI
-                Container(
-                  width: 250,
-                  color: AppColors.white,
-                  child: _buildPanelKategori(),
-                ),
-                // PANEL TENGAH: PRODUK
-                Expanded(
-                  child: Column(
-                    children: [
-                      _buildHeaderPencarian(),
-                      Expanded(child: _buildGridProduk(isDesktop: true)),
-                    ],
-                  ),
-                ),
-                // PANEL KANAN: KERANJANG
-                Container(
-                  width: 350,
-                  color: AppColors.white,
-                  child: _buildPanelKeranjang(isDesktop: true),
-                ),
-              ],
-            );
-          } else {
-            // MODE VERTIKAL (HP)
-            return Column(
-              children: [
-                _buildHeaderPencarian(),
-                _buildSliderKategoriHorizontal(),
-                Expanded(child: _buildGridProduk(isDesktop: false)),
-                _buildBottomBarKeranjangHP(),
-              ],
-            );
-          }
-        },
-      ),
-    );
-  }
-
-  // ==========================================
-  // KOMPONEN UI
-  // ==========================================
-  Widget _buildHeaderPencarian() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      color: AppColors.lightGray,
-      child: TextField(
-        controller: searchCtrl,
-        onChanged: (val) {
-          kataKunci = val;
-          _filterProduk();
-        },
-        decoration: InputDecoration(
-          hintText: 'Cari produk, kategori...',
-          hintStyle: const TextStyle(fontSize: 13, color: AppColors.slateGray),
-          prefixIcon: const Icon(Icons.search, color: AppColors.slateGray, size: 20),
-          filled: true,
-          fillColor: AppColors.white,
-          contentPadding: const EdgeInsets.symmetric(vertical: 0),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        ),
-      ),
-    );
-  }
-
-  // Panel Kategori (Kiri - Tablet)
-  Widget _buildPanelKategori() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.all(20),
-          child: Text('Kategori', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Tambah Jasa Manual', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: 300,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _itemKategori(0, 'Semua', Icons.grid_view),
-              ...dataKategori.map((k) => _itemKategori(int.parse(k['id'].toString()), k['nama_kategori'], Icons.fastfood_outlined)),
+              TextField(
+                controller: namaCtrl,
+                decoration: const InputDecoration(labelText: 'Nama Jasa', isDense: true, border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: hargaCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Harga (Rp)', isDense: true, border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: qtyCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Qty', isDense: true, border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: catatanCtrl,
+                      decoration: const InputDecoration(labelText: 'Catatan Opsional', isDense: true, border: OutlineInputBorder()),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-        )
-      ],
-    );
-  }
-
-  // Slider Kategori (Atas - HP)
-  Widget _buildSliderKategoriHorizontal() {
-    return Container(
-      height: 50,
-      color: AppColors.lightGray,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 15),
-        children: [
-          _itemKategoriBip(0, 'Semua'),
-          ...dataKategori.map((k) => _itemKategoriBip(int.parse(k['id'].toString()), k['nama_kategori'])),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald),
+            onPressed: () {
+              if (namaCtrl.text.isEmpty || hargaCtrl.text.isEmpty) return;
+              
+              setState(() {
+                _cart.add({
+                  'product_id': null, // Menandakan ini Jasa Manual
+                  'name': namaCtrl.text,
+                  'price': double.tryParse(hargaCtrl.text) ?? 0,
+                  'quantity': int.tryParse(qtyCtrl.text) ?? 1,
+                  'order_type': 'DINE_IN',
+                  'note': catatanCtrl.text.isEmpty ? null : catatanCtrl.text,
+                  'type': 'SERVICE',
+                  'max_stock': 9999 // Tidak ada limit stok
+                });
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('Tambahkan', style: TextStyle(color: Colors.white)),
+          )
         ],
       ),
     );
   }
 
-  Widget _itemKategori(int id, String nama, IconData icon) {
-    bool isSelected = _kategoriTerpilih == id;
-    return InkWell(
-      onTap: () {
-        setState(() => _kategoriTerpilih = id);
-        _filterProduk();
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.teal : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
+  // =========================================================
+  // MODAL PEMBAYARAN & CHECKOUT KE CI4
+  // =========================================================
+  void _tampilkanModalPembayaran() {
+    if (_cart.isEmpty) return;
+    
+    String metode = 'CASH';
+    TextEditingController uangCtrl = TextEditingController(text: _grandTotal.toInt().toString());
+    bool isProcessing = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Pembayaran', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                  const SizedBox(height: 24),
+                  
+                  // Pilihan Metode
+                  Wrap(
+                    spacing: 12, runSpacing: 12,
+                    alignment: WrapAlignment.center,
+                    children: ['CASH', 'QRIS', 'TRANSFER'].map((m) {
+                      return ChoiceChip(
+                        label: Text(m),
+                        selected: metode == m,
+                        selectedColor: AppColors.primaryEmerald.withOpacity(0.2),
+                        onSelected: (val) {
+                          if(val) setModalState(() => metode = m);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  if (metode == 'CASH')
+                    TextField(
+                      controller: uangCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Uang Diterima',
+                        prefixText: 'Rp ',
+                        filled: true, fillColor: AppColors.background,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                onPressed: isProcessing ? null : () async {
+                  double paidAmount = double.tryParse(uangCtrl.text) ?? 0;
+                  if (metode == 'CASH' && paidAmount < _grandTotal) {
+                    _showNotif('Uang kurang!', AppColors.error);
+                    return;
+                  }
+
+                  setModalState(() => isProcessing = true);
+                  
+                  // FORMAT JSON SESUAI PERMINTAAN BACKEND CI4
+                  final payload = {
+                    "table_id": _selectedTable != null ? int.tryParse(_selectedTable!.replaceAll('Meja ', '')) : null,
+                    "discount": _discount,
+                    "tax": 0,
+                    "payment_method": metode,
+                    "paid_amount": paidAmount,
+                    "items": _cart.map((c) => {
+                      "product_id": c['product_id'],
+                      "name": c['name'], // Penting untuk Jasa Manual
+                      "price": c['price'], // Penting untuk Jasa Manual
+                      "quantity": c['quantity'],
+                      "order_type": c['order_type'],
+                      "note": c['note']
+                    }).toList()
+                  };
+
+                  final res = await ApiService.post('cashier/transactions', payload);
+                  
+                  if (res.statusCode == 201) {
+                    final data = json.decode(res.body)['data'];
+                    Navigator.pop(ctx);
+                    setState(() { _cart.clear(); _selectedTable = null; });
+                    _tampilkanSukses(data['invoice'], data['kembalian']);
+                    _muatProduk(); // Refresh stok di layar
+                  } else {
+                    _showNotif('Gagal: ${json.decode(res.body)['message']}', AppColors.error);
+                    setModalState(() => isProcessing = false);
+                  }
+                },
+                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white)) : const Text('SELESAIKAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              )
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  void _tampilkanSukses(String invoice, dynamic kembalian) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isSelected ? AppColors.white : AppColors.slateGray, size: 20),
-            const SizedBox(width: 15),
-            Text(nama, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: isSelected ? AppColors.white : AppColors.darkText, fontSize: 14)),
+            const Icon(Icons.check_circle, color: AppColors.greenAccent, size: 60),
+            const SizedBox(height: 16),
+            const Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(invoice, style: TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 16),
+            if (kembalian > 0) ...[
+              const Text('Kembalian:', style: TextStyle(color: AppColors.textSecondary)),
+              Text(_formatRupiah(kembalian), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+            ],
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(child: OutlinedButton.icon(onPressed: (){}, icon: const Icon(Icons.print), label: const Text('Cetak'))),
+                const SizedBox(width: 12),
+                Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald), onPressed: () => Navigator.pop(ctx), child: const Text('Transaksi Baru', style: TextStyle(color: Colors.white)))),
+              ],
+            )
           ],
         ),
-      ),
+      )
     );
   }
 
-  Widget _itemKategoriBip(int id, String nama) {
-    bool isSelected = _kategoriTerpilih == id;
-    return InkWell(
-      onTap: () {
-        setState(() => _kategoriTerpilih = id);
-        _filterProduk();
-      },
-      child: Container(
-        margin: const EdgeInsets.only(right: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.teal : AppColors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: isSelected ? null : Border.all(color: Colors.grey.shade300),
-        ),
-        child: Text(nama, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? AppColors.white : AppColors.slateGray, fontSize: 13)),
-      ),
-    );
+  void _showNotif(String pesan, Color warna) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan), backgroundColor: warna, behavior: SnackBarBehavior.floating));
   }
 
-  // Grid Produk (Tengah Tablet / Bawah HP)
-  Widget _buildGridProduk({required bool isDesktop}) {
-    if (filteredProduk.isEmpty) {
-      return const Center(child: Text('Produk tidak ditemukan.', style: TextStyle(color: AppColors.slateGray)));
-    }
+  // =========================================================
+  // UI KOMPONEN
+  // =========================================================
+  Widget _buildProductGrid() {
+    return _isLoading 
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+      : GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 180,
+            childAspectRatio: 0.85,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+          ),
+          itemCount: _products.length,
+          itemBuilder: (ctx, i) {
+            var p = _products[i];
+            bool isJasa = p['product_type'] == 'SERVICE';
+            bool habis = !isJasa && p['stock'] <= 0;
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(15),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 180, 
-        childAspectRatio: 0.8, 
-        crossAxisSpacing: 15,
-        mainAxisSpacing: 15,
-      ),
-      itemCount: filteredProduk.length,
-      itemBuilder: (context, index) {
-        var p = filteredProduk[index];
-        return InkWell(
-          onTap: () => _tambahKeKeranjang(p),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: AppColors.lightGray,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                    ),
-                    child: const Icon(Icons.fastfood, size: 40, color: AppColors.slateGray),
-                  ),
+            return InkWell(
+              onTap: habis ? null : () => _addToCart(p),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: habis ? AppColors.error.withOpacity(0.5) : AppColors.border),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(p['nama'], maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.darkText)),
-                      const SizedBox(height: 6),
-                      Text(_formatRupiah(int.parse(p['harga'].toString())), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.smartBlue)),
-                    ],
-                  ),
-                )
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(isJasa ? Icons.cut : Icons.fastfood, size: 40, color: habis ? AppColors.border : AppColors.primaryEmerald),
+                    const SizedBox(height: 12),
+                    Text(p['name'], textAlign: TextAlign.center, maxLines: 2, style: TextStyle(fontWeight: FontWeight.bold, color: habis ? AppColors.textSecondary : AppColors.textPrimary)),
+                    const SizedBox(height: 4),
+                    Text(_formatRupiah(double.parse(p['selling_price'].toString())), style: const TextStyle(color: AppColors.primaryEmerald, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    if (isJasa)
+                      const Text('JASA', style: TextStyle(fontSize: 10, color: AppColors.goldPremium, fontWeight: FontWeight.bold))
+                    else
+                      Text(habis ? 'HABIS' : 'Stok: ${p['stock']}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? AppColors.error : AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+  }
+
+  Widget _buildCartPanel() {
+    return Container(
+      width: 350,
+      decoration: const BoxDecoration(
+        color: AppColors.card,
+        border: Border(left: BorderSide(color: AppColors.border)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: AppColors.navyActive,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('KERANJANG (${_cart.length} Item)', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                if (_cart.isNotEmpty)
+                  InkWell(onTap: () => setState(() => _cart.clear()), child: const Icon(Icons.delete_sweep, color: Colors.white70))
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  // Panel Keranjang (Kanan - Tablet)
-  Widget _buildPanelKeranjang({bool isDesktop = false}) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Keranjang', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                  Text('${keranjang.length} item', style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
-                ],
-              ),
-              if (keranjang.isNotEmpty)
-                TextButton(
-                  onPressed: _kosongkanKeranjang,
-                  child: const Text('Hapus Semua', style: TextStyle(color: AppColors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-                )
-            ],
-          ),
-        ),
-
-        Expanded(
-          child: keranjang.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.shopping_basket_outlined, size: 50, color: AppColors.slateGray),
-                      SizedBox(height: 10),
-                      Text('Keranjang masih kosong', style: TextStyle(color: AppColors.slateGray)),
-                    ],
-                  ),
-                )
+          Expanded(
+            child: _cart.isEmpty 
+              ? const Center(child: Text('Keranjang Kosong', style: TextStyle(color: AppColors.textSecondary)))
               : ListView.builder(
-                  padding: const EdgeInsets.all(15),
-                  itemCount: keranjang.length,
-                  itemBuilder: (context, i) {
-                    var item = keranjang[i];
+                  itemCount: _cart.length,
+                  itemBuilder: (ctx, i) {
+                    var item = _cart[i];
                     return Container(
-                      margin: const EdgeInsets.only(bottom: 15),
-                      child: Row(
+                      padding: const EdgeInsets.all(12),
+                      border: const Border(bottom: BorderSide(color: AppColors.border)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 45, height: 45,
-                            decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(10)),
-                            child: const Icon(Icons.fastfood, size: 20, color: AppColors.slateGray),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(child: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold))),
+                              Text(_formatRupiah(item['price'] * item['quantity']), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item['nama'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.darkText)),
-                                const SizedBox(height: 5),
-                                Text(_formatRupiah(item['harga']), style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
-                              ],
-                            ),
-                          ),
+                          const SizedBox(height: 8),
+                          
+                          // Toggle Dine In / Takeaway per Item
                           Row(
                             children: [
-                              InkWell(
-                                onTap: () => _kurangiDariKeranjang(i),
-                                child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: AppColors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.remove, size: 16, color: AppColors.red)),
+                              ChoiceChip(
+                                label: const Text('Dine In', style: TextStyle(fontSize: 10)),
+                                selected: item['order_type'] == 'DINE_IN',
+                                onSelected: (v) => setState(() => item['order_type'] = 'DINE_IN'),
                               ),
-                              Container(
-                                width: 25, alignment: Alignment.center,
-                                child: Text('${item['qty']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              const SizedBox(width: 8),
+                              ChoiceChip(
+                                label: const Text('Takeaway', style: TextStyle(fontSize: 10)),
+                                selected: item['order_type'] == 'TAKEAWAY',
+                                onSelected: (v) => setState(() => item['order_type'] = 'TAKEAWAY'),
                               ),
-                              InkWell(
-                                onTap: () => _tambahKeKeranjang({'id': item['id'], 'nama': item['nama'], 'harga': item['harga'], 'stok': item['stok_maksimal']}),
-                                child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: AppColors.teal.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.add, size: 16, color: AppColors.teal)),
+                            ],
+                          ),
+                          
+                          // Input Catatan per item
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 8),
+                            child: TextFormField(
+                              initialValue: item['note'],
+                              style: const TextStyle(fontSize: 12),
+                              decoration: const InputDecoration(hintText: '+ Tambah catatan opsional', isDense: true, border: InputBorder.none, icon: Icon(Icons.edit_note, size: 16)),
+                              onChanged: (val) => item['note'] = val.isEmpty ? null : val,
+                            ),
+                          ),
+
+                          // Qty Control
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: AppColors.textSecondary),
+                                onPressed: () => setState(() { if (item['quantity'] > 1) item['quantity']--; else _cart.removeAt(i); }),
+                              ),
+                              Text('${item['quantity']}'),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryEmerald),
+                                onPressed: () => setState(() {
+                                  if (item['type'] == 'PRODUCT' && item['quantity'] >= item['max_stock']) return;
+                                  item['quantity']++;
+                                }),
                               ),
                             ],
                           )
@@ -562,242 +452,134 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     );
                   },
                 ),
-        ),
-
-        if (keranjang.isNotEmpty)
+          ),
+          
+          // Bagian Bawah Keranjang
           Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Column(
               children: [
-                _buildRowSummary('Subtotal', _formatRupiah(_getSubtotal())),
-                if (_ppnPersen > 0) ...[
-                  const SizedBox(height: 8),
-                  _buildRowSummary('Pajak ($_ppnPersen%)', _formatRupiah(_getPpnNominal())),
-                ],
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(),
+                // Pilihan Meja (Opsional)
+                DropdownButtonFormField<String>(
+                  value: _selectedTable,
+                  decoration: const InputDecoration(labelText: 'No. Meja', border: OutlineInputBorder(), isDense: true),
+                  items: ['Meja 01', 'Meja 02', 'Meja 03'].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                  onChanged: (val) => setState(() => _selectedTable = val),
                 ),
-                _buildRowSummary('Total', _formatRupiah(_getGrandTotal()), isBold: true, size: 18),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+                
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRupiah(_subtotal))]),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon'), Text(_formatRupiah(_discount))]),
+                const Divider(),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryEmerald))]),
+                const SizedBox(height: 16),
+                
                 SizedBox(
-                  width: double.infinity,
+                  width: double.infinity, height: 50,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    onPressed: _tampilkanDialogPembayaran,
-                    child: const Text('Bayar Sekarang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    onPressed: _cart.isEmpty ? null : _tampilkanModalPembayaran,
+                    child: const Text('BAYAR SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
                 )
               ],
             ),
-          )
-      ],
-    );
-  }
-
-  // Floating Bottom Bar untuk HP
-  Widget _buildBottomBarKeranjangHP() {
-    if (keranjang.isEmpty) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${keranjang.length} item', style: const TextStyle(fontSize: 12, color: AppColors.slateGray)),
-              Text(_formatRupiah(_getGrandTotal()), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.teal)),
-            ],
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (context) => Container(
-                  height: MediaQuery.of(context).size.height * 0.85,
-                  decoration: const BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-                  child: _buildPanelKeranjang(isDesktop: false),
-                ),
-              );
-            },
-            icon: const Icon(Icons.shopping_cart, size: 18, color: AppColors.white),
-            label: const Text('Lihat Keranjang', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
           )
         ],
       ),
     );
   }
 
-  Widget _buildRowSummary(String label, String value, {bool isBold = false, double size = 14}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(color: isBold ? AppColors.darkText : AppColors.slateGray, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: size - 2)),
-        Text(value, style: TextStyle(color: AppColors.darkText, fontWeight: isBold ? FontWeight.bold : FontWeight.w600, fontSize: size)),
-      ],
-    );
-  }
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        bool isDesktop = constraints.maxWidth > 800;
 
-  String _formatRupiah(int angka) {
-    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
-  }
-
-  // ==========================================
-  // LOGIKA PEMBAYARAN & API
-  // ==========================================
-  void _tampilkanDialogPembayaran() {
-    int total = _getGrandTotal();
-    TextEditingController bayarCtrl = TextEditingController(text: total.toString());
-    String metode = 'tunai';
-    bool isProcessing = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            int kembalian = (int.tryParse(bayarCtrl.text) ?? 0) - total;
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Proses Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
+        Widget mainContent = Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: AppColors.card,
+              child: Row(
                 children: [
-                  DropdownButtonFormField<String>(
-                    value: metode,
-                    decoration: InputDecoration(
-                      filled: true, fillColor: AppColors.lightGray,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'tunai', child: Text('Tunai')),
-                      DropdownMenuItem(value: 'non_tunai', child: Text('Non-Tunai (QRIS/Transfer)')),
-                    ],
-                    onChanged: (val) {
-                      setDialogState(() {
-                        metode = val!;
-                        if (metode == 'non_tunai') bayarCtrl.text = total.toString();
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 15),
-                  if (metode == 'tunai')
-                    TextField(
-                      controller: bayarCtrl,
-                      keyboardType: TextInputType.number,
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onSubmitted: (val) {
+                        setState(() => _searchQuery = val);
+                        _muatProduk(); // Scan USB akan memicu ini (Enter otomatis)
+                      },
                       decoration: InputDecoration(
-                        labelText: 'Uang Diterima (Rp)',
-                        filled: true, fillColor: AppColors.lightGray,
+                        hintText: 'Cari produk / SKU / scan barcode di sini...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: IconButton(icon: const Icon(Icons.camera_alt), onPressed: () {}),
+                        filled: true, fillColor: AppColors.background,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       ),
-                      onChanged: (val) => setDialogState(() {}),
                     ),
-                  const SizedBox(height: 15),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Tagihan', style: TextStyle(color: AppColors.slateGray, fontWeight: FontWeight.bold)),
-                      Text(_formatRupiah(total), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.smartBlue)),
-                    ],
                   ),
-                  if (metode == 'tunai') ...[
-                    const SizedBox(height: 5),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Kembalian', style: TextStyle(color: AppColors.slateGray, fontWeight: FontWeight.bold)),
-                        Text(_formatRupiah(kembalian > 0 ? kembalian : 0), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kembalian < 0 ? AppColors.red : AppColors.emerald)),
-                      ],
+                  const SizedBox(width: 12),
+                  // TOMBOL JASA MANUAL
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.navyActive,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                     ),
-                  ]
+                    onPressed: _tampilkanFormJasaManual,
+                    icon: const Icon(Icons.design_services, color: Colors.white, size: 18),
+                    label: const Text('Jasa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  )
                 ],
               ),
-              actions: [
-                TextButton(onPressed: isProcessing ? null : () => Navigator.pop(dialogCtx), child: const Text('Batal', style: TextStyle(color: AppColors.slateGray))),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  onPressed: isProcessing ? null : () async {
-                    int bayar = int.tryParse(bayarCtrl.text) ?? 0;
-                    if (metode == 'tunai' && bayar < total) {
-                      _tampilkanNotif('Uang bayar kurang!', AppColors.red);
-                      return;
-                    }
-
-                    setDialogState(() => isProcessing = true);
-                    
-                    Map<String, dynamic> payload = {
-                      "toko_id": _tokoId,
-                      "user_id": _userId,
-                      "total_harga": total,
-                      "ppn_persen": _ppnPersen,
-                      "ppn_nominal": _getPpnNominal(),
-                      "uang_bayar": bayar,
-                      "kembalian": kembalian > 0 ? kembalian : 0,
-                      "metode_pembayaran": metode,
-                      "tipe_pesanan": "dine_in",
-                      "items": keranjang.map((item) => {
-                        "product_id": item['id'],
-                        "qty": item['qty'],
-                        "harga_satuan": item['harga'],
-                        "subtotal": item['subtotal']
-                      }).toList()
-                    };
-
-                    try {
-                      final response = await http.post(
-                        Uri.parse('$domainUrl/api/simpanTransaksi'),
-                        headers: {'Content-Type': 'application/json'},
-                        body: json.encode(payload),
-                      );
-
-                      if (response.statusCode == 200 || response.statusCode == 201) {
-                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                        List<Map<String, dynamic>> keranjangSnapshot = List.from(keranjang);
-                        _kosongkanKeranjang();
-                        await _ambilDataProduk(); 
-
-                        if (context.mounted) {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => HalamanStruk(
-                            keranjang: keranjangSnapshot,
-                            totalBelanja: total,
-                            subtotal: _getSubtotal(),
-                            ppnNominal: _getPpnNominal(),
-                            biayaJasa: 0,
-                            uangDiterima: bayar,
-                            uangKembalian: kembalian > 0 ? kembalian : 0,
-                            noStruk: 'TRX-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
-                            tanggal: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
-                            metodePembayaran: metode == 'tunai' ? 'Tunai' : 'Non-Tunai',
-                          )));
-                        }
-                      } else {
-                        _tampilkanNotif('Gagal menyimpan transaksi', AppColors.red);
-                      }
-                    } catch (e) {
-                      _tampilkanNotif('Kesalahan jaringan: $e', AppColors.red);
-                    }
-                    if (dialogCtx.mounted) setDialogState(() => isProcessing = false);
-                  },
-                  child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2)) : const Text('Simpan & Cetak', style: TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
-                )
-              ],
-            );
-          },
+            ),
+            Expanded(child: _buildProductGrid()),
+          ],
         );
-      },
+
+        if (isDesktop) {
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Row(
+              children: [
+                Expanded(child: mainContent),
+                _buildCartPanel(), // Keranjang nempel di kanan
+              ],
+            ),
+          );
+        }
+
+        // Tampilan Mobile (Ada tombol floating untuk buka keranjang)
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: mainContent,
+          floatingActionButton: _cart.isNotEmpty
+              ? FloatingActionButton.extended(
+                  backgroundColor: AppColors.primaryEmerald,
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (ctx) => Container(
+                        height: MediaQuery.of(context).size.height * 0.9,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: const BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+                        child: _buildCartPanel(), // Memakai keranjang yang sama untuk BottomSheet
+                      )
+                    );
+                  },
+                  icon: const Icon(Icons.shopping_cart, color: Colors.white),
+                  label: Text('${_cart.length} Item - ${_formatRupiah(_grandTotal)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              : null,
+        );
+      }
     );
   }
 }

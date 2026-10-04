@@ -1,189 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async'; 
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:permission_handler/permission_handler.dart'; // <-- IMPORT PERMISSION HANDLER
+import 'core/constants/app_colors.dart';
+import 'presentation/layouts/main_layout.dart';
 
-// --- TAMBAHAN IMPORT FIREBASE & NOTIFIKASI ---
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
-// --- IMPORT FILE PREMIUM & HALAMAN UTAMA ---
-import 'halaman_login.dart';
-import 'tema.dart'; 
-import 'kerangka_navigasi.dart'; 
-
-// ===================================================================
-// FUNGSI PENANGKAP NOTIFIKASI SAAT APLIKASI DITUTUP (BACKGROUND)
-// ===================================================================
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  debugPrint("Notifikasi masuk saat aplikasi ditutup: ${message.messageId}");
+void main() {
+  runApp(const SmartKasirApp());
 }
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('id_ID', null);
-
-  // ===================================================================
-  // MESIN FIREBASE & PERIZINAN NOTIFIKASI
-  // ===================================================================
-  try {
-    await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('ic_notifikasi');
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
-    NotificationSettings settings = await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('Izin notifikasi diberikan.');
-      String? token = await messaging.getToken();
-      debugPrint('FCM TOKEN HP INI: $token');
-    }
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      RemoteNotification? notification = message.notification;
-      AndroidNotification? android = message.notification?.android;
-
-      if (notification != null && android != null) {
-        flutterLocalNotificationsPlugin.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'smart_kasir_channel',
-              'Notifikasi Penting',
-              channelDescription: 'Channel khusus untuk notifikasi transaksi',
-              importance: Importance.max,
-              priority: Priority.high,
-              icon: 'ic_notifikasi',
-              color: AppColors.teal, 
-            ),
-          ),
-        );
-      }
-    });
-  } catch (e) {
-    debugPrint('Gagal menghidupkan Firebase: $e');
-  }
-
-  // ===================================================================
-  // MINTA IZIN PERANGKAT SEKITAR (BLUETOOTH) & LOKASI
-  // ===================================================================
-  try {
-    // Meminta sekumpulan izin sekaligus saat aplikasi baru dibuka
-    await [
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
-      Permission.location, // Syarat mutlak Android untuk scan Bluetooth
-    ].request();
-    debugPrint('Permintaan izin Perangkat Sekitar & Lokasi diproses.');
-  } catch (e) {
-    debugPrint('Gagal meminta izin: $e');
-  }
-
-  // ===================================================================
-  // JALANKAN APLIKASI
-  // ===================================================================
-  final prefs = await SharedPreferences.getInstance();
-  final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-
-  runApp(AplikasiKasir(isLoggedIn: isLoggedIn));
-}
-
-class AplikasiKasir extends StatelessWidget {
-  final bool isLoggedIn;
-  const AplikasiKasir({super.key, required this.isLoggedIn});
+class SmartKasirApp extends StatelessWidget {
+  const SmartKasirApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Kasir Premium',
-      theme: AppTheme.lightTheme,
-      home: HalamanSplashLoading(isLoggedIn: isLoggedIn),
+      title: 'Smart Kasir',
       debugShowCheckedModeBanner: false,
-    );
-  }
-}
-
-// ===================================================================
-// HALAMAN SPLASH SCREEN (LOADING) PREMIUM
-// ===================================================================
-class HalamanSplashLoading extends StatefulWidget {
-  final bool isLoggedIn;
-  const HalamanSplashLoading({super.key, required this.isLoggedIn});
-
-  @override
-  State<HalamanSplashLoading> createState() => _HalamanSplashLoadingState();
-}
-
-class _HalamanSplashLoadingState extends State<HalamanSplashLoading> {
-  @override
-  void initState() {
-    super.initState();
-    _mulaiLoading();
-  }
-
-  void _mulaiLoading() async {
-    await Future.delayed(const Duration(seconds: 3)); 
-    if (!mounted) return;
-
-    if (widget.isLoggedIn) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const KerangkaNavigasiPremium()),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HalamanLogin()),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    double lebarLayar = MediaQuery.of(context).size.width;
-
-    return Scaffold(
-      backgroundColor: AppColors.deepNavy, 
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(
-              'assets/logo_loading.png',
-              width: lebarLayar * 0.45, 
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(height: 40), 
-            const SizedBox(
-              width: 30,
-              height: 30,
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.teal), 
-                strokeWidth: 3.5,
-              ),
-            ),
-          ],
-        ),
+      theme: ThemeData(
+        fontFamily: 'Inter', // Pastikan Anda menambahkan font Inter di pubspec.yaml
+        scaffoldBackgroundColor: AppColors.background,
+        primaryColor: AppColors.primaryEmerald,
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primaryEmerald),
       ),
+      // Memanggil layout utama, isOwner diset true untuk simulasi akun Owner
+      home: const MainLayout(isOwner: true), 
     );
   }
 }
