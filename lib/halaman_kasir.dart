@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+
 import 'tema.dart';
 import 'services/api_service.dart';
+import 'halaman_shift.dart'; // <-- Pastikan import halaman shift
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -12,6 +14,9 @@ class HalamanKasir extends StatefulWidget {
 }
 
 class _HalamanKasirState extends State<HalamanKasir> {
+  bool _isCheckingShift = true; // State khusus untuk mengecek shift awal
+  bool _hasActiveShift = false; 
+
   bool _isLoading = true;
   List<dynamic> _products = [];
   String _searchQuery = '';
@@ -26,7 +31,30 @@ class _HalamanKasirState extends State<HalamanKasir> {
   @override
   void initState() {
     super.initState();
-    _muatProduk();
+    // 1. Cek Shift terlebih dahulu sebelum memuat produk
+    _cekShiftAktif();
+  }
+
+  // =========================================================
+  // CEK STATUS SHIFT
+  // =========================================================
+  Future<void> _cekShiftAktif() async {
+    setState(() => _isCheckingShift = true);
+    try {
+      final response = await ApiService.get('shifts/current');
+      if (response.statusCode == 200) {
+        final resData = json.decode(response.body);
+        if (resData['data'] != null) {
+          _hasActiveShift = true;
+          _muatProduk(); // Lanjut muat produk jika shift ada
+        } else {
+          _hasActiveShift = false;
+        }
+      }
+    } catch (e) {
+      _hasActiveShift = false;
+    }
+    setState(() => _isCheckingShift = false);
   }
 
   Future<void> _muatProduk() async {
@@ -103,34 +131,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: namaCtrl,
-                decoration: const InputDecoration(labelText: 'Nama Jasa', isDense: true, border: OutlineInputBorder()),
-              ),
+              TextField(controller: namaCtrl, decoration: const InputDecoration(labelText: 'Nama Jasa', isDense: true, border: OutlineInputBorder())),
               const SizedBox(height: 12),
-              TextField(
-                controller: hargaCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Harga (Rp)', isDense: true, border: OutlineInputBorder()),
-              ),
+              TextField(controller: hargaCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)', isDense: true, border: OutlineInputBorder())),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: qtyCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Qty', isDense: true, border: OutlineInputBorder()),
-                    ),
-                  ),
+                  Expanded(child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', isDense: true, border: OutlineInputBorder()))),
                   const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: TextField(
-                      controller: catatanCtrl,
-                      decoration: const InputDecoration(labelText: 'Catatan Opsional', isDense: true, border: OutlineInputBorder()),
-                    ),
-                  ),
+                  Expanded(flex: 2, child: TextField(controller: catatanCtrl, decoration: const InputDecoration(labelText: 'Catatan Opsional', isDense: true, border: OutlineInputBorder()))),
                 ],
               ),
             ],
@@ -142,7 +151,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald),
             onPressed: () {
               if (namaCtrl.text.isEmpty || hargaCtrl.text.isEmpty) return;
-              
               setState(() {
                 _cart.add({
                   'product_id': null, // Menandakan ini Jasa Manual
@@ -169,7 +177,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   // =========================================================
   void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
-    
     String metode = 'CASH';
     TextEditingController uangCtrl = TextEditingController(text: _grandTotal.toInt().toString());
     bool isProcessing = false;
@@ -191,7 +198,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                   const SizedBox(height: 24),
                   
-                  // Pilihan Metode
                   Wrap(
                     spacing: 12, runSpacing: 12,
                     alignment: WrapAlignment.center,
@@ -207,7 +213,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     }).toList(),
                   ),
                   const SizedBox(height: 24),
-                  
                   if (metode == 'CASH')
                     TextField(
                       controller: uangCtrl,
@@ -235,7 +240,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
                   setModalState(() => isProcessing = true);
                   
-                  // FORMAT JSON SESUAI PERMINTAAN BACKEND CI4
                   final payload = {
                     "table_id": _selectedTable != null ? int.tryParse(_selectedTable!.replaceAll('Meja ', '')) : null,
                     "discount": _discount,
@@ -244,8 +248,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     "paid_amount": paidAmount,
                     "items": _cart.map((c) => {
                       "product_id": c['product_id'],
-                      "name": c['name'], // Penting untuk Jasa Manual
-                      "price": c['price'], // Penting untuk Jasa Manual
+                      "name": c['name'], 
+                      "price": c['price'], 
                       "quantity": c['quantity'],
                       "order_type": c['order_type'],
                       "note": c['note']
@@ -253,13 +257,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   };
 
                   final res = await ApiService.post('cashier/transactions', payload);
-                  
                   if (res.statusCode == 201) {
                     final data = json.decode(res.body)['data'];
                     Navigator.pop(ctx);
                     setState(() { _cart.clear(); _selectedTable = null; });
                     _tampilkanSukses(data['invoice'], data['kembalian']);
-                    _muatProduk(); // Refresh stok di layar
+                    _muatProduk(); // Refresh stok
                   } else {
                     _showNotif('Gagal: ${json.decode(res.body)['message']}', AppColors.error);
                     setModalState(() => isProcessing = false);
@@ -401,25 +404,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          
-                          // Toggle Dine In / Takeaway per Item
                           Row(
                             children: [
-                              ChoiceChip(
-                                label: const Text('Dine In', style: TextStyle(fontSize: 10)),
-                                selected: item['order_type'] == 'DINE_IN',
-                                onSelected: (v) => setState(() => item['order_type'] = 'DINE_IN'),
-                              ),
+                              ChoiceChip(label: const Text('Dine In', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'DINE_IN', onSelected: (v) => setState(() => item['order_type'] = 'DINE_IN')),
                               const SizedBox(width: 8),
-                              ChoiceChip(
-                                label: const Text('Takeaway', style: TextStyle(fontSize: 10)),
-                                selected: item['order_type'] == 'TAKEAWAY',
-                                onSelected: (v) => setState(() => item['order_type'] = 'TAKEAWAY'),
-                              ),
+                              ChoiceChip(label: const Text('Takeaway', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'TAKEAWAY', onSelected: (v) => setState(() => item['order_type'] = 'TAKEAWAY')),
                             ],
                           ),
-                          
-                          // Input Catatan per item
                           Padding(
                             padding: const EdgeInsets.only(top: 8, bottom: 8),
                             child: TextFormField(
@@ -429,14 +420,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               onChanged: (val) => item['note'] = val.isEmpty ? null : val,
                             ),
                           ),
-
-                          // Qty Control
                           Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: AppColors.textSecondary),
-                                onPressed: () => setState(() { if (item['quantity'] > 1) item['quantity']--; else _cart.removeAt(i); }),
-                              ),
+                              IconButton(icon: const Icon(Icons.remove_circle_outline, color: AppColors.textSecondary), onPressed: () => setState(() { if (item['quantity'] > 1) item['quantity']--; else _cart.removeAt(i); })),
                               Text('${item['quantity']}'),
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryEmerald),
@@ -454,7 +440,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 ),
           ),
           
-          // Bagian Bawah Keranjang
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
@@ -463,7 +448,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
             ),
             child: Column(
               children: [
-                // Pilihan Meja (Opsional)
                 DropdownButtonFormField<String>(
                   value: _selectedTable,
                   decoration: const InputDecoration(labelText: 'No. Meja', border: OutlineInputBorder(), isDense: true),
@@ -471,13 +455,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   onChanged: (val) => setState(() => _selectedTable = val),
                 ),
                 const SizedBox(height: 16),
-                
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRupiah(_subtotal))]),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon'), Text(_formatRupiah(_discount))]),
                 const Divider(),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryEmerald))]),
                 const SizedBox(height: 16),
-                
                 SizedBox(
                   width: double.infinity, height: 50,
                   child: ElevatedButton(
@@ -496,6 +478,48 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   @override
   Widget build(BuildContext context) {
+    // 1. TAMPILAN LOADING AWAL SAAT CEK SHIFT
+    if (_isCheckingShift) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)),
+      );
+    }
+
+    // 2. TAMPILAN TERKUNCI JIKA SHIFT BELUM DIBUKA
+    if (!_hasActiveShift) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_clock, size: 80, color: AppColors.error),
+              const SizedBox(height: 16),
+              const Text('SHIFT BELUM DIBUKA', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+              const SizedBox(height: 8),
+              const Text('Anda harus membuka shift kasir terlebih dahulu\nsebelum dapat melakukan transaksi penjualan.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary, height: 1.5)),
+              const SizedBox(height: 32),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryEmerald,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  // Arahkan ke halaman shift, dan cek ulang saat kembali
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanShift())).then((_) => _cekShiftAktif());
+                },
+                icon: const Icon(Icons.lock_open, color: Colors.white),
+                label: const Text('Buka Shift Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              )
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 3. TAMPILAN NORMAL (SHIFT SUDAH AKTIF)
     return LayoutBuilder(
       builder: (context, constraints) {
         bool isDesktop = constraints.maxWidth > 800;
@@ -512,7 +536,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       controller: _searchCtrl,
                       onSubmitted: (val) {
                         setState(() => _searchQuery = val);
-                        _muatProduk(); // Scan USB akan memicu ini (Enter otomatis)
+                        _muatProduk(); 
                       },
                       decoration: InputDecoration(
                         hintText: 'Cari produk / SKU / scan barcode di sini...',
@@ -524,7 +548,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // TOMBOL JASA MANUAL
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.navyActive,
@@ -548,13 +571,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
             body: Row(
               children: [
                 Expanded(child: mainContent),
-                _buildCartPanel(), // Keranjang nempel di kanan
+                _buildCartPanel(),
               ],
             ),
           );
         }
 
-        // Tampilan Mobile (Ada tombol floating untuk buka keranjang)
         return Scaffold(
           backgroundColor: AppColors.background,
           body: mainContent,
@@ -570,7 +592,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         height: MediaQuery.of(context).size.height * 0.9,
                         clipBehavior: Clip.antiAlias,
                         decoration: const BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-                        child: _buildCartPanel(), // Memakai keranjang yang sama untuk BottomSheet
+                        child: _buildCartPanel(),
                       )
                     );
                   },
