@@ -34,8 +34,8 @@ class ApiClient {
                                                                                                                   final prefs = await SharedPreferences.getInstance();
                                                                                                                       
                                                                                                                           // Ambil token dan store_id yang disimpan saat Login
-                                                                                                                              final token = prefs.getString('token');
-                                                                                                                                  final storeId = prefs.getString('store_id'); 
+                                                                                                                              final token = prefs.getString('jwt_token'); // <-- Sesuaikan namanya jadi jwt_token
+final storeId = prefs.getInt('store_id')?.toString(); 
 
                                                                                                                                       if (token != null && token.isNotEmpty) {
                                                                                                                                             options.headers['Authorization'] = 'Bearer $token';
@@ -65,4 +65,3 @@ class ApiClient {
                                                                                                                                                                                                                           return super.onError(err, handler);
                                                                                                                                                                                                                             }
                                                                                                                                                                                                                             }
-                                                                                                                                                                                                                            
