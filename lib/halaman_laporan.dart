@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'dart:io' show Platform, Socket;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
@@ -9,7 +8,9 @@ import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
-import 'tema.dart'; // Import tema eksklusif
+import 'tema.dart'; 
+// TODO: Sesuaikan dengan lokasi ApiClient Anda
+import 'core/network/api_client.dart'; 
 
 class HalamanLaporan extends StatefulWidget {
   const HalamanLaporan({super.key});
@@ -19,12 +20,11 @@ class HalamanLaporan extends StatefulWidget {
 }
 
 class _HalamanLaporanState extends State<HalamanLaporan> {
-  final String domainUrl = 'https://smartkasir.shop';
+  final Dio _dio = ApiClient().dio;
+
   bool isLoading = true;
-  int _tokoId = 1;
-  int _userId = 1;
   String _namaToko = 'Toko Anda';
-  String _namaPetugas = 'Kasir'; // Tambahan untuk nama kasir
+  String _namaPetugas = 'Kasir'; 
 
   // State untuk Shift
   String _statusShift = 'closed';
@@ -51,8 +51,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
   Future<void> _inisialisasiData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _tokoId = prefs.getInt('toko_id') ?? 1;
-      _userId = prefs.getInt('user_id') ?? 1;
       _namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
       _namaPetugas = prefs.getString('username') ?? 'Kasir';
     });
@@ -61,20 +59,23 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
   }
 
   // ==========================================
-  // FUNGSI MANAJEMEN SHIFT
+  // FUNGSI MANAJEMEN SHIFT (Sesuai Routes CI4)
   // ==========================================
   Future<void> _cekStatusShift() async {
     try {
-      final res = await http.get(Uri.parse('$domainUrl/api/cekStatusShift/$_userId'), headers: {'Accept': 'application/json'});
+      // Endpoint disesuaikan dengan: $routes->get('shifts/current', ...)
+      final res = await _dio.get('/shifts/current');
       if (res.statusCode == 200) {
-        final data = json.decode(res.body)['data'];
+        final data = res.data['data'];
         setState(() {
           _statusShift = data['status_shift'] ?? 'closed';
           _modalAwal = int.tryParse(data['modal_awal']?.toString() ?? '0') ?? 0;
         });
       }
+    } on DioException catch (e) {
+      debugPrint("Gagal cek shift: ${e.message}");
     } catch (e) {
-      debugPrint("Gagal cek shift: $e");
+      debugPrint("Error sistem cek shift: $e");
     }
   }
 
@@ -115,20 +116,19 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                 onPressed: isProses ? null : () async {
                   setDialogState(() => isProses = true);
                   try {
-                    await http.post(
-                        Uri.parse('$domainUrl/api/bukaShift'),
-                        headers: {'Content-Type': 'application/json'},
-                        body: json.encode({'user_id': _userId, 'modal_awal': int.tryParse(modalCtrl.text) ?? 0})
+                    // Endpoint disesuaikan dengan: $routes->post('shifts/open', ...)
+                    await _dio.post(
+                      '/shifts/open',
+                      data: {
+                        'modal_awal': int.tryParse(modalCtrl.text) ?? 0
+                      }
                     );
                     await _cekStatusShift();
-                    
                     if (ctx.mounted) Navigator.pop(ctx);
-                    
-                    // Notifikasi sukses, jika ini dibuka dari Halaman Kasir, 
-                    // menekan tombol Back akan langsung memuat kasir yang sudah terbuka.
                     _tampilkanNotif('Shift Dibuka! Silakan kembali ke menu Kasir.', AppColors.emerald);
-                  } catch (e) {
-                    _tampilkanNotif('Gagal membuka shift', AppColors.red);
+                  } on DioException catch (e) {
+                    final msg = e.response?.data['message'] ?? 'Gagal membuka shift';
+                    _tampilkanNotif(msg, AppColors.red);
                   }
                   setDialogState(() => isProses = false);
                 },
@@ -141,7 +141,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     );
   }
 
-  // DIALOG TUTUP SHIFT DENGAN CATATAN
   void _tampilkanDialogTutupShift() {
     TextEditingController catatanCtrl = TextEditingController();
     bool isProses = false;
@@ -179,30 +178,24 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
                 onPressed: isProses ? null : () async {
                   setDialogState(() => isProses = true);
                   try {
-                    final response = await http.post(
-                        Uri.parse('$domainUrl/api/tutupShift'),
-                        headers: {'Content-Type': 'application/json'},
-                        body: json.encode({
-                          'user_id': _userId,
-                          'catatan': catatanCtrl.text
-                        })
+                    // Endpoint disesuaikan dengan: $routes->post('shifts/close', ...)
+                    final response = await _dio.post(
+                      '/shifts/close',
+                      data: {
+                        'catatan': catatanCtrl.text
+                      }
                     );
                     
                     if (response.statusCode == 200) {
-                      final dataShift = json.decode(response.body)['data'];
-                      
+                      final dataShift = response.data['data'];
                       await _cekStatusShift();
                       if (ctx.mounted) Navigator.pop(ctx);
-                      
                       _tampilkanNotif('Shift Ditutup. Memproses cetak struk shift...', AppColors.smartBlue);
-                      
-                      // Cetak otomatis rekapitulasi shift
                       await _cetakLaporanShiftFisik(dataShift ?? {});
-                    } else {
-                      _tampilkanNotif('Gagal menutup shift dari server', AppColors.red);
                     }
-                  } catch (e) {
-                    _tampilkanNotif('Gagal menutup shift: $e', AppColors.red);
+                  } on DioException catch (e) {
+                    final msg = e.response?.data['message'] ?? 'Gagal menutup shift';
+                    _tampilkanNotif(msg, AppColors.red);
                   }
                   if (ctx.mounted) setDialogState(() => isProses = false);
                 },
@@ -216,7 +209,7 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
   }
 
   // ==========================================
-  // FUNGSI LAPORAN & CETAK
+  // FUNGSI LAPORAN (Sesuai Routes & Parameter CI4)
   // ==========================================
   Future<void> _ambilDataLaporan() async {
     setState(() => isLoading = true);
@@ -224,25 +217,27 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     String strAkhir = DateFormat('yyyy-MM-dd').format(_tglAkhir);
 
     try {
-      final response = await http.get(
-        Uri.parse('$domainUrl/api/laporanBerkala?toko_id=$_tokoId&tgl_awal=$strAwal&tgl_akhir=$strAkhir'),
-        headers: {'Accept': 'application/json'},
+      // Menggunakan route /reports dan parameter date_from, date_to (bukan tgl_awal/tgl_akhir)
+      final response = await _dio.get(
+        '/dashboard', // ATAU /reports sesuai struktur pengembalian metrik backend Anda
+        queryParameters: {
+          'date_from': strAwal,
+          'date_to': strAkhir,
+        }
       );
 
       if (response.statusCode == 200) {
-        final res = json.decode(response.body)['data'];
+        final res = response.data['data'];
         setState(() {
-          metrik = res['metrik'];
-          grafikData = res['grafik']['data'];
-          grafikMax = res['grafik']['nilai_tertinggi'] == 0 ? 1 : res['grafik']['nilai_tertinggi'];
-          produkTerlaris = res['produk_terlaris'];
+          metrik = res['metrik'] ?? {'omzet': 0, 'total_transaksi': 0, 'laba_bersih': 0};
+          grafikData = res['grafik']?['data'] ?? [];
+          grafikMax = res['grafik']?['nilai_tertinggi'] == 0 ? 1 : (res['grafik']?['nilai_tertinggi'] ?? 1);
+          produkTerlaris = res['produk_terlaris'] ?? [];
           isLoading = false;
         });
-      } else {
-        setState(() => isLoading = false);
       }
-    } catch (e) {
-      debugPrint("Gagal memuat laporan: $e");
+    } on DioException catch (e) {
+      debugPrint("Gagal memuat laporan: ${e.message}");
       setState(() => isLoading = false);
     }
   }
@@ -280,26 +275,25 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
   }
 
-  // FUNGSI CETAK LAPORAN BERKALA (TOMBOL KANAN BAWAH)
+  // =======================================================
+  // FUNGSI CETAK PRINTER BLUETOOTH (Tetap Sama)
+  // =======================================================
   Future<void> _cetakLaporanFisik() async {
     if (kIsWeb || Platform.isIOS) {
       _tampilkanNotif('Platform tidak didukung untuk cetak Bluetooth.', AppColors.red);
       return;
     }
-
     _tampilkanNotif('Memproses cetak laporan...', AppColors.smartBlue);
     List<int> bytes = await _generateBytesLaporanBerkala();
     await _kirimKePrinter(bytes);
   }
 
-  // FUNGSI CETAK REKAPITULASI SHIFT (SAAT TUTUP SHIFT)
   Future<void> _cetakLaporanShiftFisik(Map<String, dynamic> dataShift) async {
     if (kIsWeb || Platform.isIOS) return;
     List<int> bytes = await _generateBytesLaporanShift(dataShift);
     await _kirimKePrinter(bytes);
   }
 
-  // MESIN PENGIRIM KE PRINTER
   Future<void> _kirimKePrinter(List<int> bytes) async {
     final prefs = await SharedPreferences.getInstance();
     String tipe = prefs.getString('printer_tipe_utama') ?? 'bluetooth';
@@ -345,7 +339,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     }
   }
 
-  // GENERATOR DESAIN STRUK SHIFT
   Future<List<int>> _generateBytesLaporanShift(Map<String, dynamic> shift) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
@@ -364,21 +357,17 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     bytes += generator.text(_namaToko.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
     bytes += generator.text("REKAPITULASI SHIFT", styles: const PosStyles(align: PosAlign.center, bold: true));
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-    
     bytes += generator.row([PosColumn(text: "Kasir", width: 4), PosColumn(text: ": $kasir", width: 8)]);
     bytes += generator.row([PosColumn(text: "Buka", width: 4), PosColumn(text: ": $waktuBuka", width: 8)]);
     bytes += generator.row([PosColumn(text: "Tutup", width: 4), PosColumn(text: ": $waktuTutup", width: 8)]);
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-    
     bytes += generator.row([PosColumn(text: "Modal Awal", width: 6), PosColumn(text: _formatRupiah(modalAwal), width: 6, styles: const PosStyles(align: PosAlign.right))]);
     bytes += generator.row([PosColumn(text: "Pemasukan Tunai", width: 6), PosColumn(text: _formatRupiah(bayarTunai), width: 6, styles: const PosStyles(align: PosAlign.right))]);
     bytes += generator.row([PosColumn(text: "Pemasukan QRIS/TF", width: 6), PosColumn(text: _formatRupiah(bayarNonTunai), width: 6, styles: const PosStyles(align: PosAlign.right))]);
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.row([PosColumn(text: "TOTAL KOTOR", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(totalPendapatan), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("PRODUK TERJUAL (SHIFT INI):", styles: const PosStyles(align: PosAlign.left, bold: true));
-    
     if (produk.isEmpty) {
       bytes += generator.text("Tidak ada penjualan", styles: const PosStyles(align: PosAlign.center));
     } else {
@@ -388,7 +377,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
         bytes += generator.text(_formatRupiah(int.parse(prod['total']?.toString() ?? '0')), styles: const PosStyles(align: PosAlign.right));
       }
     }
-
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.text("Catatan: $catatan", styles: const PosStyles(align: PosAlign.left));
     bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
@@ -397,7 +385,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     return bytes;
   }
 
-  // GENERATOR DESAIN STRUK LAPORAN BERKALA
   Future<List<int>> _generateBytesLaporanBerkala() async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
@@ -436,255 +423,4 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
   void _tampilkanNotif(String pesan, Color warna) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-        backgroundColor: warna,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
-    }
-  }
-
-  // ===================================================================
-  // WIDGET UTAMA (BODY)
-  // ===================================================================
-  @override
-  Widget build(BuildContext context) {
-    String periodeStr = "${DateFormat('dd MMM yyyy').format(_tglAwal)} - ${DateFormat('dd MMM yyyy').format(_tglAkhir)}";
-
-    return Scaffold(
-      backgroundColor: AppColors.lightGray,
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- HEADER HALAMAN ---
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 15),
-                  color: AppColors.lightGray,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Laporan', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                          SizedBox(height: 4),
-                          Text('Analisis penjualan dan performa bisnis', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
-                        ],
-                      ),
-                      InkWell(
-                        onTap: _pilihRentangTanggal,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_today, size: 14, color: AppColors.slateGray),
-                              const SizedBox(width: 8),
-                              Text(periodeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: _ambilDataLaporan,
-                    color: AppColors.teal,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 80),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // --- KARTU MANAJEMEN SHIFT ---
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 25),
-                            padding: const EdgeInsets.all(15),
-                            decoration: BoxDecoration(
-                              color: _statusShift == 'open' ? AppColors.emerald.withOpacity(0.1) : AppColors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _statusShift == 'open' ? AppColors.emerald : AppColors.red),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(_statusShift == 'open' ? 'Shift Sedang Berjalan' : 'Kasir Terkunci', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _statusShift == 'open' ? AppColors.emerald : AppColors.red)),
-                                    const SizedBox(height: 4),
-                                    Text(_statusShift == 'open' ? 'Modal Awal: ${_formatRupiah(_modalAwal)}' : 'Buka shift untuk mulai transaksi', style: const TextStyle(fontSize: 11, color: AppColors.darkText)),
-                                  ],
-                                ),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _statusShift == 'open' ? AppColors.red : AppColors.emerald,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  onPressed: _statusShift == 'open' ? _tampilkanDialogTutupShift : _tampilkanDialogBukaShift,
-                                  child: Text(_statusShift == 'open' ? 'Tutup Shift' : 'Buka Shift', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-                                )
-                              ],
-                            ),
-                          ),
-
-                          // --- 3 METRIK UTAMA ---
-                          Row(
-                            children: [
-                              Expanded(child: _buildMetrikCard('Total Omzet', _formatRupiah(metrik['omzet']), Icons.account_balance_wallet, AppColors.premiumGold)),
-                              const SizedBox(width: 12),
-                              Expanded(child: _buildMetrikCard('Total Transaksi', '${metrik['total_transaksi']}', Icons.receipt_long, AppColors.smartBlue)),
-                              const SizedBox(width: 12),
-                              Expanded(child: _buildMetrikCard('Laba Bersih', _formatRupiah(metrik['laba_bersih']), Icons.trending_up, AppColors.emerald)),
-                            ],
-                          ),
-                          const SizedBox(height: 25),
-
-                          // --- GRAFIK & PRODUK TERLARIS SECTION ---
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Container(
-                                  padding: const EdgeInsets.all(15),
-                                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('Grafik Penjualan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
-                                      const SizedBox(height: 20),
-                                      SizedBox(
-                                        height: 150,
-                                        child: grafikData.isEmpty 
-                                            ? const Center(child: Text('Tidak ada data', style: TextStyle(color: AppColors.slateGray)))
-                                            : SingleChildScrollView(
-                                                scrollDirection: Axis.horizontal,
-                                                child: Row(
-                                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                                  children: grafikData.map((data) {
-                                                    double tinggiTiang = (data['total'] / grafikMax) * 120;
-                                                    if (data['total'] > 0 && tinggiTiang < 10) tinggiTiang = 10;
-                                                    return Container(
-                                                      margin: const EdgeInsets.only(right: 15),
-                                                      child: Column(
-                                                        mainAxisAlignment: MainAxisAlignment.end,
-                                                        children: [
-                                                          Container(
-                                                            width: 15,
-                                                            height: tinggiTiang,
-                                                            decoration: BoxDecoration(color: AppColors.teal, borderRadius: BorderRadius.circular(4)),
-                                                          ),
-                                                          const SizedBox(height: 10),
-                                                          Text(data['hari_singkat'], style: const TextStyle(fontSize: 9, color: AppColors.slateGray)),
-                                                        ],
-                                                      ),
-                                                    );
-                                                  }).toList(),
-                                                ),
-                                              ),
-                                      )
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 15),
-                              Expanded(
-                                flex: 4,
-                                child: Container(
-                                  padding: const EdgeInsets.all(15),
-                                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('Produk Terlaris', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
-                                      const SizedBox(height: 15),
-                                      if (produkTerlaris.isEmpty)
-                                        const Text('Belum ada penjualan', style: TextStyle(color: AppColors.slateGray, fontSize: 12))
-                                      else
-                                        ...produkTerlaris.map((prod) {
-                                          return Padding(
-                                            padding: const EdgeInsets.only(bottom: 12),
-                                            child: Row(
-                                              children: [
-                                                Container(
-                                                  width: 30,
-                                                  height: 30,
-                                                  decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(6)),
-                                                  child: const Icon(Icons.inventory_2_outlined, size: 16, color: AppColors.slateGray),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(prod['nama'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                                                      Text('${prod['terjual']} Terjual', style: const TextStyle(fontSize: 9, color: AppColors.slateGray)),
-                                                    ],
-                                                  ),
-                                                ),
-                                                Text(_formatRupiah(int.parse(prod['omzet'].toString())), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.smartBlue)),
-                                              ],
-                                            ),
-                                          );
-                                        }),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 15),
-        child: FloatingActionButton.extended(
-          onPressed: _cetakLaporanFisik,
-          backgroundColor: AppColors.teal,
-          icon: const Icon(Icons.print, color: AppColors.white),
-          label: const Text('Cetak Laporan Berkala', style: TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMetrikCard(String judul, String nilai, IconData ikon, Color warnaBg) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: warnaBg.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                child: Icon(ikon, color: warnaBg, size: 16),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(judul, style: const TextStyle(fontSize: 10, color: AppColors.slateGray, fontWeight: FontWeight.bold))),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(nilai, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: warnaBg == AppColors.premiumGold ? AppColors.darkText : warnaBg)),
-        ],
-      ),
-    );
-  }
-}
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: A
