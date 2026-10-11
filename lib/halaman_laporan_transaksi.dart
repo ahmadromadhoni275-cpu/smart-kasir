@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'core/services/transaction_service.dart';
 import 'models/transaction_model.dart';
 import 'tema.dart'; 
+// PENTING: Tambahkan import untuk HalamanDetailTransaksi
+import 'halaman_detail_transaksi.dart'; 
 
 class HalamanLaporanTransaksi extends StatefulWidget {
   const HalamanLaporanTransaksi({super.key});
@@ -233,67 +235,84 @@ class _HalamanLaporanTransaksiState extends State<HalamanLaporanTransaksi> {
                               }
 
                               final tx = _transactions[index];
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(color: Colors.grey.shade200),
-                                ),
-                                elevation: 0,
-                                color: Colors.white,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(tx.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: tx.transactionStatus == 'COMPLETED' ? Colors.green.shade50 : Colors.red.shade50,
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: tx.transactionStatus == 'COMPLETED' ? Colors.green.shade200 : Colors.red.shade200),
-                                            ),
-                                            child: Text(
-                                              tx.transactionStatus,
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: tx.transactionStatus == 'COMPLETED' ? Colors.green.shade700 : Colors.red.shade700,
+                              
+                              // PERUBAHAN: Membungkus Card dengan InkWell untuk navigasi
+                              return InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => HalamanDetailTransaksi(
+                                        transactionId: tx.transactionId,
+                                        invoiceNumber: tx.invoiceNumber,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                // Berikan sedikit efek membulat saat ditekan
+                                borderRadius: BorderRadius.circular(16), 
+                                child: Card(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  elevation: 0,
+                                  color: Colors.white,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(tx.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: tx.transactionStatus == 'COMPLETED' ? Colors.green.shade50 : Colors.red.shade50,
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: tx.transactionStatus == 'COMPLETED' ? Colors.green.shade200 : Colors.red.shade200),
+                                              ),
+                                              child: Text(
+                                                tx.transactionStatus,
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: tx.transactionStatus == 'COMPLETED' ? Colors.green.shade700 : Colors.red.shade700,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 12),
-                                        child: Divider(height: 1, thickness: 1),
-                                      ),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text('${tx.itemQty} Item', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                                              const SizedBox(height: 4),
-                                              Text(tx.createdAt, style: const TextStyle(fontSize: 11, color: AppColors.slateGray)),
-                                            ],
-                                          ),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              Text(_formatCurrency(tx.grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primaryEmerald)),
-                                              const SizedBox(height: 4),
-                                              Text(tx.payments.map((p) => p.method).join(', '), style: const TextStyle(fontSize: 11, color: AppColors.slateGray, fontWeight: FontWeight.bold)),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ],
+                                          ],
+                                        ),
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(vertical: 12),
+                                          child: Divider(height: 1, thickness: 1),
+                                        ),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('${tx.itemQty} Item', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                                                const SizedBox(height: 4),
+                                                Text(tx.createdAt, style: const TextStyle(fontSize: 11, color: AppColors.slateGray)),
+                                              ],
+                                            ),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(_formatCurrency(tx.grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primaryEmerald)),
+                                                const SizedBox(height: 4),
+                                                Text(tx.payments.map((p) => p.method).join(', '), style: const TextStyle(fontSize: 11, color: AppColors.slateGray, fontWeight: FontWeight.bold)),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );

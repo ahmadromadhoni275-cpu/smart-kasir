@@ -43,4 +43,18 @@ class TransactionService {
       throw Exception(errorMsg);
     }
   }
+  
+  Future<Map<String, dynamic>> getTransactionDetail(int transactionId) async {
+    try {
+      final response = await _dio.get('/transactions/$transactionId');
+      
+      if (response.statusCode == 200 && response.data['status'] == 'success') {
+        return response.data['data']; 
+      }
+      throw Exception('Gagal memuat detail transaksi');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
 }
+  
