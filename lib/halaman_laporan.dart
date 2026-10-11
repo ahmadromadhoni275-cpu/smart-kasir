@@ -423,4 +423,251 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
   void _tampilkanNotif(String pesan, Color warna) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: A
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String periodeStr = "${DateFormat('dd MMM yyyy').format(_tglAwal)} - ${DateFormat('dd MMM yyyy').format(_tglAkhir)}";
+
+    return Scaffold(
+      backgroundColor: AppColors.lightGray,
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 15),
+                  color: AppColors.lightGray,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Laporan', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                          SizedBox(height: 4),
+                          Text('Analisis penjualan dan performa bisnis', style: TextStyle(fontSize: 12, color: AppColors.slateGray)),
+                        ],
+                      ),
+                      InkWell(
+                        onTap: _pilihRentangTanggal,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today, size: 14, color: AppColors.slateGray),
+                              const SizedBox(width: 8),
+                              Text(periodeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _ambilDataLaporan,
+                    color: AppColors.teal,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 80),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // KARTU MANAJEMEN SHIFT
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 25),
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: _statusShift == 'open' ? AppColors.emerald.withOpacity(0.1) : AppColors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: _statusShift == 'open' ? AppColors.emerald : AppColors.red),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_statusShift == 'open' ? 'Shift Sedang Berjalan' : 'Kasir Terkunci', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _statusShift == 'open' ? AppColors.emerald : AppColors.red)),
+                                    const SizedBox(height: 4),
+                                    Text(_statusShift == 'open' ? 'Modal Awal: ${_formatRupiah(_modalAwal)}' : 'Buka shift untuk mulai transaksi', style: const TextStyle(fontSize: 11, color: AppColors.darkText)),
+                                  ],
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _statusShift == 'open' ? AppColors.red : AppColors.emerald,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: _statusShift == 'open' ? _tampilkanDialogTutupShift : _tampilkanDialogBukaShift,
+                                  child: Text(_statusShift == 'open' ? 'Tutup Shift' : 'Buka Shift', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
+                                )
+                              ],
+                            ),
+                          ),
+
+                          // 3 METRIK UTAMA
+                          Row(
+                            children: [
+                              Expanded(child: _buildMetrikCard('Total Omzet', _formatRupiah(metrik['omzet']), Icons.account_balance_wallet, AppColors.premiumGold)),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildMetrikCard('Total Transaksi', '${metrik['total_transaksi']}', Icons.receipt_long, AppColors.smartBlue)),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildMetrikCard('Laba Bersih', _formatRupiah(metrik['laba_bersih']), Icons.trending_up, AppColors.emerald)),
+                            ],
+                          ),
+                          const SizedBox(height: 25),
+
+                          // GRAFIK & PRODUK TERLARIS SECTION
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.all(15),
+                                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Grafik Penjualan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
+                                      const SizedBox(height: 20),
+                                      SizedBox(
+                                        height: 150,
+                                        child: grafikData.isEmpty 
+                                            ? const Center(child: Text('Tidak ada data', style: TextStyle(color: AppColors.slateGray)))
+                                            : SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                child: Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                                  children: grafikData.map((data) {
+                                                    double tinggiTiang = (data['total'] / grafikMax) * 120;
+                                                    if (data['total'] > 0 && tinggiTiang < 10) tinggiTiang = 10;
+                                                    return Container(
+                                                      margin: const EdgeInsets.only(right: 15),
+                                                      child: Column(
+                                                        mainAxisAlignment: MainAxisAlignment.end,
+                                                        children: [
+                                                          Container(
+                                                            width: 15,
+                                                            height: tinggiTiang,
+                                                            decoration: BoxDecoration(color: AppColors.teal, borderRadius: BorderRadius.circular(4)),
+                                                          ),
+                                                          const SizedBox(height: 10),
+                                                          Text(data['hari_singkat'], style: const TextStyle(fontSize: 9, color: AppColors.slateGray)),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }).toList(),
+                                                ),
+                                              ),
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 15),
+                              Expanded(
+                                flex: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(15),
+                                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Produk Terlaris', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
+                                      const SizedBox(height: 15),
+                                      if (produkTerlaris.isEmpty)
+                                        const Text('Belum ada penjualan', style: TextStyle(color: AppColors.slateGray, fontSize: 12))
+                                      else
+                                        ...produkTerlaris.map((prod) {
+                                          return Padding(
+                                            padding: const EdgeInsets.only(bottom: 12),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  width: 30,
+                                                  height: 30,
+                                                  decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(6)),
+                                                  child: const Icon(Icons.inventory_2_outlined, size: 16, color: AppColors.slateGray),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(prod['nama'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                                                      Text('${prod['terjual']} Terjual', style: const TextStyle(fontSize: 9, color: AppColors.slateGray)),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Text(_formatRupiah(int.parse(prod['omzet'].toString())), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.smartBlue)),
+                                              ],
+                                            ),
+                                          );
+                                        }),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 15),
+        child: FloatingActionButton.extended(
+          onPressed: _cetakLaporanFisik,
+          backgroundColor: AppColors.teal,
+          icon: const Icon(Icons.print, color: AppColors.white),
+          label: const Text('Cetak Laporan Berkala', style: TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetrikCard(String judul, String nilai, IconData ikon, Color warnaBg) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: warnaBg.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                child: Icon(ikon, color: warnaBg, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(judul, style: const TextStyle(fontSize: 10, color: AppColors.slateGray, fontWeight: FontWeight.bold))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(nilai, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: warnaBg == AppColors.premiumGold ? AppColors.darkText : warnaBg)),
+        ],
+      ),
+    );
+  }
+}
