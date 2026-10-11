@@ -20,6 +20,7 @@ class TransactionReport {
   final String transactionStatus;
   final String createdAt;
   final int itemQty;
+  final String cashierName;
   final List<PaymentDetail> payments;
 
   TransactionReport({
@@ -30,6 +31,7 @@ class TransactionReport {
     required this.transactionStatus,
     required this.createdAt,
     required this.itemQty,
+    required this.cashierName,
     required this.payments,
   });
 
@@ -42,6 +44,7 @@ class TransactionReport {
       transactionStatus: json['transaction_status'] ?? '',
       createdAt: json['created_at'] ?? '',
       itemQty: int.tryParse(json['item_qty'].toString()) ?? 0,
+      cashierName: json['cashier_name'] ?? 'Kasir',
       payments: (json['payments'] as List?)
               ?.map((item) => PaymentDetail.fromJson(item))
               .toList() ??
