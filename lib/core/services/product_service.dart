@@ -4,7 +4,9 @@ import '../network/api_client.dart';
 // --- MODEL PRODUK ---
 class Product {
   final int id;
-  final String sku; // Kode Barang / Barcode
+  final int? categoryId;      // Tambahan
+  final String? categoryName; // Tambahan
+  final String sku; 
   final String name;
   final double price;
   final int stock;
@@ -12,6 +14,8 @@ class Product {
 
   Product({
     required this.id,
+    this.categoryId,
+    this.categoryName,
     required this.sku,
     required this.name,
     required this.price,
@@ -21,12 +25,23 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
-      id: int.tryParse(json['id'].toString()) ?? 0,
-      sku: json['sku']?.toString() ?? '',
+      // Mengambil 'product_id' dari CI4, jika tidak ada fallback ke 'id'
+      id: int.tryParse(json['product_id']?.toString() ?? json['id']?.toString() ?? '') ?? 0,
+      
+      // Data Kategori
+      categoryId: json['category_id'] != null ? int.tryParse(json['category_id'].toString()) : null,
+      categoryName: json['category_name']?.toString(),
+      
+      // Mengambil 'sku' atau 'barcode'
+      sku: json['sku']?.toString() ?? json['barcode']?.toString() ?? '',
+      
       name: json['name'] ?? '',
-      price: double.tryParse(json['price'].toString()) ?? 0.0,
-      stock: int.tryParse(json['stock'].toString()) ?? 0,
-      image: json['image'],
+      
+      // Mengambil 'selling_price' sesuai tabel CI4 Anda
+      price: double.tryParse(json['selling_price']?.toString() ?? json['price']?.toString() ?? '') ?? 0.0,
+      
+      stock: int.tryParse(json['stock']?.toString() ?? '') ?? 0,
+      image: json['image']?.toString(),
     );
   }
 }
