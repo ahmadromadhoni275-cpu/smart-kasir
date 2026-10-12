@@ -6,6 +6,7 @@ import 'tema.dart';
 import 'halaman_produk.dart';
 import 'halaman_kategori.dart';
 import 'halaman_retur.dart'; // Jika butuh form retur per transaksi, atau buat HalamanDaftarRetur
+import 'halaman_riwayat_transaksi.dart';
 
 class KerangkaNavigasiUtama extends StatefulWidget {
   const KerangkaNavigasiUtama({super.key});
@@ -30,7 +31,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
     const Center(child: Text('1: Kasir POS')),            // Index 1
     const HalamanProduk(),                                // Index 2: Manajemen Produk
     const Center(child: Text('3: Laporan Bisnis')),       // Index 3
-    const Center(child: Text('4: Riwayat Transaksi')),    // Index 4
+    const HalamanRiwayatTransaksi(),    // Index 4
     const Center(child: Text('5: Manajemen Cabang')),     // Index 5
     const Center(child: Text('6: Karyawan')),             // Index 6
     const HalamanKategori(),                              // Index 7: Pengaturan / Kategori Produk
