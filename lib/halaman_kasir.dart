@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+// Package Cetak
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
 import 'services/api_service.dart';
-import 'halaman_shift.dart'; // <-- Pastikan import halaman shift
+import 'halaman_shift.dart'; 
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -14,7 +20,7 @@ class HalamanKasir extends StatefulWidget {
 }
 
 class _HalamanKasirState extends State<HalamanKasir> {
-  bool _isCheckingShift = true; // State khusus untuk mengecek shift awal
+  bool _isCheckingShift = true; 
   bool _hasActiveShift = false; 
 
   bool _isLoading = true;
@@ -31,7 +37,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   @override
   void initState() {
     super.initState();
-    // 1. Cek Shift terlebih dahulu sebelum memuat produk
     _cekShiftAktif();
   }
 
@@ -46,7 +51,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         final resData = json.decode(response.body);
         if (resData['data'] != null) {
           _hasActiveShift = true;
-          _muatProduk(); // Lanjut muat produk jika shift ada
+          _muatProduk(); 
         } else {
           _hasActiveShift = false;
         }
@@ -77,7 +82,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   // =========================================================
   void _addToCart(dynamic product) {
     if (product['product_type'] == 'PRODUCT' && product['stock'] <= 0) {
-      _showNotif('Stok habis!', AppColors.error);
+      _showNotif('Stok habis!', Colors.red);
       return;
     }
 
@@ -85,7 +90,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       int index = _cart.indexWhere((item) => item['product_id'] == product['product_id'] && item['order_type'] == 'DINE_IN' && item['note'] == null);
       if (index != -1) {
         if (product['product_type'] == 'PRODUCT' && _cart[index]['quantity'] >= product['stock']) {
-          _showNotif('Melebihi batas stok', AppColors.error);
+          _showNotif('Melebihi batas stok', Colors.orange);
           return;
         }
         _cart[index]['quantity']++;
@@ -95,7 +100,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
           'name': product['name'],
           'price': double.parse(product['selling_price'].toString()),
           'quantity': 1,
-          'order_type': 'DINE_IN', // Default
+          'order_type': 'DINE_IN', 
           'note': null,
           'type': product['product_type'],
           'max_stock': product['stock']
@@ -146,21 +151,21 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald),
             onPressed: () {
               if (namaCtrl.text.isEmpty || hargaCtrl.text.isEmpty) return;
               setState(() {
                 _cart.add({
-                  'product_id': null, // Menandakan ini Jasa Manual
+                  'product_id': null, 
                   'name': namaCtrl.text,
                   'price': double.tryParse(hargaCtrl.text) ?? 0,
                   'quantity': int.tryParse(qtyCtrl.text) ?? 1,
                   'order_type': 'DINE_IN',
                   'note': catatanCtrl.text.isEmpty ? null : catatanCtrl.text,
                   'type': 'SERVICE',
-                  'max_stock': 9999 // Tidak ada limit stok
+                  'max_stock': 9999 
                 });
               });
               Navigator.pop(ctx);
@@ -194,8 +199,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                  Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                  const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
                   const SizedBox(height: 24),
                   
                   Wrap(
@@ -203,9 +208,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     alignment: WrapAlignment.center,
                     children: ['CASH', 'QRIS', 'TRANSFER'].map((m) {
                       return ChoiceChip(
-                        label: Text(m),
+                        label: Text(m, style: TextStyle(color: metode == m ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
                         selected: metode == m,
-                        selectedColor: AppColors.primaryEmerald.withOpacity(0.2),
+                        selectedColor: AppColors.primaryEmerald,
+                        backgroundColor: AppColors.lightGray,
                         onSelected: (val) {
                           if(val) setModalState(() => metode = m);
                         },
@@ -220,7 +226,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       decoration: InputDecoration(
                         labelText: 'Uang Diterima',
                         prefixText: 'Rp ',
-                        filled: true, fillColor: AppColors.background,
+                        filled: true, fillColor: AppColors.lightGray,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       ),
                     ),
@@ -228,13 +234,17 @@ class _HalamanKasirState extends State<HalamanKasir> {
               ),
             ),
             actions: [
-              TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
+              TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryEmerald, 
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
+                ),
                 onPressed: isProcessing ? null : () async {
                   double paidAmount = double.tryParse(uangCtrl.text) ?? 0;
                   if (metode == 'CASH' && paidAmount < _grandTotal) {
-                    _showNotif('Uang kurang!', AppColors.error);
+                    _showNotif('Uang kurang!', Colors.red);
                     return;
                   }
 
@@ -260,11 +270,18 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   if (res.statusCode == 201) {
                     final data = json.decode(res.body)['data'];
                     Navigator.pop(ctx);
+                    
+                    // SIMPAN DATA KERANJANG UNTUK DICETAK SEBELUM DIKOSONGKAN
+                    final itemsToPrint = List<Map<String, dynamic>>.from(_cart);
+                    final totalToPrint = _grandTotal;
+                    
                     setState(() { _cart.clear(); _selectedTable = null; });
-                    _tampilkanSukses(data['invoice'], data['kembalian']);
-                    _muatProduk(); // Refresh stok
+                    
+                    // Tampilkan Sukses & Siapkan Cetak
+                    _tampilkanSukses(data['invoice'], data['kembalian'], itemsToPrint, totalToPrint, metode, paidAmount);
+                    _muatProduk(); 
                   } else {
-                    _showNotif('Gagal: ${json.decode(res.body)['message']}', AppColors.error);
+                    _showNotif('Gagal: ${json.decode(res.body)['message']}', Colors.red);
                     setModalState(() => isProcessing = false);
                   }
                 },
@@ -277,29 +294,112 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  void _tampilkanSukses(String invoice, dynamic kembalian) {
+  // =========================================================
+  // LOGIKA CETAK STRUK BLUETOOTH DARI KASIR
+  // =========================================================
+  Future<void> _cetakStruk(String invoice, List<Map<String, dynamic>> items, double total, String metode, double paidAmount, dynamic kembalian) async {
+    if (kIsWeb || Platform.isIOS) {
+      _showNotif('Platform tidak didukung.', Colors.red);
+      return;
+    }
+    _showNotif('Mencetak struk...', AppColors.smartBlue);
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = [];
+
+      bytes += generator.text("SMART KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.row([PosColumn(text: "No", width: 4), PosColumn(text: ": $invoice", width: 8)]);
+      bytes += generator.row([PosColumn(text: "Tgl", width: 4), PosColumn(text: ": ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}", width: 8)]);
+      
+      if (_selectedTable != null) {
+        bytes += generator.row([PosColumn(text: "Meja", width: 4), PosColumn(text: ": $_selectedTable", width: 8)]);
+      }
+      
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+      for (var item in items) {
+        String namaMenu = item['name'];
+        if (item['order_type'] == 'TAKEAWAY') namaMenu += ' (TA)';
+        
+        bytes += generator.text(namaMenu, styles: const PosStyles(align: PosAlign.left));
+        if (item['note'] != null) {
+          bytes += generator.text(" * ${item['note']}", styles: const PosStyles(align: PosAlign.left));
+        }
+        bytes += generator.row([
+          PosColumn(text: "${item['quantity']} x ${_formatRupiah(item['price'])}", width: 8),
+          PosColumn(text: _formatRupiah(item['price'] * item['quantity']), width: 4, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+      
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.row([PosColumn(text: "TOTAL", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(total), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      bytes += generator.row([PosColumn(text: "BAYAR ($metode)", width: 6), PosColumn(text: _formatRupiah(paidAmount), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+      if (kembalian > 0) {
+        bytes += generator.row([PosColumn(text: "KEMBALI", width: 6), PosColumn(text: _formatRupiah(kembalian), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+      }
+      bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(2);
+
+      bool isConnected = await PrintBluetoothThermal.connectionStatus;
+      if (isConnected) {
+        await PrintBluetoothThermal.writeBytes(bytes);
+        _showNotif('Berhasil mencetak!', AppColors.primaryEmerald);
+      } else {
+        _showNotif('Printer tidak terhubung.', Colors.red);
+      }
+    } catch (e) {
+      _showNotif('Gagal mencetak: $e', Colors.red);
+    }
+  }
+
+  void _tampilkanSukses(String invoice, dynamic kembalian, List<Map<String, dynamic>> itemsToPrint, double totalToPrint, String metode, double paidAmount) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle, color: AppColors.greenAccent, size: 60),
+            const Icon(Icons.check_circle, color: AppColors.primaryEmerald, size: 80),
             const SizedBox(height: 16),
-            const Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(invoice, style: TextStyle(color: AppColors.textSecondary)),
+            const Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+            Text(invoice, style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
             if (kembalian > 0) ...[
-              const Text('Kembalian:', style: TextStyle(color: AppColors.textSecondary)),
-              Text(_formatRupiah(kembalian), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+              const Text('Kembalian:', style: TextStyle(color: Colors.grey)),
+              Text(_formatRupiah(kembalian), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
             ],
             const SizedBox(height: 24),
             Row(
               children: [
-                Expanded(child: OutlinedButton.icon(onPressed: (){}, icon: const Icon(Icons.print), label: const Text('Cetak'))),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Color(0xFF1E293B)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                    ),
+                    onPressed: () => _cetakStruk(invoice, itemsToPrint, totalToPrint, metode, paidAmount, kembalian), 
+                    icon: const Icon(Icons.print, color: Color(0xFF1E293B)), 
+                    label: const Text('Cetak', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold))
+                  )
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald), onPressed: () => Navigator.pop(ctx), child: const Text('Transaksi Baru', style: TextStyle(color: Colors.white)))),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryEmerald,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                    ), 
+                    onPressed: () => Navigator.pop(ctx), 
+                    child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                  )
+                ),
               ],
             )
           ],
@@ -309,7 +409,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   void _showNotif(String pesan, Color warna) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan), backgroundColor: warna, behavior: SnackBarBehavior.floating));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
   }
 
   // =========================================================
@@ -321,8 +421,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
       : GridView.builder(
           padding: const EdgeInsets.all(16),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 180,
-            childAspectRatio: 0.85,
+            maxCrossAxisExtent: 200,
+            childAspectRatio: 0.80,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
           ),
@@ -334,27 +434,38 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
             return InkWell(
               onTap: habis ? null : () => _addToCart(p),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: habis ? AppColors.error.withOpacity(0.5) : AppColors.border),
+              borderRadius: BorderRadius.circular(16),
+              child: Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: habis ? Colors.red.shade200 : Colors.grey.shade200),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(isJasa ? Icons.cut : Icons.fastfood, size: 40, color: habis ? AppColors.border : AppColors.primaryEmerald),
-                    const SizedBox(height: 12),
-                    Text(p['name'], textAlign: TextAlign.center, maxLines: 2, style: TextStyle(fontWeight: FontWeight.bold, color: habis ? AppColors.textSecondary : AppColors.textPrimary)),
-                    const SizedBox(height: 4),
-                    Text(_formatRupiah(double.parse(p['selling_price'].toString())), style: const TextStyle(color: AppColors.primaryEmerald, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    if (isJasa)
-                      const Text('JASA', style: TextStyle(fontSize: 10, color: AppColors.goldPremium, fontWeight: FontWeight.bold))
-                    else
-                      Text(habis ? 'HABIS' : 'Stok: ${p['stock']}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? AppColors.error : AppColors.textSecondary)),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isJasa ? const Color(0xFFF7E7CE).withOpacity(0.5) : AppColors.lightGray,
+                            shape: BoxShape.circle
+                          ),
+                          child: Center(child: Icon(isJasa ? Icons.design_services : Icons.inventory_2, size: 40, color: habis ? Colors.grey : isJasa ? const Color(0xFFB8860B) : AppColors.primaryEmerald)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(p['name'], textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, color: habis ? Colors.grey : const Color(0xFF1E293B))),
+                      const SizedBox(height: 4),
+                      Text(_formatRupiah(double.parse(p['selling_price'].toString())), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      if (isJasa)
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFF7E7CE), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: Color(0xFFB8860B), fontWeight: FontWeight.bold)))
+                      else
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: habis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(12)), child: Text(habis ? 'HABIS' : 'Stok: ${p['stock']}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? Colors.red : Colors.grey.shade700))),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -364,70 +475,74 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   Widget _buildCartPanel() {
     return Container(
-      width: 350,
-      decoration: const BoxDecoration(
-        color: AppColors.card,
-        border: Border(left: BorderSide(color: AppColors.border)),
+      width: 380, // Dibuat sedikit lebih lebar agar lega di tablet
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(left: BorderSide(color: Colors.grey.shade200)),
       ),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            color: AppColors.navyActive,
+            color: const Color(0xFF1E293B),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('KERANJANG (${_cart.length} Item)', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Text('KERANJANG (${_cart.length})', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 if (_cart.isNotEmpty)
-                  InkWell(onTap: () => setState(() => _cart.clear()), child: const Icon(Icons.delete_sweep, color: Colors.white70))
+                  InkWell(onTap: () => setState(() => _cart.clear()), child: const Text('Kosongkan', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)))
               ],
             ),
           ),
           Expanded(
             child: _cart.isEmpty 
-              ? const Center(child: Text('Keranjang Kosong', style: TextStyle(color: AppColors.textSecondary)))
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.shopping_cart_outlined, size: 60, color: Colors.grey.shade300), const SizedBox(height: 12), const Text('Keranjang Kosong', style: TextStyle(color: Colors.grey))]))
               : ListView.builder(
                   itemCount: _cart.length,
                   itemBuilder: (ctx, i) {
                     var item = _cart[i];
                     return Container(
-                      padding: const EdgeInsets.all(12),
-                      border: const Border(bottom: BorderSide(color: AppColors.border)),
+                      padding: const EdgeInsets.all(16),
+                      border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(child: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold))),
+                              Expanded(child: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B)))),
                               Text(_formatRupiah(item['price'] * item['quantity']), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
                             ],
                           ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              ChoiceChip(label: const Text('Dine In', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'DINE_IN', onSelected: (v) => setState(() => item['order_type'] = 'DINE_IN')),
+                              ChoiceChip(label: const Text('Dine In', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'DINE_IN', selectedColor: AppColors.primaryEmerald.withOpacity(0.2), onSelected: (v) => setState(() => item['order_type'] = 'DINE_IN')),
                               const SizedBox(width: 8),
-                              ChoiceChip(label: const Text('Takeaway', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'TAKEAWAY', onSelected: (v) => setState(() => item['order_type'] = 'TAKEAWAY')),
+                              ChoiceChip(label: const Text('Takeaway', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'TAKEAWAY', selectedColor: AppColors.primaryEmerald.withOpacity(0.2), onSelected: (v) => setState(() => item['order_type'] = 'TAKEAWAY')),
                             ],
                           ),
                           Padding(
-                            padding: const EdgeInsets.only(top: 8, bottom: 8),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                             child: TextFormField(
                               initialValue: item['note'],
                               style: const TextStyle(fontSize: 12),
-                              decoration: const InputDecoration(hintText: '+ Tambah catatan opsional', isDense: true, border: InputBorder.none, icon: Icon(Icons.edit_note, size: 16)),
+                              decoration: InputDecoration(hintText: '+ Tambah catatan (Opsional)', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none), filled: true, fillColor: AppColors.lightGray, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                               onChanged: (val) => item['note'] = val.isEmpty ? null : val,
                             ),
                           ),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              IconButton(icon: const Icon(Icons.remove_circle_outline, color: AppColors.textSecondary), onPressed: () => setState(() { if (item['quantity'] > 1) item['quantity']--; else _cart.removeAt(i); })),
-                              Text('${item['quantity']}'),
+                              IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => setState(() { if (item['quantity'] > 1) item['quantity']--; else _cart.removeAt(i); })),
+                              Text('${item['quantity']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryEmerald),
                                 onPressed: () => setState(() {
-                                  if (item['type'] == 'PRODUCT' && item['quantity'] >= item['max_stock']) return;
+                                  if (item['type'] == 'PRODUCT' && item['quantity'] >= item['max_stock']) {
+                                    _showNotif('Maksimal stok tercapai', Colors.orange);
+                                    return;
+                                  }
                                   item['quantity']++;
                                 }),
                               ),
@@ -441,29 +556,30 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ),
           
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: AppColors.background,
-              border: Border(top: BorderSide(color: AppColors.border)),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]
             ),
             child: Column(
               children: [
                 DropdownButtonFormField<String>(
                   value: _selectedTable,
-                  decoration: const InputDecoration(labelText: 'No. Meja', border: OutlineInputBorder(), isDense: true),
-                  items: ['Meja 01', 'Meja 02', 'Meja 03'].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                  decoration: InputDecoration(labelText: 'No. Meja', filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), prefixIcon: const Icon(Icons.table_restaurant)),
+                  items: ['Meja 01', 'Meja 02', 'Meja 03', 'Meja 04', 'Meja 05'].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
                   onChanged: (val) => setState(() => _selectedTable = val),
                 ),
                 const SizedBox(height: 16),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal'), Text(_formatRupiah(_subtotal))]),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon'), Text(_formatRupiah(_discount))]),
-                const Divider(),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryEmerald))]),
-                const SizedBox(height: 16),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal', style: TextStyle(color: Colors.grey)), Text(_formatRupiah(_subtotal), style: const TextStyle(fontWeight: FontWeight.w600))]),
+                const SizedBox(height: 4),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon', style: TextStyle(color: Colors.grey)), Text('- ${_formatRupiah(_discount)}', style: const TextStyle(color: Colors.red))]),
+                const Divider(height: 24),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1E293B))), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: AppColors.primaryEmerald))]),
+                const SizedBox(height: 20),
                 SizedBox(
-                  width: double.infinity, height: 50,
+                  width: double.infinity, height: 54,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
                     onPressed: _cart.isEmpty ? null : _tampilkanModalPembayaran,
                     child: const Text('BAYAR SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
@@ -478,36 +594,30 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. TAMPILAN LOADING AWAL SAAT CEK SHIFT
     if (_isCheckingShift) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)),
-      );
+      return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
     }
 
-    // 2. TAMPILAN TERKUNCI JIKA SHIFT BELUM DIBUKA
     if (!_hasActiveShift) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.white,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.lock_clock, size: 80, color: AppColors.error),
-              const SizedBox(height: 16),
-              const Text('SHIFT BELUM DIBUKA', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+              Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle), child: Icon(Icons.lock_clock, size: 80, color: Colors.red.shade400)),
+              const SizedBox(height: 24),
+              const Text('SHIFT BELUM DIBUKA', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
               const SizedBox(height: 8),
-              const Text('Anda harus membuka shift kasir terlebih dahulu\nsebelum dapat melakukan transaksi penjualan.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary, height: 1.5)),
+              const Text('Anda harus membuka shift kasir terlebih dahulu\nsebelum dapat melayani pelanggan.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, height: 1.5)),
               const SizedBox(height: 32),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryEmerald,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 onPressed: () {
-                  // Arahkan ke halaman shift, dan cek ulang saat kembali
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanShift())).then((_) => _cekShiftAktif());
                 },
                 icon: const Icon(Icons.lock_open, color: Colors.white),
@@ -519,16 +629,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
       );
     }
 
-    // 3. TAMPILAN NORMAL (SHIFT SUDAH AKTIF)
     return LayoutBuilder(
       builder: (context, constraints) {
-        bool isDesktop = constraints.maxWidth > 800;
+        // Layar dianggap Tablet jika lebarnya lebih dari 600
+        bool isDesktop = constraints.maxWidth > 600;
 
         Widget mainContent = Column(
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              color: AppColors.card,
+              color: Colors.white,
               child: Row(
                 children: [
                   Expanded(
@@ -539,23 +649,24 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         _muatProduk(); 
                       },
                       decoration: InputDecoration(
-                        hintText: 'Cari produk / SKU / scan barcode di sini...',
+                        hintText: 'Cari nama produk / scan barcode...',
                         prefixIcon: const Icon(Icons.search),
-                        suffixIcon: IconButton(icon: const Icon(Icons.camera_alt), onPressed: () {}),
-                        filled: true, fillColor: AppColors.background,
+                        filled: true, fillColor: AppColors.lightGray,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0)
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.navyActive,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      backgroundColor: const Color(0xFFB8860B), // Champagne Color
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0
                     ),
                     onPressed: _tampilkanFormJasaManual,
-                    icon: const Icon(Icons.design_services, color: Colors.white, size: 18),
+                    icon: const Icon(Icons.design_services, color: Colors.white, size: 20),
                     label: const Text('Jasa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   )
                 ],
@@ -568,6 +679,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
         if (isDesktop) {
           return Scaffold(
             backgroundColor: AppColors.background,
+            appBar: AppBar(
+              title: const Text('Kasir Pintar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              backgroundColor: const Color(0xFF1E293B),
+              iconTheme: const IconThemeData(color: Colors.white),
+              elevation: 0,
+            ),
             body: Row(
               children: [
                 Expanded(child: mainContent),
@@ -579,6 +696,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
         return Scaffold(
           backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: const Text('Kasir Pintar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            backgroundColor: const Color(0xFF1E293B),
+            iconTheme: const IconThemeData(color: Colors.white),
+            elevation: 0,
+          ),
           body: mainContent,
           floatingActionButton: _cart.isNotEmpty
               ? FloatingActionButton.extended(
@@ -591,7 +714,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       builder: (ctx) => Container(
                         height: MediaQuery.of(context).size.height * 0.9,
                         clipBehavior: Clip.antiAlias,
-                        decoration: const BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+                        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
                         child: _buildCartPanel(),
                       )
                     );

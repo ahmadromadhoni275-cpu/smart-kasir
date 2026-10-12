@@ -56,5 +56,17 @@ class TransactionService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
+  
+  Future<void> createTransaction(Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/transactions', data: data);
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Gagal memproses transaksi');
+      }
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
+
 }
   
