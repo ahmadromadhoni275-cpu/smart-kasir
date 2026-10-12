@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
 
-// TODO: Import Halaman Anda
-// import 'halaman_beranda.dart';
-// import 'halaman_kasir.dart';
-// import 'halaman_produk.dart';
-// import 'halaman_laporan.dart';
-// import 'halaman_transaksi.dart';
-// ... dll
+// --- IMPORT HALAMAN YANG SUDAH DIBUAT ---
+import 'halaman_produk.dart';
+import 'halaman_kategori.dart';
+import 'halaman_retur.dart'; // Jika butuh form retur per transaksi, atau buat HalamanDaftarRetur
 
 class KerangkaNavigasiUtama extends StatefulWidget {
   const KerangkaNavigasiUtama({super.key});
@@ -26,22 +23,22 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   final List<String> _daftarToko = ['Toko Utama', 'Cabang Pakisaji'];
 
   // =========================================================
-  // INDEKS HALAMAN UNIVERSAL (Total 13 Halaman)
+  // INDEKS HALAMAN UNIVERSAL (Total 13+ Halaman)
   // =========================================================
-  final List<Widget> _halaman = [
-    const Center(child: Text('0: Dashboard (Home)')),     
-    const Center(child: Text('1: Kasir POS')),            
-    const Center(child: Text('2: Manajemen Produk')),     
-    const Center(child: Text('3: Laporan Bisnis')),       
-    const Center(child: Text('4: Riwayat Transaksi')),    
-    const Center(child: Text('5: Manajemen Cabang')),     
-    const Center(child: Text('6: Karyawan')),             
-    const Center(child: Text('7: Pengaturan')),           
-    const Center(child: Text('8: Shift Kasir')),          
-    const Center(child: Text('9: Metode Pembayaran')),    
-    const Center(child: Text('10: Referral')),            
-    const Center(child: Text('11: Langganan SaaS')),      
-    const Center(child: Text('12: Profil Kasir')),        
+  late final List<Widget> _halaman = [
+    const Center(child: Text('0: Dashboard (Home)')),     // Index 0
+    const Center(child: Text('1: Kasir POS')),            // Index 1
+    const HalamanProduk(),                                // Index 2: Manajemen Produk
+    const Center(child: Text('3: Laporan Bisnis')),       // Index 3
+    const Center(child: Text('4: Riwayat Transaksi')),    // Index 4
+    const Center(child: Text('5: Manajemen Cabang')),     // Index 5
+    const Center(child: Text('6: Karyawan')),             // Index 6
+    const HalamanKategori(),                              // Index 7: Pengaturan / Kategori Produk
+    const Center(child: Text('8: Shift Kasir')),          // Index 8
+    const Center(child: Text('9: Metode Pembayaran')),    // Index 9
+    const Center(child: Text('10: Referral')),            // Index 10
+    const Center(child: Text('11: Langganan SaaS')),      // Index 11
+    const Center(child: Text('12: Profil Kasir')),        // Index 12
   ];
 
   @override
@@ -55,7 +52,6 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
     setState(() {
       _namaPetugas = prefs.getString('username') ?? 'User';
       _tokoAktif = prefs.getString('nama_toko') ?? 'Toko Utama';
-      // Pastikan format uppercase agar sesuai kondisi (OWNER, MANAGER, KASIR)
       _role = (prefs.getString('role') ?? 'KASIR').toUpperCase(); 
     });
   }
@@ -76,6 +72,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
       isScrollControlled: true,
       builder: (context) {
         return Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: const BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -83,16 +80,16 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 12),
               Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(10))),
               const SizedBox(height: 16),
               const Text('Menu Lainnya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               
               // MENU DINAMIS BERDASARKAN ROLE
               if (_role == 'OWNER' || _role == 'MANAGER') ...[
                 _buildMobileMenuItem(Icons.receipt_long, 'Transaksi', 4),
                 _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
+                _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7), // Pintasan Kategori
               ],
               
               if (_role == 'OWNER')
@@ -110,6 +107,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
 
               if (_role == 'KASIR') ...[
                 _buildMobileMenuItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
+                _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
                 _buildMobileMenuItem(Icons.person_outline, 'Profil', 12),
               ],
               
@@ -137,14 +135,13 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   // 1. LAYOUT MOBILE DENGAN BOTTOM NAVBAR DINAMIS
   // =========================================================
   Widget _buildMobileLayout() {
-    // Tentukan item mana yang nyala di Bottom Navbar
     int bottomNavIndex = 4; // Default ke 'Lainnya'
     
     if (_role == 'KASIR') {
       if (_currentIndex == 0) bottomNavIndex = 0;
       else if (_currentIndex == 1) bottomNavIndex = 1;
-      else if (_currentIndex == 4) bottomNavIndex = 2; // Transaksi ada di slot 3
-      else if (_currentIndex == 8) bottomNavIndex = 3; // Shift ada di slot 4
+      else if (_currentIndex == 4) bottomNavIndex = 2; 
+      else if (_currentIndex == 8) bottomNavIndex = 3; 
     } else {
       if (_currentIndex == 0) bottomNavIndex = 0;
       else if (_currentIndex == 1) bottomNavIndex = 1;
@@ -185,17 +182,16 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
               return;
             }
             
-            // Logika tap bottom nav dinamis
             if (_role == 'KASIR') {
-              if (index == 0) _gantiHalaman(0); // Home
-              if (index == 1) _gantiHalaman(1); // Kasir
-              if (index == 2) _gantiHalaman(4); // Transaksi
-              if (index == 3) _gantiHalaman(8); // Shift
+              if (index == 0) _gantiHalaman(0); 
+              if (index == 1) _gantiHalaman(1); 
+              if (index == 2) _gantiHalaman(4); 
+              if (index == 3) _gantiHalaman(8); 
             } else {
-              if (index == 0) _gantiHalaman(0); // Home
-              if (index == 1) _gantiHalaman(1); // Kasir
-              if (index == 2) _gantiHalaman(2); // Produk
-              if (index == 3) _gantiHalaman(3); // Laporan
+              if (index == 0) _gantiHalaman(0); 
+              if (index == 1) _gantiHalaman(1); 
+              if (index == 2) _gantiHalaman(2); 
+              if (index == 3) _gantiHalaman(3); 
             }
           },
           items: _role == 'KASIR' 
@@ -260,8 +256,10 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                       _buildSidebarItem(Icons.dashboard, 'Dashboard', 0),
                       _buildSidebarItem(Icons.shopping_cart, 'Kasir', 1),
                       
-                      if (_role == 'OWNER' || _role == 'MANAGER') 
+                      if (_role == 'OWNER' || _role == 'MANAGER') ...[
                         _buildSidebarItem(Icons.inventory_2, 'Produk', 2),
+                        _buildSidebarItem(Icons.category_outlined, 'Kategori', 7), // Menu Kategori di Sidebar
+                      ],
                         
                       if (_role == 'KASIR')
                         _buildSidebarItem(Icons.inventory_2, 'Lihat Produk', 2),
@@ -345,7 +343,6 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
     );
   }
 
-  // WIDGET BANTUAN (TIDAK BERUBAH)
   Widget _buildStoreSelector({bool isDesktop = false}) {
     return PopupMenuButton<String>(
       offset: const Offset(0, 40),
