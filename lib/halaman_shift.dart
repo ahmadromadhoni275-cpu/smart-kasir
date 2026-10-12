@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Package Cetak
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
 import 'services/api_service.dart';
@@ -58,7 +64,7 @@ class _HalamanShiftState extends State<HalamanShift> {
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
   void _showNotif(String pesan, Color warna) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
   }
 
   // =========================================================
@@ -80,7 +86,7 @@ class _HalamanShiftState extends State<HalamanShift> {
       final response = await ApiService.post('shifts/open', payload);
       final resData = json.decode(response.body);
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         _showNotif('Shift berhasil dibuka!', AppColors.greenAccent);
         _openingCashCtrl.clear();
         _openNoteCtrl.clear();
@@ -95,7 +101,7 @@ class _HalamanShiftState extends State<HalamanShift> {
   }
 
   // =========================================================
-  // MODAL & AKSI API: TUTUP SHIFT (Dengan Hitung Selisih Real-time)
+  // MODAL & AKSI API: TUTUP SHIFT
   // =========================================================
   void _tampilkanModalTutupShift() {
     if (_activeShift == null) return;
@@ -204,8 +210,16 @@ class _HalamanShiftState extends State<HalamanShift> {
 
                           if (res.statusCode == 200) {
                             Navigator.pop(ctx);
-                            _showNotif('Shift berhasil ditutup dan laporan tersimpan', AppColors.greenAccent);
-                            await _cekShiftAktif();
+                            
+                            // ========================================
+                            // PANGGIL FUNGSI CETAK LAPORAN DI SINI
+                            // ========================================
+                            if (resData['data'] != null) {
+                              await _cetakLaporanShift(resData['data']);
+                            }
+                            
+                            _showNotif('Shift ditutup dan laporan dicetak!', AppColors.greenAccent);
+                            await _cekShiftAktif(); // Refresh layar ke form Buka Shift
                           } else {
                             _showNotif(resData['message'] ?? 'Gagal menutup shift', AppColors.error);
                             setModalState(() => isProcessing = false);
@@ -225,6 +239,67 @@ class _HalamanShiftState extends State<HalamanShift> {
         }
       )
     );
+  }
+
+  // =========================================================
+  // FUNGSI CETAK LAPORAN SHIFT KE PRINTER BLUETOOTH
+  // =========================================================
+  Future<void> _cetakLaporanShift(Map<String, dynamic> data) async {
+    if (kIsWeb || Platform.isIOS) return;
+
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      List<int> bytes = [];
+
+      bytes += generator.text("LAPORAN SHIFT KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
+      bytes += generator.text(_namaCabang.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      
+      bytes += generator.row([PosColumn(text: "Kasir", width: 4), PosColumn(text: ": $_namaKasir", width: 8)]);
+      
+      // Ambil waktu dari respons API jika ada, atau gunakan waktu lokal
+      String startTime = data['opened_at'] != null ? DateFormat('dd/MM/yy HH:mm').format(DateTime.parse(data['opened_at']).toLocal()) : '-';
+      String endTime = data['closed_at'] != null ? DateFormat('dd/MM/yy HH:mm').format(DateTime.parse(data['closed_at']).toLocal()) : DateFormat('dd/MM/yy HH:mm').format(DateTime.now());
+      
+      bytes += generator.row([PosColumn(text: "Mulai", width: 4), PosColumn(text: ": $startTime", width: 8)]);
+      bytes += generator.row([PosColumn(text: "Selesai", width: 4), PosColumn(text: ": $endTime", width: 8)]);
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+      double openingCash = double.tryParse(data['opening_cash'].toString()) ?? 0;
+      double expectedCash = double.tryParse(data['expected_cash'].toString()) ?? 0;
+      double actualCash = double.tryParse(data['actual_cash'].toString()) ?? 0;
+      double difference = double.tryParse(data['difference'].toString()) ?? 0;
+
+      bytes += generator.row([PosColumn(text: "Modal Awal", width: 7), PosColumn(text: _formatRupiah(openingCash), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      
+      // Hitung total penerimaan kas (di luar modal)
+      double totalPenerimaan = expectedCash - openingCash;
+      bytes += generator.row([PosColumn(text: "Penerimaan Kas", width: 7), PosColumn(text: _formatRupiah(totalPenerimaan), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      
+      bytes += generator.row([PosColumn(text: "KAS HARAPAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(expectedCash), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      bytes += generator.row([PosColumn(text: "KAS FISIK AKTUAL", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(actualCash), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      
+      String labelSelisih = difference == 0 ? "SEIMBANG" : difference > 0 ? "LEBIH" : "KURANG";
+      bytes += generator.row([PosColumn(text: "SELISIH ($labelSelisih)", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(difference.abs()), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      
+      bytes += generator.feed(2);
+      bytes += generator.text("Ttd. Kasir", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(1);
+      bytes += generator.text("_________________", styles: const PosStyles(align: PosAlign.center));
+      bytes += generator.feed(2);
+
+      bool isConnected = await PrintBluetoothThermal.connectionStatus;
+      if (isConnected) {
+        await PrintBluetoothThermal.writeBytes(bytes);
+      }
+    } catch (e) {
+      debugPrint("Gagal cetak shift: $e");
+    }
   }
 
   // =========================================================
