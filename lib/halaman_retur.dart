@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:convert';
+
 import 'tema.dart';
-import 'services/api_service.dart';
+import 'core/services/return_service.dart'; // <-- Import Service
+import 'models/return_model.dart';         // <-- Import Model
 
 class HalamanRetur extends StatefulWidget {
   final int transactionId;
@@ -15,9 +16,13 @@ class HalamanRetur extends StatefulWidget {
 }
 
 class _HalamanReturState extends State<HalamanRetur> {
+  final ReturnService _returnService = ReturnService(); // Inisialisasi Service
+  
   bool _isLoading = true;
   bool _isProcessing = false;
-  List<dynamic> _items = [];
+  
+  // Menggunakan Model ReturnItem, bukan Map dynamic lagi
+  List<ReturnItem> _returnableItems = [];
   Map<int, int> _selectedQty = {}; // Menyimpan {transaction_item_id: qty_diretur}
 
   String _refundMethod = 'CASH';
@@ -31,33 +36,31 @@ class _HalamanReturState extends State<HalamanRetur> {
 
   Future<void> _muatData() async {
     try {
-      final response = await ApiService.get('transactions/${widget.transactionId}/returnable-items');
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body)['data'];
-        setState(() {
-          _items = data['items'];
-          for (var item in _items) {
-            _selectedQty[item['transaction_item_id']] = 0; // Default retur = 0
-          }
-        });
-      }
+      // Memanggil API melalui Service yang sudah rapi
+      final items = await _returnService.getReturnableItems(widget.transactionId);
+      setState(() {
+        _returnableItems = items;
+        for (var item in _returnableItems) {
+          _selectedQty[item.transactionItemId] = 0; // Default retur = 0
+        }
+      });
     } catch (e) {
-      _showNotif('Gagal memuat data retur', AppColors.error);
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     }
     setState(() => _isLoading = false);
   }
 
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
-  void _showNotif(String pesan, Color warna) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan), backgroundColor: warna));
+  
+  void _showNotif(String pesan, Color warna) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: warna));
 
   double get _totalRefund {
     double total = 0;
-    for (var item in _items) {
-      int itemId = item['transaction_item_id'];
+    for (var item in _returnableItems) {
+      int itemId = item.transactionItemId;
       int qty = _selectedQty[itemId] ?? 0;
       if (qty > 0) {
-        double price = double.parse(item['price'].toString());
-        total += (price * qty);
+        total += (item.price * qty);
       }
     }
     return total;
@@ -76,13 +79,14 @@ class _HalamanReturState extends State<HalamanRetur> {
     setState(() => _isProcessing = true);
 
     List<Map<String, dynamic>> itemsPayload = [];
-    for (var item in _items) {
-      int qty = _selectedQty[item['transaction_item_id']] ?? 0;
+    for (var item in _returnableItems) {
+      int qty = _selectedQty[item.transactionItemId] ?? 0;
       if (qty > 0) {
         itemsPayload.add({
-          'transaction_item_id': item['transaction_item_id'],
+          'transaction_item_id': item.transactionItemId,
           'quantity': qty,
-          'reason': _reasonCtrl.text
+          // Kondisi barang dikembalikan sebagai GOOD secara default agar stok kembali
+          'condition': 'GOOD' 
         });
       }
     }
@@ -95,19 +99,16 @@ class _HalamanReturState extends State<HalamanRetur> {
         'items': itemsPayload
       };
 
-      final response = await ApiService.post('returns', payload);
-      final resData = json.decode(response.body);
-
-      if (response.statusCode == 201) {
-        Navigator.pop(context, true); // Kembali ke list & refresh
-        _showNotif('Retur berhasil (No: ${resData['data']['return_number']})', AppColors.greenAccent);
-      } else {
-        _showNotif(resData['message'] ?? 'Gagal memproses retur', AppColors.error);
-      }
+      // Mengirim data melalui Service
+      final result = await _returnService.createReturn(payload);
+      
+      Navigator.pop(context, true); // Kembali ke list & refresh
+      _showNotif('Retur berhasil (No: ${result['return_number']})', AppColors.greenAccent);
     } catch (e) {
-      _showNotif('Terjadi kesalahan jaringan', AppColors.error);
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
+    } finally {
+      setState(() => _isProcessing = false);
     }
-    setState(() => _isProcessing = false);
   }
 
   @override
@@ -118,8 +119,8 @@ class _HalamanReturState extends State<HalamanRetur> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Retur Transaksi', style: TextStyle(color: AppColors.navyActive, fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(widget.invoiceNumber, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const Text('Form Pengajuan Retur', style: TextStyle(color: AppColors.navyActive, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Invoice: ${widget.invoiceNumber}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           ],
         ),
         backgroundColor: Colors.white,
@@ -133,11 +134,11 @@ class _HalamanReturState extends State<HalamanRetur> {
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(24),
-                  itemCount: _items.length,
+                  itemCount: _returnableItems.length,
                   itemBuilder: (ctx, i) {
-                    var item = _items[i];
-                    int itemId = item['transaction_item_id'];
-                    int maxQty = item['returnable_quantity'];
+                    var item = _returnableItems[i];
+                    int itemId = item.transactionItemId;
+                    int maxQty = item.returnableQuantity;
                     int curQty = _selectedQty[itemId] ?? 0;
 
                     return Container(
@@ -154,12 +155,12 @@ class _HalamanReturState extends State<HalamanRetur> {
                                   children: [
                                     Icon(curQty > 0 ? Icons.check_box : Icons.check_box_outline_blank, color: curQty > 0 ? AppColors.primaryEmerald : AppColors.textSecondary, size: 20),
                                     const SizedBox(width: 8),
-                                    Text(item['product_name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Expanded(child: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text('Terjual: ${item['sold_quantity']} | Diretur sblmnya: ${item['returned_quantity']}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                                Text('Tersedia untuk retur: $maxQty', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                                Text('Harga Unit: ${_formatRupiah(item.price)}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                Text('Tersedia untuk diretur: $maxQty item', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                               ],
                             ),
                           ),
@@ -192,41 +193,43 @@ class _HalamanReturState extends State<HalamanRetur> {
                   color: Colors.white,
                   boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]
                 ),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _reasonCtrl,
-                      decoration: InputDecoration(labelText: 'Alasan Retur', filled: true, fillColor: AppColors.background, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _refundMethod,
-                      decoration: InputDecoration(labelText: 'Metode Refund', filled: true, fillColor: AppColors.background, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                      items: ['CASH', 'QRIS', 'TRANSFER'].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                      onChanged: (val) => setState(() => _refundMethod = val!),
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Total Refund', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
-                        Text(_formatRupiah(_totalRefund), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.error)),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity, height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        onPressed: _isProcessing ? null : _prosesRetur,
-                        child: _isProcessing 
-                            ? const CircularProgressIndicator(color: Colors.white) 
-                            : const Text('PROSES RETUR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _reasonCtrl,
+                        decoration: InputDecoration(labelText: 'Alasan Retur', filled: true, fillColor: AppColors.background, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
                       ),
-                    )
-                  ],
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: _refundMethod,
+                        decoration: InputDecoration(labelText: 'Metode Refund', filled: true, fillColor: AppColors.background, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                        items: ['CASH', 'QRIS', 'TRANSFER'].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                        onChanged: (val) => setState(() => _refundMethod = val!),
+                      ),
+                      const SizedBox(height: 24),
+                      
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Pengembalian Dana', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                          Text(_formatRupiah(_totalRefund), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.error)),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                  
+                      SizedBox(
+                        width: double.infinity, height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          onPressed: _isProcessing ? null : _prosesRetur,
+                          child: _isProcessing 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                              : const Text('PROSES RETUR SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
+                        ),
+                      )
+                    ],
+                  ),
                 ),
               )
             ],
