@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,7 +9,7 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
-import 'services/api_service.dart';
+import 'core/services/shift_service.dart';
 
 class HalamanShift extends StatefulWidget {
   const HalamanShift({super.key});
@@ -20,6 +19,8 @@ class HalamanShift extends StatefulWidget {
 }
 
 class _HalamanShiftState extends State<HalamanShift> {
+  final ShiftService _shiftService = ShiftService();
+  
   bool _isLoading = true;
   Map<String, dynamic>? _activeShift;
   
@@ -48,15 +49,10 @@ class _HalamanShiftState extends State<HalamanShift> {
   Future<void> _cekShiftAktif() async {
     setState(() => _isLoading = true);
     try {
-      final response = await ApiService.get('shifts/current');
-      if (response.statusCode == 200) {
-        final resData = json.decode(response.body);
-        setState(() {
-          _activeShift = resData['data']; // null jika tidak ada shift aktif
-        });
-      }
+      final shift = await _shiftService.getCurrentShift();
+      setState(() => _activeShift = shift);
     } catch (e) {
-      _showNotif('Gagal memuat status shift', AppColors.error);
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     }
     setState(() => _isLoading = false);
   }
@@ -64,7 +60,12 @@ class _HalamanShiftState extends State<HalamanShift> {
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
   void _showNotif(String pesan, Color warna) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), 
+      backgroundColor: warna, 
+      behavior: SnackBarBehavior.floating
+    ));
   }
 
   // =========================================================
@@ -78,26 +79,84 @@ class _HalamanShiftState extends State<HalamanShift> {
 
     setState(() => _isLoading = true);
     try {
-      final payload = {
-        'opening_cash': double.tryParse(_openingCashCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
-        'notes': _openNoteCtrl.text.isEmpty ? null : _openNoteCtrl.text,
-      };
-
-      final response = await ApiService.post('shifts/open', payload);
-      final resData = json.decode(response.body);
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        _showNotif('Shift berhasil dibuka!', AppColors.greenAccent);
-        _openingCashCtrl.clear();
-        _openNoteCtrl.clear();
-        await _cekShiftAktif(); // Refresh tampilan ke mode Shift Aktif
-      } else {
-        _showNotif(resData['message'] ?? 'Gagal membuka shift', AppColors.error);
-      }
+      double openingCash = double.tryParse(_openingCashCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      await _shiftService.openShift(openingCash, _openNoteCtrl.text);
+      
+      _showNotif('Shift berhasil dibuka!', AppColors.greenAccent);
+      _openingCashCtrl.clear();
+      _openNoteCtrl.clear();
+      await _cekShiftAktif(); 
     } catch (e) {
-      _showNotif('Terjadi kesalahan sistem', AppColors.error);
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
+      setState(() => _isLoading = false);
     }
-    setState(() => _isLoading = false);
+  }
+
+  // =========================================================
+  // DIALOG KAS MASUK / KELUAR
+  // =========================================================
+  void _showCashMovementDialog(String type) {
+    bool isCashIn = type == 'CASH_IN';
+    final amountCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    bool isProcessing = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(isCashIn ? 'Tambah Kas Masuk' : 'Catat Kas Keluar', style: TextStyle(fontWeight: FontWeight.bold, color: isCashIn ? Colors.blue : Colors.red)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: 'Nominal', prefixText: 'Rp ', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  decoration: InputDecoration(labelText: 'Keterangan (Wajib)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: isProcessing ? null : () => Navigator.pop(context), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
+              ElevatedButton(
+                onPressed: isProcessing ? null : () async {
+                  if (descCtrl.text.trim().isEmpty) {
+                    _showNotif('Keterangan wajib diisi', AppColors.error);
+                    return;
+                  }
+                  double amount = double.tryParse(amountCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+                  if (amount <= 0) {
+                    _showNotif('Nominal tidak valid', AppColors.error);
+                    return;
+                  }
+                  
+                  setDialogState(() => isProcessing = true);
+                  try {
+                    await _shiftService.recordCashMovement(type, amount, descCtrl.text);
+                    if (!mounted) return;
+                    Navigator.pop(context);
+                    _showNotif(isCashIn ? 'Kas masuk berhasil dicatat' : 'Kas keluar berhasil dicatat', isCashIn ? Colors.blue : Colors.orange);
+                    await _cekShiftAktif(); // Refresh expected cash
+                  } catch (e) {
+                    _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
+                    setDialogState(() => isProcessing = false);
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: isCashIn ? Colors.blue : Colors.red),
+                child: isProcessing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Simpan', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        }
+      ),
+    );
   }
 
   // =========================================================
@@ -134,7 +193,6 @@ class _HalamanShiftState extends State<HalamanShift> {
                   const Text('Tutup Shift', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                   const SizedBox(height: 24),
 
-                  // Ringkasan Sistem
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
@@ -148,7 +206,6 @@ class _HalamanShiftState extends State<HalamanShift> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Input Kasir
                   TextField(
                     controller: actualCashCtrl,
                     keyboardType: TextInputType.number,
@@ -159,11 +216,10 @@ class _HalamanShiftState extends State<HalamanShift> {
                       filled: true, fillColor: AppColors.background,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                     ),
-                    onChanged: (val) => setModalState(() {}), // Trigger hitung ulang selisih
+                    onChanged: (val) => setModalState(() {}),
                   ),
                   const SizedBox(height: 16),
 
-                  // Indikator Selisih Real-time
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(color: diffColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
@@ -190,7 +246,7 @@ class _HalamanShiftState extends State<HalamanShift> {
                   SizedBox(
                     width: double.infinity, height: 50,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                       onPressed: isProcessing ? null : () async {
                         if (actualCashCtrl.text.isEmpty) {
                           _showNotif('Uang fisik wajib diisi', AppColors.error);
@@ -200,32 +256,19 @@ class _HalamanShiftState extends State<HalamanShift> {
                         setModalState(() => isProcessing = true);
                         
                         try {
-                          final payload = {
-                            'actual_cash': actualCash,
-                            'notes': closeNoteCtrl.text.isEmpty ? null : closeNoteCtrl.text,
-                          };
-
-                          final res = await ApiService.post('shifts/${_activeShift!['shift_id']}/close', payload);
-                          final resData = json.decode(res.body);
-
-                          if (res.statusCode == 200) {
-                            Navigator.pop(ctx);
-                            
-                            // ========================================
-                            // PANGGIL FUNGSI CETAK LAPORAN DI SINI
-                            // ========================================
-                            if (resData['data'] != null) {
-                              await _cetakLaporanShift(resData['data']);
-                            }
-                            
-                            _showNotif('Shift ditutup dan laporan dicetak!', AppColors.greenAccent);
-                            await _cekShiftAktif(); // Refresh layar ke form Buka Shift
-                          } else {
-                            _showNotif(resData['message'] ?? 'Gagal menutup shift', AppColors.error);
-                            setModalState(() => isProcessing = false);
+                          final closedShiftData = await _shiftService.closeShift(actualCash, closeNoteCtrl.text);
+                          
+                          if (!mounted) return;
+                          Navigator.pop(ctx);
+                          
+                          if (closedShiftData.isNotEmpty) {
+                            await _cetakLaporanShift(closedShiftData);
                           }
+                          
+                          _showNotif('Shift ditutup dan laporan dicetak!', AppColors.greenAccent);
+                          await _cekShiftAktif(); 
                         } catch (e) {
-                          _showNotif('Terjadi kesalahan jaringan', AppColors.error);
+                          _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
                           setModalState(() => isProcessing = false);
                         }
                       },
@@ -258,7 +301,6 @@ class _HalamanShiftState extends State<HalamanShift> {
       
       bytes += generator.row([PosColumn(text: "Kasir", width: 4), PosColumn(text: ": $_namaKasir", width: 8)]);
       
-      // Ambil waktu dari respons API jika ada, atau gunakan waktu lokal
       String startTime = data['opened_at'] != null ? DateFormat('dd/MM/yy HH:mm').format(DateTime.parse(data['opened_at']).toLocal()) : '-';
       String endTime = data['closed_at'] != null ? DateFormat('dd/MM/yy HH:mm').format(DateTime.parse(data['closed_at']).toLocal()) : DateFormat('dd/MM/yy HH:mm').format(DateTime.now());
       
@@ -273,14 +315,13 @@ class _HalamanShiftState extends State<HalamanShift> {
 
       bytes += generator.row([PosColumn(text: "Modal Awal", width: 7), PosColumn(text: _formatRupiah(openingCash), width: 5, styles: const PosStyles(align: PosAlign.right))]);
       
-      // Hitung total penerimaan kas (di luar modal)
       double totalPenerimaan = expectedCash - openingCash;
       bytes += generator.row([PosColumn(text: "Penerimaan Kas", width: 7), PosColumn(text: _formatRupiah(totalPenerimaan), width: 5, styles: const PosStyles(align: PosAlign.right))]);
       
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
       
       bytes += generator.row([PosColumn(text: "KAS HARAPAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(expectedCash), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      bytes += generator.row([PosColumn(text: "KAS FISIK AKTUAL", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(actualCash), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      bytes += generator.row([PosColumn(text: "KAS AKTUAL", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(actualCash), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
       
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
       
@@ -372,9 +413,7 @@ class _HalamanShiftState extends State<HalamanShift> {
   Widget _buildActiveShiftView() {
     double openingCash = double.parse(_activeShift!['opening_cash'].toString());
     double expectedCash = double.parse(_activeShift!['expected_cash'].toString());
-    double pergerakanKas = expectedCash - openingCash; // Penjualan Cash + Cash In - Cash Out
 
-    // Format Tanggal Buka
     DateTime openedAt = DateTime.parse(_activeShift!['opened_at']).toLocal();
     String formattedDate = DateFormat('dd MMM yyyy • HH:mm', 'id_ID').format(openedAt);
 
@@ -398,21 +437,49 @@ class _HalamanShiftState extends State<HalamanShift> {
               
               const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
 
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Modal Awal', style: TextStyle(color: AppColors.textSecondary)), Text(_formatRupiah(openingCash), style: const TextStyle(fontWeight: FontWeight.bold))]),
-              const SizedBox(height: 12),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Pergerakan Kas', style: TextStyle(color: AppColors.textSecondary)), Text(pergerakanKas >= 0 ? '+ ${_formatRupiah(pergerakanKas)}' : _formatRupiah(pergerakanKas), style: TextStyle(fontWeight: FontWeight.bold, color: pergerakanKas >= 0 ? AppColors.greenAccent : AppColors.error))]),
-              
-              const SizedBox(height: 24),
               Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [AppColors.primaryEmerald, Color(0xFF107A4D)]), borderRadius: BorderRadius.circular(16)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Expected Cash', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                    Text(_formatRupiah(expectedCash), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
+                    const Text('Kas Seharusnya (Dalam Laci)', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    Text(_formatRupiah(expectedCash), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                    const Divider(color: Colors.white24, height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Modal Awal', style: TextStyle(color: Colors.white70)),
+                        Text(_formatRupiah(openingCash), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 24),
+
+              // Tombol Kas Masuk / Keluar
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showCashMovementDialog('CASH_IN'),
+                      icon: const Icon(Icons.arrow_downward, color: Colors.blue, size: 18),
+                      label: const Text('Kas Masuk', style: TextStyle(color: Colors.blue)),
+                      style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.blue), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showCashMovementDialog('CASH_OUT'),
+                      icon: const Icon(Icons.arrow_upward, color: Colors.red, size: 18),
+                      label: const Text('Kas Keluar', style: TextStyle(color: Colors.red)),
+                      style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 32),
 
@@ -440,6 +507,15 @@ class _HalamanShiftState extends State<HalamanShift> {
         elevation: 0,
         title: const Text('Manajemen Shift', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Riwayat Shift',
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanRiwayatShift()));
+            },
+          )
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
