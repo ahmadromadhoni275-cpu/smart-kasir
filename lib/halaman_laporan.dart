@@ -4,6 +4,7 @@ import 'core/services/report_service.dart';
 import 'tema.dart';
 import 'halaman_laporan_penjualan.dart'; 
 import 'halaman_laporan_pembayaran.dart';
+import 'halaman_laporan_produk.dart';
 
 class HalamanLaporan extends StatefulWidget {
   const HalamanLaporan({super.key});
@@ -332,11 +333,12 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          // --- PENAMBAHAN LOGIKA NAVIGASI DI SINI ---
           if (title == 'Penjualan') {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanPenjualan()));
           } else if (title == 'Pembayaran') {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanPembayaran()));
+          } else if (title == 'Produk') {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanProduk())); // <-- INI YANG BARU
           } else {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Halaman Laporan $title sedang dibangun!')));
           }
