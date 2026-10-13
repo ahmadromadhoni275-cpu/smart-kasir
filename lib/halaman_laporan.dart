@@ -8,6 +8,7 @@ import 'halaman_laporan_produk.dart';
 import 'halaman_laporan_laba_rugi.dart
 import 'halaman_laporan_stok.dart';
 import 'halaman_laporan_shift.dart';
+import 'halaman_laporan_retur.dart';
 
 class HalamanLaporan extends StatefulWidget {
   const HalamanLaporan({super.key});
@@ -348,8 +349,8 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanStok()));
           } else if (title == 'Shift') {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanShift()));
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Halaman Laporan $title sedang dibangun!')));
+          } else if (title == 'Retur') {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanRetur())); // <-- MENU TERAKHIR SELESAI
           }
         },
         child: Column(

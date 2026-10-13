@@ -153,5 +153,24 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
+    // Memanggil endpoint GET /reports/returns
+  Future<List<dynamic>> getReturns(String dateFrom, String dateTo) async {
+    try {
+      final response = await _dio.get(
+        '/reports/returns',
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
+        return response.data['data'] ?? [];
+      }
+      throw Exception('Gagal memuat laporan retur');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
 
 }
