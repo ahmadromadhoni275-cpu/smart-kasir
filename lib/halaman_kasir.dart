@@ -22,6 +22,7 @@ class HalamanKasir extends StatefulWidget {
 class _HalamanKasirState extends State<HalamanKasir> {
   bool _isCheckingShift = true; 
   bool _hasActiveShift = false; 
+  bool _hasAutoRedirected = false; // Mencegah infinite loop redirect
 
   bool _isLoading = true;
   List<dynamic> _products = [];
@@ -41,7 +42,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =========================================================
-  // CEK STATUS SHIFT
+  // CEK STATUS SHIFT & AUTO-REDIRECT
   // =========================================================
   Future<void> _cekShiftAktif() async {
     setState(() => _isCheckingShift = true);
@@ -50,16 +51,32 @@ class _HalamanKasirState extends State<HalamanKasir> {
       if (response.statusCode == 200) {
         final resData = json.decode(response.body);
         if (resData['data'] != null) {
+          // SHIFT AKTIF -> Tampilkan Kasir
           _hasActiveShift = true;
           _muatProduk(); 
         } else {
+          // SHIFT TUTUP
           _hasActiveShift = false;
+          
+          // Logika "Lempar Otomatis" ke Halaman Shift (Satu Kali Saja)
+          if (!_hasAutoRedirected && mounted) {
+            _hasAutoRedirected = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.push(
+                context, 
+                MaterialPageRoute(builder: (context) => const HalamanShift())
+              ).then((_) => _cekShiftAktif()); // Cek ulang saat kembali dari Halaman Shift
+            });
+          }
         }
       }
     } catch (e) {
       _hasActiveShift = false;
     }
-    setState(() => _isCheckingShift = false);
+    
+    if (mounted) {
+      setState(() => _isCheckingShift = false);
+    }
   }
 
   Future<void> _muatProduk() async {
@@ -71,8 +88,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
           _products = json.decode(response.body)['data'];
         });
       }
-    } catch (e) {}
-    setState(() => _isLoading = false);
+    } catch (e) {
+      debugPrint('Gagal memuat produk: $e');
+    }
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
@@ -285,7 +306,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     setModalState(() => isProcessing = false);
                   }
                 },
-                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white)) : const Text('SELESAIKAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('SELESAIKAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               )
             ],
           );
@@ -409,6 +430,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   void _showNotif(String pesan, Color warna) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
   }
 
@@ -598,6 +620,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
     }
 
+    // JIKA SHIFT BELUM DIBUKA
     if (!_hasActiveShift) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -629,9 +652,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
       );
     }
 
+    // JIKA SHIFT AKTIF -> TAMPILKAN KASIR UTAMA
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Layar dianggap Tablet jika lebarnya lebih dari 600
         bool isDesktop = constraints.maxWidth > 600;
 
         Widget mainContent = Column(
@@ -660,7 +683,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFB8860B), // Champagne Color
+                      backgroundColor: const Color(0xFFB8860B), 
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 0
