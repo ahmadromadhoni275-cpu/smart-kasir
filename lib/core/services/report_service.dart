@@ -83,5 +83,24 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
+    // Memanggil endpoint GET /reports/profit-loss
+  Future<Map<String, dynamic>> getProfitLoss(String dateFrom, String dateTo) async {
+    try {
+      final response = await _dio.get(
+        '/reports/profit-loss',
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
+        return response.data['data'] ?? {};
+      }
+      throw Exception('Gagal memuat laporan laba rugi');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
 
 }
