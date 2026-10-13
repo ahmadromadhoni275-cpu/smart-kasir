@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
 
-// --- IMPORT HALAMAN YANG SUDAH DIBUAT ---
+// --- IMPORT SEMUA HALAMAN YANG SUDAH DIBUAT ---
+import 'halaman_kasir.dart';
 import 'halaman_produk.dart';
 import 'halaman_kategori.dart';
-import 'halaman_retur.dart'; // Jika butuh form retur per transaksi, atau buat HalamanDaftarRetur
 import 'halaman_riwayat_transaksi.dart';
+import 'halaman_shift.dart';
+import 'halaman_laporan.dart'; // Pusat Laporan Bisnis (Penjualan, Stok, Laba Rugi, Shift, Retur, dll.)
 
 class KerangkaNavigasiUtama extends StatefulWidget {
   const KerangkaNavigasiUtama({super.key});
@@ -24,22 +26,22 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   final List<String> _daftarToko = ['Toko Utama', 'Cabang Pakisaji'];
 
   // =========================================================
-  // INDEKS HALAMAN UNIVERSAL (Total 13+ Halaman)
+  // RUMAH / INDEKS HALAMAN UNIVERSAL (Total 13 Halaman)
   // =========================================================
   late final List<Widget> _halaman = [
-    const Center(child: Text('0: Dashboard (Home)')),     // Index 0
-    const Center(child: Text('1: Kasir POS')),            // Index 1
+    const Center(child: Text('0: Dashboard (Home)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), // Index 0: Home
+    const HalamanKasir(),                                 // Index 1: Kasir POS
     const HalamanProduk(),                                // Index 2: Manajemen Produk
-    const Center(child: Text('3: Laporan Bisnis')),       // Index 3
-    const HalamanRiwayatTransaksi(),    // Index 4
-    const Center(child: Text('5: Manajemen Cabang')),     // Index 5
-    const Center(child: Text('6: Karyawan')),             // Index 6
-    const HalamanKategori(),                              // Index 7: Pengaturan / Kategori Produk
-    const Center(child: Text('8: Shift Kasir')),          // Index 8
-    const Center(child: Text('9: Metode Pembayaran')),    // Index 9
-    const Center(child: Text('10: Referral')),            // Index 10
-    const Center(child: Text('11: Langganan SaaS')),      // Index 11
-    const Center(child: Text('12: Profil Kasir')),        // Index 12
+    const HalamanLaporan(),                               // Index 3: Pusat Laporan Bisnis
+    const HalamanRiwayatTransaksi(),                      // Index 4: Transaksi
+    const Center(child: Text('5: Manajemen Cabang')),     // Index 5: Cabang
+    const Center(child: Text('6: Karyawan')),             // Index 6: Karyawan
+    const HalamanKategori(),                              // Index 7: Kategori Produk / Pengaturan
+    const HalamanShift(),                                 // Index 8: Shift Kasir (Kelola & Buka/Tutup)
+    const Center(child: Text('9: Metode Pembayaran')),    // Index 9: Pembayaran
+    const Center(child: Text('10: Referral')),            // Index 10: Referral
+    const Center(child: Text('11: Langganan SaaS')),      // Index 11: Langganan
+    const Center(child: Text('12: Profil Kasir')),        // Index 12: Profil
   ];
 
   @override
@@ -90,7 +92,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
               if (_role == 'OWNER' || _role == 'MANAGER') ...[
                 _buildMobileMenuItem(Icons.receipt_long, 'Transaksi', 4),
                 _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
-                _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7), // Pintasan Kategori
+                _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
               ],
               
               if (_role == 'OWNER')
@@ -259,7 +261,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                       
                       if (_role == 'OWNER' || _role == 'MANAGER') ...[
                         _buildSidebarItem(Icons.inventory_2, 'Produk', 2),
-                        _buildSidebarItem(Icons.category_outlined, 'Kategori', 7), // Menu Kategori di Sidebar
+                        _buildSidebarItem(Icons.category_outlined, 'Kategori', 7),
                       ],
                         
                       if (_role == 'KASIR')
@@ -268,7 +270,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                       _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
                       
                       if (_role == 'OWNER' || _role == 'MANAGER') 
-                        _buildSidebarItem(Icons.analytics, 'Laporan', 3),
+                        _buildSidebarItem(Icons.analytics, 'Laporan Bisnis', 3), // Pusat Laporan Lengkap
                         
                       _buildSidebarItem(Icons.swap_horiz, 'Shift Kasir', 8),
 

@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
-import 'core/constants/app_colors.dart';
-import 'presentation/layouts/main_layout.dart';
-
-// TODO: Import file-file halaman Anda di sini
-// import 'halaman_login.dart';
-// import 'halaman_pilih_cabang.dart';
+import 'tema.dart'; // Menggunakan tema.dart yang sudah ada di proyek Anda
+import 'kerangka_navigasi_utama.dart'; // Menghubungkan ke kerangka navigasi
 
 void main() {
   runApp(const SmartKasirApp());
 }
 
 class SmartKasirApp extends StatelessWidget {
-  const SmartKasirApp({Key? key}) : super(key: key);
+  const SmartKasirApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,32 +15,14 @@ class SmartKasirApp extends StatelessWidget {
       title: 'Smart Kasir',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        fontFamily: 'Inter', // Pastikan Anda menambahkan font Inter di pubspec.yaml
+        fontFamily: 'Inter', // Pastikan font Inter terdaftar di pubspec.yaml atau gunakan default
         scaffoldBackgroundColor: AppColors.background,
         primaryColor: AppColors.primaryEmerald,
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primaryEmerald),
       ),
       
-      // ========================================================
-      // SISTEM ROUTING SMART KASIR
-      // ========================================================
-      // Untuk sementara, jika Anda masih mendevelop UI dan belum mau lewat login, 
-      // biarkan 'home' aktif dan comment 'initialRoute' & 'routes'.
-      
-      home: const MainLayout(isOwner: true), 
-      
-      /*
-      initialRoute: '/login', // Aplikasi akan pertama kali membuka halaman login
-      routes: {
-        '/login': (context) => const HalamanLogin(),
-        
-        // Halaman ini akan dipanggil otomatis oleh HalamanLogin jika cabang > 1
-        '/pilih_cabang': (context) => const HalamanPilihCabang(),
-        
-        // '/home' ini memanggil Kerangka/Layout Utama Anda
-        '/home': (context) => const MainLayout(isOwner: true), 
-      },
-      */
+      // Halaman pertama kali aplikasi dibuka
+      home: const KerangkaNavigasiUtama(),
     );
   }
 }
