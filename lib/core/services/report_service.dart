@@ -102,5 +102,37 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
+  
+    // GET /reports/stock (Stok Terkini)
+  Future<List<dynamic>> getStockReport() async {
+    try {
+      final response = await _dio.get('/reports/stock');
+      if (response.statusCode == 200 && response.data['status'] == true) {
+        return response.data['data'] ?? [];
+      }
+      throw Exception('Gagal memuat laporan stok');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
 
+  // GET /reports/stock-movements (Riwayat Pergerakan)
+  Future<List<dynamic>> getStockMovements(String dateFrom, String dateTo) async {
+    try {
+      final response = await _dio.get(
+        '/reports/stock-movements',
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
+      );
+      if (response.statusCode == 200 && response.data['status'] == true) {
+        return response.data['data'] ?? [];
+      }
+      throw Exception('Gagal memuat riwayat pergerakan stok');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
+  
 }
