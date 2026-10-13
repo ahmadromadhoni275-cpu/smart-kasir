@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'core/services/report_service.dart';
 import 'tema.dart';
 import 'halaman_laporan_penjualan.dart'; 
+import 'halaman_laporan_pembayaran.dart';
 
 class HalamanLaporan extends StatefulWidget {
   const HalamanLaporan({super.key});
@@ -324,15 +325,18 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     );
   }
 
-  Widget _buildLaporanMenu(IconData icon, String title, Color color) {
+    Widget _buildLaporanMenu(IconData icon, String title, Color color) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
+          // --- PENAMBAHAN LOGIKA NAVIGASI DI SINI ---
           if (title == 'Penjualan') {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanPenjualan()));
+          } else if (title == 'Pembayaran') {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanPembayaran()));
           } else {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Halaman Laporan $title sedang dibangun!')));
           }

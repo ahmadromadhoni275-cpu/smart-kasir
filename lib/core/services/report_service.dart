@@ -44,4 +44,24 @@ class ReportService {
   }
 
   // (Nanti tambahkan fungsi getSales, getPayments, dll di sini saat sub-halaman dibangun)
+  // Memanggil endpoint GET /reports/payments
+  Future<List<dynamic>> getPayments(String dateFrom, String dateTo) async {
+    try {
+      final response = await _dio.get(
+        '/reports/payments',
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
+        return response.data['data'] ?? [];
+      }
+      throw Exception('Gagal memuat laporan pembayaran');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
+
 }
