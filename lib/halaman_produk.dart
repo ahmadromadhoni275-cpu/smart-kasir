@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'core/services/product_service.dart';
-import 'core/services/category_service.dart'; // <-- Tambahan: Import Service Kategori
-import 'models/category_model.dart';          // <-- Tambahan: Import Model Kategori
+import 'core/services/category_service.dart'; 
+import 'models/category_model.dart';          
 import 'tema.dart';
 
-// --- (OPSIONAL) UPDATE MODEL PRODUK DI FILE TERPISAH ---
-// Jika Product ada di file terpisah, pastikan menambahkan categoryId dan categoryName.
-// Karena di tutorial sebelumnya kita menaruh class Product di product_service.dart, 
-// pastikan backend CI4 Anda mengirimkan `category_id` dan `category_name` pada API GET /products.
+// --- IMPORT HALAMAN STOK ---
+import 'halaman_stok_masuk.dart';
+import 'halaman_penyesuaian_stok.dart';
+import 'halaman_riwayat_stok.dart';
 
 class HalamanProduk extends StatefulWidget {
   const HalamanProduk({super.key});
@@ -19,11 +19,11 @@ class HalamanProduk extends StatefulWidget {
 
 class _HalamanProdukState extends State<HalamanProduk> {
   final ProductService _productService = ProductService();
-  final CategoryService _categoryService = CategoryService(); // <-- Inisialisasi
+  final CategoryService _categoryService = CategoryService();
   final TextEditingController _searchCtrl = TextEditingController();
   
-  List<dynamic> _products = []; // Pakai dynamic/Map jika model Product belum diupdate
-  List<Category> _categories = []; // Menyimpan daftar kategori untuk dropdown
+  List<dynamic> _products = [];
+  List<Category> _categories = [];
   
   bool _isLoading = true;
 
@@ -33,11 +33,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
     _fetchInitialData();
   }
 
-  // Mengambil Produk dan Kategori sekaligus
   Future<void> _fetchInitialData() async {
     setState(() => _isLoading = true);
     try {
-      // Panggil API secara paralel agar lebih cepat
       final results = await Future.wait([
         _productService.getProducts(search: _searchCtrl.text.trim()),
         _categoryService.getCategories(),
@@ -45,7 +43,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
       
       setState(() {
         _products = results[0] as List;
-        // Hanya ambil kategori yang statusnya ACTIVE
         _categories = (results[1] as List<Category>).where((c) => c.status == 'ACTIVE').toList();
       });
     } catch (e) {
@@ -86,7 +83,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  // --- FORM TAMBAH / EDIT ---
   void _tampilFormProduk({dynamic produk}) {
     final bool isEdit = produk != null;
     final skuCtrl = TextEditingController(text: isEdit ? produk.sku : '');
@@ -94,9 +90,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
     final priceCtrl = TextEditingController(text: isEdit ? produk.price.toInt().toString() : '');
     final stockCtrl = TextEditingController(text: isEdit ? produk.stock.toString() : '');
     
-    // Default kategori terpilih (bisa null jika belum ada)
     int? selectedCategoryId;
-    // Jika sedang edit, cari apakah categoryId produk ini ada di list kategori kita
     if (isEdit && produk.categoryId != null) {
       bool exists = _categories.any((c) => c.categoryId == produk.categoryId);
       if (exists) selectedCategoryId = produk.categoryId;
@@ -118,7 +112,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                 Text(isEdit ? 'Edit Produk' : 'Tambah Produk Baru', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                 const SizedBox(height: 20),
                 
-                // DROPDOWN KATEGORI
                 DropdownButtonFormField<int>(
                   value: selectedCategoryId,
                   decoration: InputDecoration(labelText: 'Kategori Produk', prefixIcon: const Icon(Icons.category), filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
@@ -161,7 +154,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                         'name': nameCtrl.text,
                         'price': priceCtrl.text,
                         'stock': stockCtrl.text.isEmpty ? '0' : stockCtrl.text,
-                        'category_id': selectedCategoryId, // Kirim ke CI4
+                        'category_id': selectedCategoryId, 
                       };
 
                       Navigator.pop(context); 
@@ -200,12 +193,35 @@ class _HalamanProdukState extends State<HalamanProduk> {
   String _formatCurrency(double amount) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   void _showNotif(String pesan, Color warna) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
 
+  // --- WIDGET TOMBOL SUBMENU STOK ---
+  Widget _buildStockMenuButton(IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          border: Border.all(color: color.withOpacity(0.5)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Data Produk', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
+        title: const Text('Data Produk & Stok', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
         elevation: 1,
@@ -220,18 +236,48 @@ class _HalamanProdukState extends State<HalamanProduk> {
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Cari nama atau SKU produk...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(icon: const Icon(Icons.send, color: AppColors.primaryEmerald), onPressed: _fetchInitialData),
-                filled: true, fillColor: AppColors.lightGray,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-              onSubmitted: (_) => _fetchInitialData(),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Cari nama atau SKU produk...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: IconButton(icon: const Icon(Icons.send, color: AppColors.primaryEmerald), onPressed: _fetchInitialData),
+                    filled: true, fillColor: AppColors.lightGray,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  ),
+                  onSubmitted: (_) => _fetchInitialData(),
+                ),
+                
+                // --- SUBMENU STOK ---
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildStockMenuButton(Icons.add_box, 'Stok Masuk', Colors.blue, () {
+                        // Refresh data saat kembali untuk update jumlah stok di UI
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanStokMasuk())).then((_) => _fetchInitialData());
+                      }),
+                      const SizedBox(width: 8),
+                      _buildStockMenuButton(Icons.tune, 'Penyesuaian (Opname)', Colors.orange, () {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPenyesuaianStok())).then((_) => _fetchInitialData());
+                      }),
+                      const SizedBox(width: 8),
+                      _buildStockMenuButton(Icons.history, 'Riwayat Stok', AppColors.primaryEmerald, () {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanRiwayatStok()));
+                      }),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -261,7 +307,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
                           title: Row(
                             children: [
                               Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive))),
-                              // BADGE KATEGORI DI SEBELAH KANAN NAMA
                               if (p.categoryName != null) 
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
