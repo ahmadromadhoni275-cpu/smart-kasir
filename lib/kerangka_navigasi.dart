@@ -10,6 +10,8 @@ import 'halaman_riwayat_transaksi.dart';
 import 'halaman_shift.dart';
 import 'halaman_laporan.dart'; 
 import 'halaman_pengguna.dart'; 
+import 'halaman_metode_pembayaran.dart';
+import 'halaman_profil_akun.dart';
 
 // --- TAMBAHAN: IMPORT PENGATURAN TOKO & CABANG ---
 import 'halaman_pengaturan_toko.dart'; 
@@ -41,10 +43,10 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
     const HalamanPengguna(),                              // Index 6
     const HalamanKategori(),                              // Index 7
     const HalamanShift(),                                 // Index 8
-    const Center(child: Text('9: Metode Pembayaran')),    // Index 9
+    const HalamanMetodePembayaran(),    // Index 9
     const Center(child: Text('10: Referral')),            // Index 10
     const Center(child: Text('11: Langganan SaaS')),      // Index 11
-    const Center(child: Text('12: Profil Kasir')),        // Index 12
+    const HalamanProfilAkun(),        // Index 12
   ];
 
   @override
