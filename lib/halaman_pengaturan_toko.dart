@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'tema.dart';
 import 'halaman_pilih_cabang.dart';
 import 'halaman_profil_toko.dart';
+import 'halaman_daftar_cabang.dart';
 
 class HalamanPengaturanToko extends StatelessWidget {
   const HalamanPengaturanToko({super.key});
@@ -41,6 +42,7 @@ class HalamanPengaturanToko extends StatelessWidget {
             context, Icons.add_business, 'Kelola & Tambah Cabang', 'Daftar semua cabang bisnis', 
             () {
               // Navigasi ke HalamanDaftarCabang (Jika Anda membuat halamannya terpisah)
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanDaftarCabang()));
             }
           ),
         ],
