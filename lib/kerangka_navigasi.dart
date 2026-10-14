@@ -8,7 +8,8 @@ import 'halaman_produk.dart';
 import 'halaman_kategori.dart';
 import 'halaman_riwayat_transaksi.dart';
 import 'halaman_shift.dart';
-import 'halaman_laporan.dart'; // Pusat Laporan Bisnis (Penjualan, Stok, Laba Rugi, Shift, Retur, dll.)
+import 'halaman_laporan.dart'; 
+import 'halaman_pengguna.dart'; // <-- TAMBAHAN: Import Halaman Pengguna
 
 class KerangkaNavigasiUtama extends StatefulWidget {
   const KerangkaNavigasiUtama({super.key});
@@ -29,19 +30,19 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   // RUMAH / INDEKS HALAMAN UNIVERSAL (Total 13 Halaman)
   // =========================================================
   late final List<Widget> _halaman = [
-    const Center(child: Text('0: Dashboard (Home)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), // Index 0: Home
-    const HalamanKasir(),                                 // Index 1: Kasir POS
-    const HalamanProduk(),                                // Index 2: Manajemen Produk
-    const HalamanLaporan(),                               // Index 3: Pusat Laporan Bisnis
-    const HalamanRiwayatTransaksi(),                      // Index 4: Transaksi
-    const Center(child: Text('5: Manajemen Cabang')),     // Index 5: Cabang
-    const Center(child: Text('6: Karyawan')),             // Index 6: Karyawan
-    const HalamanKategori(),                              // Index 7: Kategori Produk / Pengaturan
-    const HalamanShift(),                                 // Index 8: Shift Kasir (Kelola & Buka/Tutup)
-    const Center(child: Text('9: Metode Pembayaran')),    // Index 9: Pembayaran
-    const Center(child: Text('10: Referral')),            // Index 10: Referral
-    const Center(child: Text('11: Langganan SaaS')),      // Index 11: Langganan
-    const Center(child: Text('12: Profil Kasir')),        // Index 12: Profil
+    const Center(child: Text('0: Dashboard (Home)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), // Index 0
+    const HalamanKasir(),                                 // Index 1
+    const HalamanProduk(),                                // Index 2
+    const HalamanLaporan(),                               // Index 3
+    const HalamanRiwayatTransaksi(),                      // Index 4
+    const Center(child: Text('5: Manajemen Cabang')),     // Index 5
+    const HalamanPengguna(),                              // Index 6: <-- UPDATE: Karyawan & Hak Akses
+    const HalamanKategori(),                              // Index 7
+    const HalamanShift(),                                 // Index 8
+    const Center(child: Text('9: Metode Pembayaran')),    // Index 9
+    const Center(child: Text('10: Referral')),            // Index 10
+    const Center(child: Text('11: Langganan SaaS')),      // Index 11
+    const Center(child: Text('12: Profil Kasir')),        // Index 12
   ];
 
   @override
@@ -99,7 +100,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                 _buildMobileMenuItem(Icons.storefront, 'Cabang', 5),
                 
               if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                _buildMobileMenuItem(Icons.people_outline, 'Karyawan', 6),
+                _buildMobileMenuItem(Icons.people_outline, 'Karyawan & Akses', 6), // <-- UPDATE NAMA MENU
                 _buildMobileMenuItem(Icons.payment, 'Pembayaran', 9),
               ],
               
@@ -270,7 +271,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                       _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
                       
                       if (_role == 'OWNER' || _role == 'MANAGER') 
-                        _buildSidebarItem(Icons.analytics, 'Laporan Bisnis', 3), // Pusat Laporan Lengkap
+                        _buildSidebarItem(Icons.analytics, 'Laporan Bisnis', 3), 
                         
                       _buildSidebarItem(Icons.swap_horiz, 'Shift Kasir', 8),
 
@@ -283,7 +284,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                         _buildSidebarItem(Icons.storefront, 'Cabang', 5),
                         
                       if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                        _buildSidebarItem(Icons.people_outline, 'Karyawan', 6),
+                        _buildSidebarItem(Icons.people_outline, 'Karyawan & Akses', 6), // <-- UPDATE NAMA MENU
                         _buildSidebarItem(Icons.payment, 'Pembayaran', 9),
                       ],
                       
