@@ -60,7 +60,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   }
 
   // ==========================================
-  // FITUR 1: CETAK BLUETOOTH
+  // FITUR 1: CETAK BLUETOOTH (Mendukung Split Payment)
   // ==========================================
   Future<void> _cetakStrukBluetooth() async {
     if (_detail == null) return;
@@ -93,7 +93,21 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
       }
       
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "TOTAL", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatCurrency(_detail!['grand_total']), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      bytes += generator.row([PosColumn(text: "TOTAL TAGIHAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatCurrency(_detail!['grand_total']), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      
+      // CETAK RINCIAN MULTIPLE PAYMENTS
+      List payments = _detail!['payments'] ?? [];
+      for(var pay in payments) {
+        bytes += generator.row([PosColumn(text: "BAYAR (${pay['method']})", width: 7), PosColumn(text: _formatCurrency(pay['amount']), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      }
+      
+      // Hitung kembalian jika ada
+      double totalBayar = payments.fold(0, (sum, item) => sum + (double.tryParse(item['amount'].toString()) ?? 0));
+      double kembali = totalBayar - double.parse(_detail!['grand_total'].toString());
+      if (kembali > 0) {
+         bytes += generator.row([PosColumn(text: "KEMBALI", width: 7), PosColumn(text: _formatCurrency(kembali), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      }
+
       bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.feed(2);
@@ -111,7 +125,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   }
 
   // ==========================================
-  // FITUR 2: SIMPAN PDF & BAGIKAN (Share to WA/Drive)
+  // FITUR 2: SIMPAN PDF & BAGIKAN (Mendukung Split Payment)
   // ==========================================
   Future<void> _bagikanPDF() async {
     if (_detail == null) return;
@@ -123,6 +137,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
       pw.Page(
         pageFormat: PdfPageFormat.roll80, 
         build: (pw.Context context) {
+          List payments = _detail!['payments'] ?? [];
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
@@ -152,10 +167,16 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('TOTAL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                  pw.Text('TOTAL TAGIHAN', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
                   pw.Text(_formatCurrency(_detail!['grand_total']), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
                 ]
               ),
+              pw.Divider(borderStyle: pw.BorderStyle.dashed),
+              // RINCIAN PEMBAYARAN PDF
+              ...payments.map((p) => pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [pw.Text('BAYAR (${p['method']})'), pw.Text(_formatCurrency(p['amount']))]
+              )).toList(),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
               pw.Text('Terima Kasih', style: const pw.TextStyle(fontSize: 12)),
             ],
@@ -280,21 +301,36 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('TOTAL BAYAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
+                    const Text('TOTAL TAGIHAN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
                     Text(_formatCurrency(_detail!['grand_total']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryEmerald)),
                   ],
                 ),
                 
                 const SizedBox(height: 24),
+                
+                // --- BAGIAN BARU: RINCIAN METODE PEMBAYARAN (MENDUKUNG SPLIT PAYMENT) ---
+                const Text('Riwayat Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: const Color(0xFFF7E7CE).withOpacity(0.3), borderRadius: BorderRadius.circular(8)),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.account_balance_wallet, size: 20, color: Color(0xFFB8860B)),
-                      const SizedBox(width: 8),
-                      Text('Metode: ${payments.isNotEmpty ? payments[0]['method'] : '-'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFB8860B))),
-                    ],
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(12)),
+                  child: Column(
+                    children: payments.map<Widget>((pay) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.check_circle, size: 16, color: AppColors.primaryEmerald),
+                              const SizedBox(width: 8),
+                              Text(pay['method'], style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                            ],
+                          ),
+                          Text(_formatCurrency(pay['amount']), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                        ],
+                      ),
+                    )).toList(),
                   ),
                 )
               ],

@@ -10,6 +10,7 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
 import 'services/api_service.dart';
+import 'services/payment_method_service.dart'; // Pastikan path service metode pembayaran benar
 import 'halaman_shift.dart'; 
 
 class HalamanKasir extends StatefulWidget {
@@ -33,6 +34,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
   String? _selectedTable;
   double _discount = 0;
   
+  // State Metode Pembayaran Aktif (Dinamis dari Backend)
+  List<Map<String, dynamic>> _activePaymentMethods = [
+    {'type': 'CASH', 'name': 'Tunai (Cash)'} // Default selalu ada
+  ];
+  
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override
@@ -42,7 +48,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =========================================================
-  // CEK STATUS SHIFT & AUTO-REDIRECT
+  // CEK STATUS SHIFT, PRODUK, & METODE BAYAR
   // =========================================================
   Future<void> _cekShiftAktif() async {
     setState(() => _isCheckingShift = true);
@@ -54,18 +60,18 @@ class _HalamanKasirState extends State<HalamanKasir> {
           // SHIFT AKTIF -> Tampilkan Kasir
           _hasActiveShift = true;
           _muatProduk(); 
+          _fetchMetodePembayaran(); // Ambil metode pembayaran aktif toko
         } else {
           // SHIFT TUTUP
           _hasActiveShift = false;
           
-          // Logika "Lempar Otomatis" ke Halaman Shift (Satu Kali Saja)
           if (!_hasAutoRedirected && mounted) {
             _hasAutoRedirected = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Navigator.push(
                 context, 
                 MaterialPageRoute(builder: (context) => const HalamanShift())
-              ).then((_) => _cekShiftAktif()); // Cek ulang saat kembali dari Halaman Shift
+              ).then((_) => _cekShiftAktif());
             });
           }
         }
@@ -76,6 +82,21 @@ class _HalamanKasirState extends State<HalamanKasir> {
     
     if (mounted) {
       setState(() => _isCheckingShift = false);
+    }
+  }
+
+  Future<void> _fetchMetodePembayaran() async {
+    try {
+      final methods = await PaymentMethodService.getPaymentMethods();
+      final activeMethods = methods.where((m) => m['status'] == 'ACTIVE').toList();
+      setState(() {
+        _activePaymentMethods = [
+          {'type': 'CASH', 'name': 'Tunai (Cash)'},
+          ...activeMethods.map((m) => {'type': m['type'], 'name': m['name']})
+        ];
+      });
+    } catch (e) {
+      debugPrint('Gagal memuat metode bayar: $e');
     }
   }
 
@@ -199,12 +220,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =========================================================
-  // MODAL PEMBAYARAN & CHECKOUT KE CI4
+  // MODAL PEMBAYARAN & CHECKOUT KE CI4 (MENDUKUNG SPLIT PAYMENT)
   // =========================================================
   void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
-    String metode = 'CASH';
-    TextEditingController uangCtrl = TextEditingController(text: _grandTotal.toInt().toString());
+    
+    // State Pembayaran Dinamis
+    List<Map<String, dynamic>> appliedPayments = [
+      {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
+    ];
     bool isProcessing = false;
 
     showDialog(
@@ -212,71 +236,122 @@ class _HalamanKasirState extends State<HalamanKasir> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
+          
+          double totalBayarInput = 0;
+          for (var p in appliedPayments) {
+            totalBayarInput += double.tryParse(p['ctrl'].text) ?? 0;
+          }
+          double kurang = _grandTotal - totalBayarInput;
+          if (kurang < 0) kurang = 0; // Jika ada kembalian
+
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('Pembayaran', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text('Pembayaran Tagihan', style: TextStyle(fontWeight: FontWeight.bold)),
             content: SizedBox(
-              width: 400,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                  const SizedBox(height: 24),
-                  
-                  Wrap(
-                    spacing: 12, runSpacing: 12,
-                    alignment: WrapAlignment.center,
-                    children: ['CASH', 'QRIS', 'TRANSFER'].map((m) {
-                      return ChoiceChip(
-                        label: Text(m, style: TextStyle(color: metode == m ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
-                        selected: metode == m,
-                        selectedColor: AppColors.primaryEmerald,
-                        backgroundColor: AppColors.lightGray,
-                        onSelected: (val) {
-                          if(val) setModalState(() => metode = m);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                  if (metode == 'CASH')
-                    TextField(
-                      controller: uangCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Uang Diterima',
-                        prefixText: 'Rp ',
-                        filled: true, fillColor: AppColors.lightGray,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              width: 450,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        children: [
+                          const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                        ],
                       ),
                     ),
-                ],
+                    const SizedBox(height: 24),
+                    
+                    // List Metode Pembayaran
+                    ...appliedPayments.asMap().entries.map((entry) {
+                      int idx = entry.key;
+                      Map<String, dynamic> payItem = entry.value;
+                      
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: DropdownButtonFormField<String>(
+                                value: payItem['method'],
+                                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
+                                items: _activePaymentMethods.map((m) => DropdownMenuItem<String>(value: m['type'], child: Text(m['name'], style: const TextStyle(fontSize: 13)))).toList(),
+                                onChanged: (val) => setModalState(() => payItem['method'] = val!),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: payItem['ctrl'],
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(prefixText: 'Rp ', isDense: true, border: OutlineInputBorder()),
+                                onChanged: (_) => setModalState((){}), // Trigger hitung ulang
+                              ),
+                            ),
+                            if (appliedPayments.length > 1)
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                onPressed: () => setModalState(() => appliedPayments.removeAt(idx)),
+                              )
+                          ],
+                        ),
+                      );
+                    }),
+                    
+                    // Tombol Split Payment
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setModalState(() {
+                            appliedPayments.add({'method': _activePaymentMethods.first['type'], 'ctrl': TextEditingController(text: kurang.toInt().toString())});
+                          });
+                        }, 
+                        icon: const Icon(Icons.add, size: 16), 
+                        label: const Text('Tambah Pembayaran Gabungan (Split)')
+                      ),
+                    ),
+                    
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Sisa Kurang:', style: TextStyle(color: Colors.red)),
+                        Text(_formatRupiah(kurang), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                      ],
+                    )
+                  ],
+                ),
               ),
             ),
             actions: [
               TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryEmerald, 
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
                 onPressed: isProcessing ? null : () async {
-                  double paidAmount = double.tryParse(uangCtrl.text) ?? 0;
-                  if (metode == 'CASH' && paidAmount < _grandTotal) {
-                    _showNotif('Uang kurang!', Colors.red);
+                  if (totalBayarInput < _grandTotal) {
+                    _showNotif('Uang pembayaran masih kurang!', Colors.red);
                     return;
                   }
 
                   setModalState(() => isProcessing = true);
                   
+                  // Format payments payload untuk Backend
+                  List<Map<String, dynamic>> paymentsPayload = appliedPayments.map((p) => {
+                    "method": p['method'],
+                    "amount": double.tryParse(p['ctrl'].text) ?? 0
+                  }).toList();
+                  
                   final payload = {
                     "table_id": _selectedTable != null ? int.tryParse(_selectedTable!.replaceAll('Meja ', '')) : null,
                     "discount": _discount,
                     "tax": 0,
-                    "payment_method": metode,
-                    "paid_amount": paidAmount,
+                    "payments": paymentsPayload, // Mengirimkan array payments
                     "items": _cart.map((c) => {
                       "product_id": c['product_id'],
                       "name": c['name'], 
@@ -299,7 +374,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     setState(() { _cart.clear(); _selectedTable = null; });
                     
                     // Tampilkan Sukses & Siapkan Cetak
-                    _tampilkanSukses(data['invoice'], data['kembalian'], itemsToPrint, totalToPrint, metode, paidAmount);
+                    _tampilkanSukses(data['invoice'], data['kembalian'], itemsToPrint, totalToPrint, paymentsPayload);
                     _muatProduk(); 
                   } else {
                     _showNotif('Gagal: ${json.decode(res.body)['message']}', Colors.red);
@@ -318,7 +393,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   // =========================================================
   // LOGIKA CETAK STRUK BLUETOOTH DARI KASIR
   // =========================================================
-  Future<void> _cetakStruk(String invoice, List<Map<String, dynamic>> items, double total, String metode, double paidAmount, dynamic kembalian) async {
+  Future<void> _cetakStruk(String invoice, List<Map<String, dynamic>> items, double total, List<Map<String, dynamic>> payments, dynamic kembalian) async {
     if (kIsWeb || Platform.isIOS) {
       _showNotif('Platform tidak didukung.', Colors.red);
       return;
@@ -355,10 +430,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
       }
       
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "TOTAL", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(total), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      bytes += generator.row([PosColumn(text: "BAYAR ($metode)", width: 6), PosColumn(text: _formatRupiah(paidAmount), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+      bytes += generator.row([PosColumn(text: "TOTAL TAGIHAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(total), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+      
+      // CETAK SETIAP METODE PEMBAYARAN GABUNGAN
+      for (var pay in payments) {
+        bytes += generator.row([PosColumn(text: "BAYAR (${pay['method']})", width: 7), PosColumn(text: _formatRupiah(pay['amount']), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      }
+      
       if (kembalian > 0) {
-        bytes += generator.row([PosColumn(text: "KEMBALI", width: 6), PosColumn(text: _formatRupiah(kembalian), width: 6, styles: const PosStyles(align: PosAlign.right))]);
+        bytes += generator.row([PosColumn(text: "KEMBALI", width: 7), PosColumn(text: _formatRupiah(kembalian), width: 5, styles: const PosStyles(align: PosAlign.right))]);
       }
       bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
       bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
@@ -376,7 +456,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
-  void _tampilkanSukses(String invoice, dynamic kembalian, List<Map<String, dynamic>> itemsToPrint, double totalToPrint, String metode, double paidAmount) {
+  void _tampilkanSukses(String invoice, dynamic kembalian, List<Map<String, dynamic>> itemsToPrint, double totalToPrint, List<Map<String, dynamic>> paymentsPayload) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -404,7 +484,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       side: const BorderSide(color: Color(0xFF1E293B)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                     ),
-                    onPressed: () => _cetakStruk(invoice, itemsToPrint, totalToPrint, metode, paidAmount, kembalian), 
+                    onPressed: () => _cetakStruk(invoice, itemsToPrint, totalToPrint, paymentsPayload, kembalian), 
                     icon: const Icon(Icons.print, color: Color(0xFF1E293B)), 
                     label: const Text('Cetak', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold))
                   )
