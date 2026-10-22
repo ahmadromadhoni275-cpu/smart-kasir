@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'tema.dart'; // Pastikan tema.dart memuat AppColors.lightGray & AppColors.primaryEmerald
-import 'core/services/api_service.dart'; // Jika Anda ingin langsung menembak API dari sini
+import 'tema.dart'; 
+import 'core/services/api_service.dart'; 
 
 class HalamanProfilToko extends StatefulWidget {
   const HalamanProfilToko({super.key});
@@ -37,14 +37,37 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
 
   Future<void> _muatDataToko() async {
     setState(() => _isLoading = true);
+    final prefs = await SharedPreferences.getInstance();
+
     try {
-      // Mengambil data toko yang tersimpan di sesi lokal (SharedPreferences)
-      final prefs = await SharedPreferences.getInstance();
+      // 1. Muat dari Cache Lokal (Fast Render UI)
       _namaController.text = prefs.getString('nama_toko') ?? '';
       _teleponController.text = prefs.getString('telepon_toko') ?? '';
       _alamatController.text = prefs.getString('alamat_toko') ?? '';
+
+      // 2. Tarik Data Terbaru dari Server (Single Source of Truth)
+      final response = await ApiService.get('stores/current');
+      
+      if (response.statusCode == 200) {
+        final resData = json.decode(response.body);
+        final dataToko = resData['data']; // Sesuaikan jika backend menggunakan key lain
+
+        if (dataToko != null) {
+          setState(() {
+            _namaController.text = dataToko['name'] ?? _namaController.text;
+            _teleponController.text = dataToko['phone'] ?? _teleponController.text;
+            _alamatController.text = dataToko['address'] ?? _alamatController.text;
+          });
+
+          // Update cache lokal agar sinkron dengan server
+          await prefs.setString('nama_toko', _namaController.text);
+          await prefs.setString('telepon_toko', _teleponController.text);
+          await prefs.setString('alamat_toko', _alamatController.text);
+        }
+      }
     } catch (e) {
-      debugPrint("Gagal memuat profil toko: $e");
+      debugPrint("Gagal memuat profil toko dari server: $e");
+      // Tetap gunakan data cache lokal jika gagal menghubungi server
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -56,18 +79,18 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
     setState(() => _isSaving = true);
     
     try {
-      // 1. Format data yang akan dikirim
+      // Payload disesuaikan persis dengan kolom tabel `stores`
       final dataUpdate = {
         'name': _namaController.text.trim(),
         'phone': _teleponController.text.trim(),
         'address': _alamatController.text.trim(),
       };
 
-      // 2. Panggil API untuk update toko saat ini (endpoint PUT /stores/current)
+      // Tembak API
       final response = await ApiService.put('stores/current', dataUpdate);
 
       if (response.statusCode == 200) {
-        // 3. Update SharedPreferences lokal agar UI navigasi ikut berubah
+        // Sinkronisasi ulang cache lokal setelah sukses update server
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('nama_toko', _namaController.text.trim());
         await prefs.setString('telepon_toko', _teleponController.text.trim());
@@ -77,7 +100,7 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profil toko berhasil diperbarui!'), backgroundColor: AppColors.primaryEmerald),
         );
-        Navigator.pop(context); // Kembali ke halaman Pengaturan Toko
+        Navigator.pop(context);
       } else {
         final res = json.decode(response.body);
         throw Exception(res['message'] ?? 'Gagal memperbarui profil toko');
@@ -95,7 +118,7 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Latar abu-abu terang
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -111,7 +134,6 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- HEADER IKON ---
                   Center(
                     child: Container(
                       padding: const EdgeInsets.all(20),
@@ -124,11 +146,9 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                   ),
                   const SizedBox(height: 32),
 
-                  // --- FORM INPUT ---
                   const Text('Informasi Dasar', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
                   const SizedBox(height: 16),
                   
-                  // NAMA TOKO
                   TextFormField(
                     controller: _namaController,
                     decoration: InputDecoration(
@@ -142,7 +162,6 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                   ),
                   const SizedBox(height: 16),
 
-                  // TELEPON TOKO
                   TextFormField(
                     controller: _teleponController,
                     keyboardType: TextInputType.phone,
@@ -153,10 +172,16 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
                     ),
+                    // Validasi opsional nomor telepon (hanya angka jika diisi)
+                    validator: (val) {
+                      if (val != null && val.isNotEmpty && !RegExp(r'^[0-9+]+$').hasMatch(val)) {
+                        return 'Hanya boleh berisi angka dan simbol +';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
 
-                  // ALAMAT TOKO
                   TextFormField(
                     controller: _alamatController,
                     maxLines: 3,
@@ -167,14 +192,13 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                       fillColor: AppColors.lightGray,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       prefixIcon: const Padding(
-                        padding: EdgeInsets.only(bottom: 40), // Agar ikon sejajar atas
+                        padding: EdgeInsets.only(bottom: 40),
                         child: Icon(Icons.location_on_outlined, color: Colors.grey),
                       ),
                     ),
                   ),
                   const SizedBox(height: 32),
 
-                  // --- TOMBOL SIMPAN ---
                   SizedBox(
                     width: double.infinity,
                     height: 50,
