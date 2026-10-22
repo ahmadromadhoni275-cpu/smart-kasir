@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../core/services/referral_service.dart';
+import 'core/services/referral_service.dart';
 import 'tema.dart';
 import 'halaman_riwayat_referral.dart';
 import 'halaman_hadiah_referral.dart';
@@ -117,7 +117,7 @@ class _HalamanReferralState extends State<HalamanReferral> {
             children: [
               Text('$valid', style: TextStyle(color: gold, fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(width: 4),
-              Text('dari $target referral', style: const TextStyle(color: Colors.white70, fontSize: 14, padding: EdgeInsets.only(bottom: 4))),
+              Text('dari $target referral', style: const TextStyle(color: Colors.white70, fontSize: 14))),
             ],
           ),
           const SizedBox(height: 12),

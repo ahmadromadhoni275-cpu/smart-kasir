@@ -9,8 +9,8 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
-import 'services/api_service.dart';
-import 'services/payment_method_service.dart'; // Pastikan path service metode pembayaran benar
+import 'core/services/api_service.dart';
+import 'core/services/payment_method_service.dart'; // Pastikan path service metode pembayaran benar
 import 'halaman_shift.dart'; 
 
 class HalamanKasir extends StatefulWidget {
@@ -605,7 +605,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     var item = _cart[i];
                     return Container(
                       padding: const EdgeInsets.all(16),
-                      border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

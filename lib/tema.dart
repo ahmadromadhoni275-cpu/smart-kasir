@@ -4,6 +4,9 @@ class AppColors {
   static const Color background = Color(0xFFF5F7FA);
   static const Color card = Color(0xFFFFFFFF);
   
+  static const Color lightGray = Color(0xFFF3F4F6);
+  static const Color smartBlue = Color(0xFF2563EB); // Warna biru utama
+
   static const Color navyActive = Color(0xFF172033);
   static const Color primaryEmerald = Color(0xFF0F766E);
   static const Color greenAccent = Color(0xFF10B981);

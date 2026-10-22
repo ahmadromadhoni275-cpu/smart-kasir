@@ -22,7 +22,7 @@ class SmartKasirApp extends StatelessWidget {
       ),
       
       // Halaman pertama kali aplikasi dibuka
-      home: const KerangkaNavigasi(),
+      home: KerangkaNavigasi(),
     );
   }
 }

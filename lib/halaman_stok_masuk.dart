@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'tema.dart';
-import 'services/stock_service.dart';
+import 'core/services/stock_service.dart';
 
 class HalamanStokMasuk extends StatefulWidget {
   const HalamanStokMasuk({super.key});

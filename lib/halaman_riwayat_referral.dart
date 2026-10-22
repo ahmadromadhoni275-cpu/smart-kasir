@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'tema.dart';
-import '../core/services/referral_service.dart';
+import 'core/services/referral_service.dart';
 
 class HalamanRiwayatReferral extends StatefulWidget {
   const HalamanRiwayatReferral({Key? key}) : super(key: key);

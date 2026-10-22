@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 
 import 'tema.dart';
-import 'services/api_service.dart';
+import 'core/services/api_service.dart';
 import 'halaman_detail_shift.dart';
 
 class HalamanRiwayatShift extends StatefulWidget {

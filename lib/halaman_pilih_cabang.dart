@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
 import 'core/services/store_service.dart';
-import 'kerangka_navigasi_utama.dart'; // Untuk me-restart UI ke awal
+import 'kerangka_navigasi.dart'; // Untuk me-restart UI ke awal
 
 class HalamanPilihCabang extends StatefulWidget {
   const HalamanPilihCabang({super.key});
@@ -50,7 +50,7 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
     // RESTART APLIKASI / NAVIGASI KE AWAL AGAR SEMUA DATA ME-REFRESH
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => const KerangkaNavigasiUtama()),
+      MaterialPageRoute(builder: (context) => KerangkaNavigasi()),
       (route) => false,
     );
   }

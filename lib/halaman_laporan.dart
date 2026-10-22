@@ -5,7 +5,7 @@ import 'tema.dart';
 import 'halaman_laporan_penjualan.dart'; 
 import 'halaman_laporan_pembayaran.dart';
 import 'halaman_laporan_produk.dart';
-import 'halaman_laporan_laba_rugi.dart
+import 'halaman_laporan_laba_rugi.dart';
 import 'halaman_laporan_stok.dart';
 import 'halaman_laporan_shift.dart';
 import 'halaman_laporan_retur.dart';

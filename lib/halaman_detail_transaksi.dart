@@ -268,7 +268,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Divider(thickness: 2, style: BorderStyle.none),
+                  child: Divider(thickness: 2),
                 ),
                 
                 const Text('Daftar Pembelian', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),

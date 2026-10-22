@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'tema.dart';
-import 'services/stock_service.dart';
+import 'core/services/stock_service.dart';
 
 class HalamanRiwayatStok extends StatefulWidget {
   const HalamanRiwayatStok({super.key});
@@ -103,7 +103,10 @@ class _HalamanRiwayatStokState extends State<HalamanRiwayatStok> {
                             return Card(
                               elevation: 0,
                               margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+                             shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(color: AppColors.border),
+                              ),
                               child: ListTile(
                                 leading: CircleAvatar(
                                   backgroundColor: _getColorByType(type).withOpacity(0.1),

@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'tema.dart';
-import 'services/api_service.dart';
+import 'core/services/api_service.dart';
 
 class HalamanBeranda extends StatefulWidget {
   const HalamanBeranda({super.key});
