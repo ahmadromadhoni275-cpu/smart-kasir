@@ -208,7 +208,7 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
         children: [
           Row(
             children: [
-              Expanded(child: _buildMetricBox('Total Retur', '$_totalTransactionsx', Icons.assignment_return, Colors.blue)),
+              Expanded(child: _buildMetricBox('Total Retur', '$_totalTransactions', Icons.assignment_return, Colors.blue)),
               const SizedBox(width: 12),
               Expanded(child: _buildMetricBox('Total Unit', '$_totalUnits', Icons.inventory, Colors.orange)),
             ],
@@ -317,7 +317,7 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Nilai Barang ($qty unit)', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                      Text('Nilai Barang ($qty unit)', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                       const SizedBox(height: 4),
                       Text(_formatCurrency(retValue), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     ],

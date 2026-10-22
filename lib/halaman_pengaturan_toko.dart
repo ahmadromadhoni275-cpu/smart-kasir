@@ -29,7 +29,7 @@ class HalamanPengaturanToko extends StatelessWidget {
           ),
           _buildMenuTile(
             context, Icons.storefront, 'Profil Toko', 'Ubah nama, alamat, & kontak', 
-            () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanProfilToko()))
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanProfilToko()))
           ),
           const SizedBox(height: 16),
 

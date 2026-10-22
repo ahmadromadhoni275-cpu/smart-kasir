@@ -17,14 +17,14 @@ import 'halaman_pilih_cabang.dart';
 import 'halaman_langganan_saas.dart';
 import 'halaman_referral.dart'; 
 
-class KerangkaNavigasiUtama extends StatefulWidget {
-  const KerangkaNavigasiUtama({super.key});
+class KerangkaNavigasi extends StatefulWidget {
+  const KerangkaNavigasi({super.key});
 
   @override
-  State<KerangkaNavigasiUtama> createState() => _KerangkaNavigasiUtamaState();
+  State<KerangkaNavigasi> createState() => _KerangkaNavigasiUtamaState();
 }
 
-class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
+class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   int _currentIndex = 0;
   String _tokoAktif = 'Toko Utama';
   String _namaPetugas = 'User';

@@ -9,7 +9,7 @@ class ApiService {
   // =================================================================
   // 1. FUNGSI PEMBUAT HEADER OTOMATIS (Menyisipkan Kredensial RBAC)
   // =================================================================
-    static Future<Map<String, String>> _getHeaders() async {
+  static Future<Map<String, String>> _getHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final int storeId = prefs.getInt('store_id') ?? 0;
     
@@ -27,7 +27,7 @@ class ApiService {
   }
 
   // =================================================================
-  // 2. PEMBUNGKUS METHOD POST (Bisa Dipakai Berkali-kali)
+  // 2. PEMBUNGKUS METHOD POST 
   // =================================================================
   static Future<http.Response> post(String endpoint, Map<String, dynamic> body) async {
     final headers = await _getHeaders();
@@ -41,7 +41,7 @@ class ApiService {
   }
 
   // =================================================================
-  // 3. PEMBUNGKUS METHOD GET (Bisa Dipakai Berkali-kali)
+  // 3. PEMBUNGKUS METHOD GET 
   // =================================================================
   static Future<http.Response> get(String endpoint) async {
     final headers = await _getHeaders();
@@ -50,5 +50,41 @@ class ApiService {
     return await http.get(url, headers: headers);
   }
 
-  // Anda bisa menambahkan method PUT dan DELETE di sini jika diperlukan
+  // =================================================================
+  // 4. PEMBUNGKUS METHOD PUT (Untuk Update Data Keseluruhan)
+  // =================================================================
+  static Future<http.Response> put(String endpoint, Map<String, dynamic> body) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('$baseUrl/$endpoint');
+    
+    return await http.put(
+      url,
+      headers: headers,
+      body: json.encode(body),
+    );
+  }
+
+  // =================================================================
+  // 5. PEMBUNGKUS METHOD PATCH (Untuk Update Data Sebagian / Status)
+  // =================================================================
+  static Future<http.Response> patch(String endpoint, Map<String, dynamic> body) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('$baseUrl/$endpoint');
+    
+    return await http.patch(
+      url,
+      headers: headers,
+      body: json.encode(body),
+    );
+  }
+
+  // =================================================================
+  // 6. PEMBUNGKUS METHOD DELETE (Untuk Hapus Data)
+  // =================================================================
+  static Future<http.Response> delete(String endpoint) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('$baseUrl/$endpoint');
+    
+    return await http.delete(url, headers: headers);
+  }
 }

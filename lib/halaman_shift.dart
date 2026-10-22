@@ -512,7 +512,7 @@ class _HalamanShiftState extends State<HalamanShift> {
             icon: const Icon(Icons.history),
             tooltip: 'Riwayat Shift',
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanRiwayatShift()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanRiwayatShift()));
             },
           )
         ],
