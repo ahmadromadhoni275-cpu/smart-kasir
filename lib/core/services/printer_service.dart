@@ -1,59 +1,76 @@
+import 'dart:convert';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/printer_model.dart';
-import 'printer_storage_service.dart';
+import 'receipt_generator.dart';
 
 class PrinterService {
-  final PrinterStorageService _storage = PrinterStorageService();
-
-  Future<PrinterModel> loadSettings(String storeId) {
-    return _storage.load(storeId: storeId);
+  Future<PrinterModel> loadSettings(String storeId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('printer_settings_$storeId');
+    if (data != null) {
+      return PrinterModel.fromJson(jsonDecode(data));
+    }
+    return const PrinterModel();
   }
 
-  Future<void> saveSettings({
-    required String storeId,
-    required PrinterModel printer,
-  }) {
-    return _storage.save(
-      storeId: storeId,
-      printer: printer,
-    );
+  Future<void> saveSettings({required String storeId, required PrinterModel printer}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('printer_settings_$storeId', jsonEncode(printer.toJson()));
   }
 
-  // Simulasi/Pencarian Perangkat berdasarkan Tipe Koneksi
+  /// 1. MENCARI PERANGKAT BLUETOOTH YANG SUDAH DI-PAIRING
   Future<List<Map<String, String>>> scanDevices(PrinterConnectionType type) async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulasi delay jeda scan
-    
     if (type == PrinterConnectionType.bluetooth) {
-      return [
-        {'name': 'Bluetooth Thermal 58mm', 'address': '00:11:22:33:44:55'},
-        {'name': 'EPOS Printer 80mm', 'address': 'AA:BB:CC:DD:EE:FF'},
-      ];
-    } else if (type == PrinterConnectionType.wifi) {
-      return [
-        {'name': 'Network Printer (LAN)', 'address': '192.168.1.200:9100'},
-      ];
-    } else {
-      return [
-        {'name': 'USB POS Printer', 'address': 'USB_PORT_01'},
-      ];
+      // Pastikan Bluetooth aktif
+      final bool isBluetoothOn = await PrintBluetoothThermal.bluetoothEnabled;
+      if (!isBluetoothOn) throw Exception('Bluetooth tidak aktif. Harap nyalakan Bluetooth HP Anda.');
+
+      // Ambil daftar perangkat yang sudah di-pairing
+      final List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
+      
+      return devices.map((d) => {
+        'name': d.name,
+        'address': d.macAdress,
+      }).toList();
     }
+    
+    return [];
   }
 
-  Future<void> connect(PrinterModel printer) async {
-    // Tempat integrasi driver fisik (misal: blue_thermal_printer / esc_pos_printer)
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (printer.address == null || printer.address!.isEmpty) {
-      throw Exception('Pilih atau tentukan perangkat terlebih dahulu.');
-    }
-  }
-
+  /// 2. EKSEKUSI CETAK (MENGIRIM BYTE KE HARDWARE)
   Future<void> printTest(PrinterModel printer) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!printer.isConnected) {
-      throw Exception('Printer belum terhubung.');
-    }
-  }
+    if (printer.connectionType == PrinterConnectionType.bluetooth) {
+      if (printer.address == null || printer.address!.isEmpty) {
+        throw Exception('Alamat MAC Bluetooth belum diatur');
+      }
 
-  Future<void> disconnect(PrinterModel printer) async {
-    await Future.delayed(const Duration(milliseconds: 500));
+      // Cek status koneksi saat ini
+      bool isConnected = await PrintBluetoothThermal.connectionStatus;
+      
+      if (!isConnected) {
+        // Coba hubungkan ke printer
+        bool terhubung = await PrintBluetoothThermal.connect(macPrinterAddress: printer.address!);
+        if (!terhubung) {
+          throw Exception('Gagal terhubung ke printer. Pastikan printer menyala dan berada dalam jangkauan.');
+        }
+      }
+
+      // Generate byte ESC/POS
+      List<int> bytes = await ReceiptGenerator.generateTestTicket(printer);
+
+      // Kirim ke printer
+      bool suksesCetak = await PrintBluetoothThermal.writeBytes(bytes);
+      if (!suksesCetak) {
+         throw Exception('Gagal mengirim data cetak ke printer.');
+      }
+      
+      // Beri sedikit jeda, lalu putus koneksi agar printer bisa diakses perangkat lain jika perlu
+      await Future.delayed(const Duration(seconds: 1));
+      await PrintBluetoothThermal.disconnect;
+      
+    } else {
+      throw Exception('Saat ini baru mendukung koneksi Bluetooth');
+    }
   }
 }
