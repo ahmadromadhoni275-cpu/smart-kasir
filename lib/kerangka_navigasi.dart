@@ -15,6 +15,7 @@ import 'halaman_profil_akun.dart';
 import 'halaman_pengaturan_toko.dart'; 
 import 'halaman_pilih_cabang.dart';
 import 'halaman_langganan_saas.dart';
+import 'halaman_referral.dart'; 
 
 class KerangkaNavigasiUtama extends StatefulWidget {
   const KerangkaNavigasiUtama({super.key});
@@ -33,19 +34,19 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   // RUMAH / INDEKS HALAMAN UNIVERSAL (Total 13 Halaman)
   // =========================================================
   late final List<Widget> _halaman = [
-    const Center(child: Text('0: Dashboard (Home)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), // Index 0
-    const HalamanKasir(),                                 // Index 1
-    const HalamanProduk(),                                // Index 2
-    const HalamanLaporan(),                               // Index 3
-    const HalamanRiwayatTransaksi(),                      // Index 4
-    const HalamanPengaturanToko(),                        // Index 5: <-- UPDATE: Pusat Pengaturan Toko & Cabang
-    const HalamanPengguna(),                              // Index 6
-    const HalamanKategori(),                              // Index 7
-    const HalamanShift(),                                 // Index 8
-    const HalamanMetodePembayaran(),    // Index 9
-    const Center(child: Text('10: Referral')),            // Index 10
-    const HalamanLanggananSaas(),      // Index 11
-    const HalamanProfilAkun(),        // Index 12
+    const Center(child: Text('0: Dashboard (Home)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), 
+    const HalamanKasir(),                                 
+    const HalamanProduk(),                                
+    const HalamanLaporan(),                               
+    const HalamanRiwayatTransaksi(),                      
+    const HalamanPengaturanToko(),                        
+    const HalamanPengguna(),                              
+    const HalamanKategori(),                              
+    const HalamanShift(),                                 
+    const HalamanMetodePembayaran(),                      
+    const HalamanReferral(),                              
+    const HalamanLanggananSaas(),                         
+    const HalamanProfilAkun(),                            
   ];
 
   @override
@@ -80,10 +81,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
       builder: (context) {
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: const BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
+          decoration: const BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -92,7 +90,6 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
               const Text('Menu Lainnya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
               const SizedBox(height: 8),
               
-              // MENU DINAMIS BERDASARKAN ROLE
               if (_role == 'OWNER' || _role == 'MANAGER') ...[
                 _buildMobileMenuItem(Icons.receipt_long, 'Transaksi', 4),
                 _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
@@ -100,11 +97,11 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
               ],
               
               if (_role == 'OWNER')
-                _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5), // <-- UPDATE NAMA MENU
+                _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
                 
               if (_role == 'OWNER' || _role == 'MANAGER') ...[
                 _buildMobileMenuItem(Icons.people_outline, 'Karyawan & Akses', 6),
-                _buildMobileMenuItem(Icons.payment, 'Pembayaran', 9),
+                _buildMobileMenuItem(Icons.payment, 'Metode Pembayaran', 9),
               ],
               
               if (_role == 'OWNER') ...[
@@ -115,9 +112,9 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
               if (_role == 'KASIR') ...[
                 _buildMobileMenuItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
                 _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
-                _buildMobileMenuItem(Icons.person_outline, 'Profil', 12),
               ],
               
+              _buildMobileMenuItem(Icons.person_outline, 'Profil Akun', 12),
               _buildMobileMenuItem(Icons.settings_outlined, 'Pengaturan Lain', 7),
               const SizedBox(height: 24),
             ],
@@ -139,10 +136,10 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   }
 
   // =========================================================
-  // 1. LAYOUT MOBILE DENGAN BOTTOM NAVBAR DINAMIS
+  // 1. LAYOUT MOBILE
   // =========================================================
   Widget _buildMobileLayout() {
-    int bottomNavIndex = 4; // Default ke 'Lainnya'
+    int bottomNavIndex = 4;
     
     if (_role == 'KASIR') {
       if (_currentIndex == 0) bottomNavIndex = 0;
@@ -188,7 +185,6 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
               _tampilkanMenuLainnyaMobile();
               return;
             }
-            
             if (_role == 'KASIR') {
               if (index == 0) _gantiHalaman(0); 
               if (index == 1) _gantiHalaman(1); 
@@ -222,7 +218,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
   }
 
   // =========================================================
-  // 2. LAYOUT DESKTOP DENGAN SIDEBAR DINAMIS
+  // 2. LAYOUT DESKTOP
   // =========================================================
   Widget _buildDesktopLayout() {
     return Scaffold(
@@ -241,11 +237,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                   padding: const EdgeInsets.all(24.0),
                   child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppColors.primaryEmerald, borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.point_of_sale, color: Colors.white, size: 20),
-                      ),
+                      Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primaryEmerald, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.point_of_sale, color: Colors.white, size: 20)),
                       const SizedBox(width: 12),
                       const Text('SMART KASIR', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.navyActive, letterSpacing: 1)),
                     ],
@@ -255,50 +247,31 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.only(left: 12, bottom: 8, top: 8),
-                        child: Text('MENU UTAMA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1)),
-                      ),
-                      
+                      const Padding(padding: EdgeInsets.only(left: 12, bottom: 8, top: 8), child: Text('MENU UTAMA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1))),
                       _buildSidebarItem(Icons.dashboard, 'Dashboard', 0),
                       _buildSidebarItem(Icons.shopping_cart, 'Kasir', 1),
-                      
                       if (_role == 'OWNER' || _role == 'MANAGER') ...[
                         _buildSidebarItem(Icons.inventory_2, 'Produk', 2),
                         _buildSidebarItem(Icons.category_outlined, 'Kategori', 7),
                       ],
-                        
-                      if (_role == 'KASIR')
-                        _buildSidebarItem(Icons.inventory_2, 'Lihat Produk', 2),
-
+                      if (_role == 'KASIR') _buildSidebarItem(Icons.inventory_2, 'Lihat Produk', 2),
                       _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
-                      
-                      if (_role == 'OWNER' || _role == 'MANAGER') 
-                        _buildSidebarItem(Icons.analytics, 'Laporan Bisnis', 3), 
-                        
+                      if (_role == 'OWNER' || _role == 'MANAGER') _buildSidebarItem(Icons.analytics, 'Laporan Bisnis', 3), 
                       _buildSidebarItem(Icons.swap_horiz, 'Shift Kasir', 8),
 
-                      const Padding(
-                        padding: EdgeInsets.only(left: 12, bottom: 8, top: 24),
-                        child: Text('MANAJEMEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1)),
-                      ),
+                      const Padding(padding: EdgeInsets.only(left: 12, bottom: 8, top: 24), child: Text('MANAJEMEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1))),
                       
-                      if (_role == 'OWNER') 
-                        _buildSidebarItem(Icons.storefront, 'Pengaturan Toko', 5), // <-- UPDATE NAMA MENU
-                        
+                      if (_role == 'OWNER') _buildSidebarItem(Icons.storefront, 'Pengaturan Toko', 5), 
                       if (_role == 'OWNER' || _role == 'MANAGER') ...[
                         _buildSidebarItem(Icons.people_outline, 'Karyawan & Akses', 6),
-                        _buildSidebarItem(Icons.payment, 'Pembayaran', 9),
+                        _buildSidebarItem(Icons.payment, 'Metode Pembayaran', 9),
                       ],
-                      
                       if (_role == 'OWNER') ...[
                         _buildSidebarItem(Icons.card_giftcard, 'Referral', 10),
                         _buildSidebarItem(Icons.diamond_outlined, 'Langganan', 11),
                       ],
                       
-                      if (_role == 'KASIR')
-                        _buildSidebarItem(Icons.person, 'Profil', 12),
-                        
+                      _buildSidebarItem(Icons.person, 'Profil Akun', 12),
                       _buildSidebarItem(Icons.settings_outlined, 'Pengaturan Lain', 7),
                     ],
                   ),
@@ -312,21 +285,14 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
                 Container(
                   height: 70,
                   padding: const EdgeInsets.symmetric(horizontal: 32),
-                  decoration: const BoxDecoration(
-                    color: AppColors.card,
-                    border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-                  ),
+                  decoration: const BoxDecoration(color: AppColors.card, border: Border(bottom: BorderSide(color: AppColors.border, width: 1))),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _buildStoreSelector(isDesktop: true),
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: AppColors.primaryEmerald.withOpacity(0.1),
-                            child: const Icon(Icons.person, size: 20, color: AppColors.primaryEmerald),
-                          ),
+                          CircleAvatar(radius: 18, backgroundColor: AppColors.primaryEmerald.withOpacity(0.1), child: const Icon(Icons.person, size: 20, color: AppColors.primaryEmerald)),
                           const SizedBox(width: 12),
                           Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -350,15 +316,9 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
     );
   }
 
-  // =========================================================
-  // TOMBOL NAMA TOKO (UNTUK PINDAH CABANG)
-  // =========================================================
   Widget _buildStoreSelector({bool isDesktop = false}) {
     return InkWell(
-      onTap: () {
-        // Langsung panggil halaman Pilih Cabang
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPilihCabang()));
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPilihCabang())),
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(color: isDesktop ? AppColors.background : Colors.transparent, borderRadius: BorderRadius.circular(8)),

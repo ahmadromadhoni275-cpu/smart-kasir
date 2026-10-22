@@ -1,139 +1,222 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
+import '../core/services/referral_service.dart';
+import 'tema.dart';
+import 'halaman_riwayat_referral.dart';
+import 'halaman_hadiah_referral.dart';
 
 class HalamanReferral extends StatefulWidget {
-  const HalamanReferral({super.key});
+  const HalamanReferral({Key? key}) : super(key: key);
 
   @override
-  State<HalamanReferral> createState() => _HalamanReferralState();
+  _HalamanReferralState createState() => _HalamanReferralState();
 }
 
 class _HalamanReferralState extends State<HalamanReferral> {
-  String referralCode = '...';
-  int inviteCount = 0;
-  int sisaHariMasaAktif = 0;
-  String masaAktifTanggal = '';
+  final Color navy = const Color(0xFF0F172A);
+  final Color emerald = const Color(0xFF10B981);
+  final Color gold = const Color(0xFFD4AF37);
+  final ReferralService _referralService = ReferralService();
+
+  Map<String, dynamic>? dataSummary;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _muatDataSummary();
   }
 
-  Future<void> _loadData() async {
-    // Idealnya tarik data terbaru dari API (misal: /api/profil)
-    // Di sini asumsi data sudah tersimpan di SharedPreferences saat login atau via API fetch
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      referralCode = prefs.getString('referral_code') ?? 'TIDAK-ADA';
-      inviteCount = prefs.getInt('invite_count') ?? 0;
-      
-      // Hitung sisa masa aktif (contoh sederhana)
-      String tglAktifStr = prefs.getString('masa_aktif') ?? DateTime.now().toIso8601String();
-      DateTime masaAktif = DateTime.parse(tglAktifStr);
-      sisaHariMasaAktif = masaAktif.difference(DateTime.now()).inDays;
-      masaAktifTanggal = "${masaAktif.day}-${masaAktif.month}-${masaAktif.year}";
-    });
+  Future<void> _muatDataSummary() async {
+    try {
+      final data = await _referralService.getSummary();
+      setState(() {
+        dataSummary = data;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _salinKeClipboard(String teks, String jenis) {
+    Clipboard.setData(ClipboardData(text: teks));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$jenis berhasil disalin!'), backgroundColor: emerald));
   }
 
   @override
   Widget build(BuildContext context) {
-    int targetSelanjutnya = ((inviteCount ~/ 5) + 1) * 5; 
-    int sisaKurang = targetSelanjutnya - inviteCount;
-    double progress = (inviteCount % 5) / 5.0;
-
     return Scaffold(
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Undang & Perpanjang'),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.white,
+        title: Text('Referral Program', style: TextStyle(color: navy, fontWeight: FontWeight.bold)),
+        iconTheme: IconThemeData(color: navy),
+        elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(Icons.card_giftcard, size: 80, color: Colors.orange),
-            const SizedBox(height: 20),
-            const Text(
-              'Gratis 1 Bulan Langganan!',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const Text(
-              'Undang 5 teman untuk menggunakan aplikasi ini. Setiap 5 undangan berhasil, masa aktif toko Anda otomatis bertambah 30 hari.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 30),
-
-            // Card Masa Aktif Saat Ini
-            Card(
-              color: Colors.blue.shade50,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              child: ListTile(
-                leading: const Icon(Icons.timer, color: Colors.blueAccent),
-                title: const Text('Masa Aktif Toko Anda'),
-                subtitle: Text('Berakhir: $masaAktifTanggal'),
-                trailing: Text('$sisaHariMasaAktif Hari', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueAccent)),
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            // Progress Bar Undangan
-            Text('Progres Anda: $inviteCount Undangan', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.grey.shade300,
-              color: Colors.orange,
-              minHeight: 12,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              sisaKurang == 5 && inviteCount == 0 
-                ? 'Belum ada undangan. Mulai bagikan sekarang!' 
-                : sisaKurang == 5 
-                    ? 'Target tercapai! Undang 5 lagi untuk bulan berikutnya.'
-                    : 'Kurang $sisaKurang teman lagi untuk klaim gratis 1 bulan.',
-              style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-            ),
-            
-            const SizedBox(height: 40),
-            
-            // Area Kode Referal
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.blueAccent, style: BorderStyle.solid, width: 2),
-                borderRadius: BorderRadius.circular(10)
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: isLoading 
+          ? const Center(child: CircularProgressIndicator()) 
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Kode Anda: ', style: TextStyle(fontSize: 16)),
-                  Text(referralCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                  _buildKartuProgres(),
+                  const SizedBox(height: 24),
+                  _buildKartuKode(),
+                  const SizedBox(height: 24),
+                  
+                  // Navigasi ke Riwayat & Hadiah
+                  Row(
+                    children: [
+                      Expanded(child: _buildTombolAksi('Riwayat Referral', Icons.history, () {
+                        // Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanRiwayatReferral()));
+                      })),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildTombolAksi('Hadiah Saya', Icons.card_giftcard, () {
+                        // Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanHadiahReferral()));
+                      })),
+                    ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  padding: const EdgeInsets.symmetric(vertical: 15)
+    );
+  }
+
+  Widget _buildKartuProgres() {
+    final int valid = dataSummary?['valid_referrals'] ?? 0;
+    final int target = dataSummary?['next_target'] ?? 10;
+    final int sisa = dataSummary?['remaining'] ?? 0;
+    final double progres = target > 0 ? (valid / target) : 1.0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: gold, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.card_giftcard, color: Colors.white, size: 20)),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Program Referral', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('Ajak teman, dapatkan hadiah', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Text('Referral valid kamu', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('$valid', style: TextStyle(color: gold, fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 4),
+              Text('dari $target referral', style: const TextStyle(color: Colors.white70, fontSize: 14, padding: EdgeInsets.only(bottom: 4))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(value: progres, backgroundColor: Colors.white24, valueColor: AlwaysStoppedAnimation<Color>(emerald), minHeight: 8, borderRadius: BorderRadius.circular(4)),
+          const SizedBox(height: 12),
+          Text(sisa > 0 ? 'Tinggal $sisa referral valid untuk mencapai tingkat berikutnya.' : 'Target tingkat maksimum tercapai!', style: const TextStyle(color: Colors.white, fontSize: 12)),
+          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(color: Colors.white24, height: 1)),
+          
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(children: [Icon(Icons.people_outline, color: Colors.cyan, size: 16), SizedBox(width: 6), Text('Total undangan', style: TextStyle(color: Colors.white70, fontSize: 12))]),
+                    const SizedBox(height: 4),
+                    Text('${dataSummary?['total_invites'] ?? 0}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
                 ),
-                icon: const Icon(Icons.share, color: Colors.white),
-                label: const Text('Bagikan ke WhatsApp / Sosmed', style: TextStyle(color: Colors.white, fontSize: 16)),
-                onPressed: () {
-                  Share.share(
-                    'Halo! Saya pakai Smart Kasir untuk kelola toko. Daftarkan tokomu di https://smartkasir.shop/daftar dan masukkan kode referal saya: *$referralCode* saat pendaftaran!'
-                  );
-                },
               ),
-            )
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [Icon(Icons.military_tech, color: gold, size: 16), const SizedBox(width: 6), const Text('Hadiah diperoleh', style: TextStyle(color: Colors.white70, fontSize: 12))]),
+                    const SizedBox(height: 4),
+                    Text('${dataSummary?['rewards_claimed'] ?? 0} tingkat', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKartuKode() {
+    final String kode = dataSummary?['referral_code'] ?? '-';
+    final String tautan = 'https://smartkasir.id/ref/$kode';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Kode Referral Saya', style: TextStyle(color: navy, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text('Bagikan kode atau tautan ini kepada calon pengguna Smart Kasir.', style: TextStyle(color: Colors.black54, fontSize: 13)),
+          const SizedBox(height: 20),
+          
+          const Text('KODE REFERRAL', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: Text(kode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)))),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: () => _salinKeClipboard(kode, 'Kode Referral'),
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Salin'),
+                style: OutlinedButton.styleFrom(foregroundColor: navy, side: BorderSide(color: navy)),
+              )
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+          const Text('TAUTAN UNDANGAN', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: Text(tautan, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.blue)))),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: () => _salinKeClipboard(tautan, 'Tautan'),
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Salin'),
+                style: OutlinedButton.styleFrom(foregroundColor: navy, side: BorderSide(color: navy)),
+              )
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTombolAksi(String label, IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            Icon(icon, color: navy, size: 28),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(color: navy, fontWeight: FontWeight.bold, fontSize: 13)),
           ],
         ),
       ),
