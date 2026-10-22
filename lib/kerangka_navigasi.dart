@@ -12,10 +12,9 @@ import 'halaman_laporan.dart';
 import 'halaman_pengguna.dart'; 
 import 'halaman_metode_pembayaran.dart';
 import 'halaman_profil_akun.dart';
-
-// --- TAMBAHAN: IMPORT PENGATURAN TOKO & CABANG ---
 import 'halaman_pengaturan_toko.dart'; 
 import 'halaman_pilih_cabang.dart';
+import 'halaman_langganan_saas.dart';
 
 class KerangkaNavigasiUtama extends StatefulWidget {
   const KerangkaNavigasiUtama({super.key});
@@ -45,7 +44,7 @@ class _KerangkaNavigasiUtamaState extends State<KerangkaNavigasiUtama> {
     const HalamanShift(),                                 // Index 8
     const HalamanMetodePembayaran(),    // Index 9
     const Center(child: Text('10: Referral')),            // Index 10
-    const Center(child: Text('11: Langganan SaaS')),      // Index 11
+    const HalamanLanggananSaas(),      // Index 11
     const HalamanProfilAkun(),        // Index 12
   ];
 
