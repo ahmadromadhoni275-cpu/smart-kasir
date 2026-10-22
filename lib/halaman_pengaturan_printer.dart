@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'tema.dart'; // Asumsi berisi AppColors
+import 'tema.dart'; // Pastikan berisi AppColors jika digunakan di halaman lain
 import 'core/services/printer_service.dart';
 import 'models/printer_model.dart';
 import 'halaman_format_struk.dart'; 
 
 class HalamanPengaturanPrinter extends StatefulWidget {
   final String storeId;
-  final String namaCabang; // Tambahan untuk menampilkan nama cabang di UI
+  final String namaCabang; 
 
   const HalamanPengaturanPrinter({
     super.key,
@@ -57,21 +57,153 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
     }
   }
 
-  // ... (Logika _cariPerangkat, _tampilkanDialogInputIP, _jalankanAksi sama seperti sebelumnya) ...
-  // Untuk keringkasan tampilan UI, fungsi logika disembunyikan dalam implementasi ini, 
-  // Anda dapat menggunakan fungsi _cariPerangkat dari kode sebelumnya.
+  // --- LOGIKA MENCARI PERANGKAT BLUETOOTH / USB ---
+  void _cariPerangkat() async {
+    if (_printer.connectionType == PrinterConnectionType.wifi) {
+      _tampilkanDialogInputIP();
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final devices = await _service.scanDevices(_printer.connectionType);
+      if (!mounted) return;
+      setState(() => _busy = false);
+
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) {
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pilih Perangkat Printer',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                ),
+                const SizedBox(height: 12),
+                devices.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text('Tidak ada perangkat ditemukan', style: TextStyle(color: Colors.grey)),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: devices.length,
+                        itemBuilder: (context, index) {
+                          final dev = devices[index];
+                          return ListTile(
+                            leading: const Icon(Icons.print, color: Color(0xFF10B981)),
+                            title: Text(dev['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text(dev['address'] ?? '', style: const TextStyle(color: Colors.grey)),
+                            onTap: () {
+                              Navigator.pop(context);
+                              _saveSettings(
+                                _printer.copyWith(
+                                  deviceName: dev['name'],
+                                  address: dev['address'],
+                                  isConnected: true, // Simulasi perangkat terpilih dan terhubung
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ],
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memindai perangkat: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // --- LOGIKA INPUT IP UNTUK JARINGAN LAN/WIFI ---
+  void _tampilkanDialogInputIP() {
+    final TextEditingController ipController = TextEditingController(text: _printer.address ?? '192.168.1.200:9100');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Konfigurasi Wi-Fi / LAN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: TextField(
+            controller: ipController,
+            decoration: const InputDecoration(
+              labelText: 'Alamat IP & Port',
+              hintText: 'Contoh: 192.168.1.200:9100',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              onPressed: () {
+                Navigator.pop(context);
+                _saveSettings(
+                  _printer.copyWith(
+                    deviceName: 'Network Printer (LAN)',
+                    address: ipController.text.trim(),
+                    isConnected: true,
+                  ),
+                );
+              },
+              child: const Text('Simpan', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- LOGIKA MENJALANKAN AKSI (CETAK TES / PUTUS KONEKSI) ---
+  Future<void> _jalankanAksi(Future<void> Function() action, String pesanSukses) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(pesanSukses), backgroundColor: const Color(0xFF10B981)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
         backgroundColor: Color(0xFFF8F9FA),
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Warna background abu-abu sangat muda khas rancangan
+      backgroundColor: const Color(0xFFF8F9FA), 
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -138,6 +270,10 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                         _printer.deviceName ?? 'Belum ada perangkat terhubung',
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                       ),
+                      if (_printer.address != null) ...[
+                        const SizedBox(height: 2),
+                        Text(_printer.address!, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ]
                     ],
                   ),
                 ),
@@ -181,12 +317,14 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
             height: 50,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F172A), // Warna Navy gelap khas
+                backgroundColor: const Color(0xFF0F172A), // Navy
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
-              onPressed: _busy ? null : () {}, // Panggil _cariPerangkat()
-              child: const Text('Cari Perangkat Printer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              onPressed: _busy ? null : _cariPerangkat, // <-- TOMBOL CARI AKTIF
+              child: _busy 
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text('Cari Perangkat Printer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
             ),
           ),
           const SizedBox(height: 20),
@@ -195,7 +333,6 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Kolom Ukuran Kertas
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +359,6 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 ),
               ),
               const SizedBox(width: 16),
-              // Kolom Cetak Otomatis
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,7 +380,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                           const Text('Setelah\npembayaran', style: TextStyle(fontSize: 11, color: Colors.grey, height: 1.2)),
                           Switch(
                             value: _printer.autoPrint,
-                            activeColor: const Color(0xFF10B981), // Emerald green
+                            activeColor: const Color(0xFF10B981), // Emerald
                             onChanged: (val) => _saveSettings(_printer.copyWith(autoPrint: val)),
                           ),
                         ],
@@ -264,15 +400,35 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
           ),
           Row(
             children: [
-              Expanded(child: _buildAksiButton(Icons.print_outlined, 'Cetak Tes', () {})),
-              const SizedBox(width: 8),
               Expanded(
-                child: _buildAksiButton(Icons.receipt_outlined, 'Format Struk', () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanFormatStruk()));
-                }),
+                child: _buildAksiButton(
+                  Icons.print_outlined, 
+                  'Cetak Tes', 
+                  () => _jalankanAksi(() => _service.printTest(_printer), 'Struk uji berhasil dikirim!') // <-- LOGIKA CETAK AKTIF
+                ),
               ),
               const SizedBox(width: 8),
-              Expanded(child: _buildAksiButton(Icons.history, 'Riwayat', () {})),
+              Expanded(
+                child: _buildAksiButton(
+                  Icons.receipt_outlined, 
+                  'Format Struk', 
+                  () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanFormatStruk()));
+                  }
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildAksiButton(
+                  Icons.history, 
+                  'Riwayat', 
+                  () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Fitur Riwayat Cetak akan segera hadir.')),
+                    );
+                  }
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -281,8 +437,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
     );
   }
 
-  // --- WIDGET HELPER UNTUK MENYESUAIKAN DESAIN GAMBAR ---
-
+  // --- WIDGET HELPER ---
   Widget _buildKoneksiTab(PrinterConnectionType type, IconData icon, String label) {
     bool isSelected = _printer.connectionType == type;
     return InkWell(
@@ -294,7 +449,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? const Color(0xFFD4AF37) : Colors.transparent, // Gold border jika aktif
+            color: isSelected ? const Color(0xFFD4AF37) : Colors.transparent, // Gold
             width: 1.5,
           ),
         ),
@@ -319,7 +474,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
         decoration: BoxDecoration(
           color: isSelected ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: isSelected ? Border.all(color: const Color(0xFF10B981)) : null, // Emerald border
+          border: isSelected ? Border.all(color: const Color(0xFF10B981)) : null,
         ),
         alignment: Alignment.center,
         child: Text(
