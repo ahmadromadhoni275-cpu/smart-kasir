@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'tema.dart'; // Menggunakan tema.dart yang sudah ada di proyek Anda
-import 'kerangka_navigasi_utama.dart'; // Menghubungkan ke kerangka navigasi
+import 'kerangka_navigasi.dart';
 
 void main() {
   runApp(const SmartKasirApp());
@@ -22,7 +22,7 @@ class SmartKasirApp extends StatelessWidget {
       ),
       
       // Halaman pertama kali aplikasi dibuka
-      home: const KerangkaNavigasiUtama(),
+      home: const KerangkaNavigasi(),
     );
   }
 }
