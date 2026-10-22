@@ -4,6 +4,9 @@ import 'halaman_pilih_cabang.dart';
 import 'halaman_profil_toko.dart';
 import 'halaman_daftar_cabang.dart';
 
+// --- IMPORT HALAMAN PRINTER ---
+import 'halaman_pengaturan_printer.dart'; 
+
 class HalamanPengaturanToko extends StatelessWidget {
   const HalamanPengaturanToko({super.key});
 
@@ -29,6 +32,29 @@ class HalamanPengaturanToko extends StatelessWidget {
             () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanProfilToko()))
           ),
           const SizedBox(height: 16),
+
+          // --- TAMBAHAN MENU PRINTER ---
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text('Perangkat & Operasional', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 12)),
+          ),
+          _buildMenuTile(
+            context, Icons.print_outlined, 'Pengaturan Printer', 'Kelola koneksi & ukuran kertas struk', 
+            () {
+              // Asumsi ID cabang aktif adalah "1" untuk saat ini. 
+              // Nantinya sesuaikan dengan pemanggilan storeId dari SharedPreferences.
+              String activeStoreId = "1"; 
+              
+              Navigator.push(
+                context, 
+                MaterialPageRoute(
+                  builder: (_) => HalamanPengaturanPrinter(storeId: activeStoreId)
+                )
+              );
+            }
+          ),
+          const SizedBox(height: 16),
+          // -----------------------------
           
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -41,7 +67,6 @@ class HalamanPengaturanToko extends StatelessWidget {
           _buildMenuTile(
             context, Icons.add_business, 'Kelola & Tambah Cabang', 'Daftar semua cabang bisnis', 
             () {
-              // Navigasi ke HalamanDaftarCabang (Jika Anda membuat halamannya terpisah)
               Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanDaftarCabang()));
             }
           ),
@@ -54,7 +79,7 @@ class HalamanPengaturanToko extends StatelessWidget {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppColors.border)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: AppColors.border)),
       child: ListTile(
         onTap: onTap,
         leading: Container(
