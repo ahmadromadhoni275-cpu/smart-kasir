@@ -3,6 +3,7 @@ import 'tema.dart'; // Pastikan berisi AppColors jika digunakan di halaman lain
 import 'core/services/printer_service.dart';
 import 'models/printer_model.dart';
 import 'halaman_format_struk.dart'; 
+import 'halaman_riwayat_cetak.dart';
 
 class HalamanPengaturanPrinter extends StatefulWidget {
   final String storeId;
@@ -423,8 +424,11 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                   Icons.history, 
                   'Riwayat', 
                   () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Fitur Riwayat Cetak akan segera hadir.')),
+                    Navigator.push(
+                      context, 
+                      MaterialPageRoute(
+                        builder: (_) => HalamanRiwayatCetak(storeId: widget.storeId)
+                      )
                     );
                   }
                 ),
