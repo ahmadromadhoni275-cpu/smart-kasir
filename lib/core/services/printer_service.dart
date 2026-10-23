@@ -165,14 +165,19 @@ class PrinterService {
   }
 
   // ==========================================
-  // 6. GENERATOR DESAIN STRUK TRANSAKSI
+  // 6. GENERATOR DESAIN STRUK TRANSAKSI (DINAMIS & SESUAI TABEL STORES)
   // ==========================================
   Future<List<int>> _generateStrukBytes(Map<String, dynamic> data, PrinterModel printerConfig) async {
     final profile = await CapabilityProfile.load();
-    // Gunakan ukuran kertas dari konfigurasi printer (58mm atau 80mm)
     final paper = printerConfig.paperSize == PrinterPaperSize.mm80 ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paper, profile); 
     List<int> bytes = [];
+
+    // Ambil data dari SharedPreferences (Cabang Aktif) atau Fallback ke payload data transaksi
+    final prefs = await SharedPreferences.getInstance();
+    final namaToko = prefs.getString('nama_toko') ?? data['store_name'] ?? 'SMART KASIR';
+    final alamatToko = prefs.getString('alamat_toko') ?? data['store_address'] ?? '';
+    final teleponToko = prefs.getString('telepon_toko') ?? data['store_phone'] ?? '';
 
     String formatRp(dynamic val) {
       double parsed = double.tryParse(val.toString()) ?? 0;
@@ -182,25 +187,49 @@ class PrinterService {
     String invoice = data['invoice'] ?? data['invoice_number'] ?? '-';
     String tanggal = data['created_at'] ?? DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now());
 
-    bytes += generator.text("SMART KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
-    bytes += generator.text(data['store_name'] ?? 'Toko Cabang', styles: const PosStyles(align: PosAlign.center));
+    // --- HEADER TOKO (Dinamis dari Database Stores) ---
+    bytes += generator.text(namaToko.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
+    
+    if (alamatToko.isNotEmpty) {
+      bytes += generator.text(alamatToko, styles: const PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
+    }
+    if (teleponToko.isNotEmpty) {
+      bytes += generator.text("Telp: $teleponToko", styles: const PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
+    }
+    
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+    
+    // --- INFO TRANSAKSI ---
     bytes += generator.row([PosColumn(text: "No", width: 4), PosColumn(text: ": $invoice", width: 8)]);
     bytes += generator.row([PosColumn(text: "Tgl", width: 4), PosColumn(text: ": $tanggal", width: 8)]);
     
-    if (data['table_id'] != null) {
-      bytes += generator.row([PosColumn(text: "Meja", width: 4), PosColumn(text: ": ${data['table_id']}", width: 8)]);
+    if (data['cashier_name'] != null) {
+      bytes += generator.row([PosColumn(text: "Ksr", width: 4), PosColumn(text: ": ${data['cashier_name']}", width: 8)]);
+    }
+    
+    // Jika tabel stores mengaktifkan nomor meja & order type
+    if (data['table_id'] != null || data['table_number'] != null) {
+      String meja = data['table_id']?.toString() ?? data['table_number']?.toString() ?? '';
+      bytes += generator.row([PosColumn(text: "Meja", width: 4), PosColumn(text: ": $meja", width: 8)]);
     }
     
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
 
+    // --- DAFTAR ITEM PEMBELIAN ---
     List items = data['items'] ?? [];
     for (var item in items) {
       String name = item['name'] ?? item['product_name'] ?? '';
-      bytes += generator.text(name, styles: const PosStyles(align: PosAlign.left));
+      String orderType = item['order_type'] ?? '';
+      
+      // Berikan tanda jika Takeaway
+      if (orderType == 'TAKEAWAY') {
+        name += ' (Takeaway)';
+      }
+
+      bytes += generator.text(name, styles: const PosStyles(align: PosAlign.left, bold: true));
       
       if (item['note'] != null && item['note'].toString().isNotEmpty) {
-        bytes += generator.text(" * ${item['note']}", styles: const PosStyles(align: PosAlign.left));
+        bytes += generator.text(" * Catatan: ${item['note']}", styles: const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB));
       }
       
       double price = double.tryParse(item['price'].toString()) ?? 0;
@@ -215,26 +244,43 @@ class PrinterService {
     
     bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
     
+    // --- RINCIAN TOTAL & DISKON ---
+    double subTotal = double.tryParse(data['sub_total']?.toString() ?? '0') ?? 0;
+    double diskon = double.tryParse(data['discount']?.toString() ?? data['discount_total']?.toString() ?? '0') ?? 0;
     double grandTotal = double.tryParse(data['grand_total']?.toString() ?? '0') ?? 0;
-    bytes += generator.row([PosColumn(text: "TOTAL TAGIHAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: formatRp(grandTotal), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
+
+    if (subTotal > 0 && diskon > 0) {
+      bytes += generator.row([PosColumn(text: "Subtotal", width: 7), PosColumn(text: formatRp(subTotal), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      bytes += generator.row([PosColumn(text: "Diskon", width: 7), PosColumn(text: "- ${formatRp(diskon)}", width: 5, styles: const PosStyles(align: PosAlign.right))]);
+    }
+
+    bytes += generator.row([
+      PosColumn(text: "TOTAL TAGIHAN", width: 6, styles: const PosStyles(bold: true)), 
+      PosColumn(text: formatRp(grandTotal), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))
+    ]);
     
+    // --- PEMBAYARAN (Mendukung Split Payment) ---
     List payments = data['payments'] ?? [];
     double totalBayar = 0;
     for (var pay in payments) {
       double amt = double.tryParse(pay['amount'].toString()) ?? 0;
       totalBayar += amt;
-      bytes += generator.row([PosColumn(text: "BAYAR (${pay['method']})", width: 7), PosColumn(text: formatRp(amt), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      bytes += generator.row([PosColumn(text: "Bayar (${pay['method']})", width: 7), PosColumn(text: formatRp(amt), width: 5, styles: const PosStyles(align: PosAlign.right))]);
     }
     
     double kembali = double.tryParse(data['kembalian']?.toString() ?? '0') ?? (totalBayar - grandTotal);
     if (kembali > 0) {
-      bytes += generator.row([PosColumn(text: "KEMBALI", width: 7), PosColumn(text: formatRp(kembali), width: 5, styles: const PosStyles(align: PosAlign.right))]);
+      bytes += generator.row([PosColumn(text: "Kembalian", width: 7), PosColumn(text: formatRp(kembali), width: 5, styles: const PosStyles(align: PosAlign.right))]);
     }
 
+    // --- FOOTER DINAMIS ---
     bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.feed(2);
+    bytes += generator.text("Terima Kasih Atas Kunjungan Anda!", styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text("Barang yang sudah dibeli", styles: const PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
+    bytes += generator.text("tidak dapat ditukar/dikembalikan.", styles: const PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
+    bytes += generator.feed(2); // Spasi akhir agar kertas mudah disobek
 
     return bytes;
   }
+
 }
