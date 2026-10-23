@@ -107,7 +107,7 @@ class _HalamanDetailShiftState extends State<HalamanDetailShift> {
                           return Card(
                             elevation: 0,
                             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: AppColors.border)),
                             child: ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: _getColorForType(type).withOpacity(0.1),
