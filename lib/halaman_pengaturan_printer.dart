@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'tema.dart'; // Pastikan berisi AppColors jika digunakan di halaman lain
+import 'tema.dart'; 
 import 'core/services/printer_service.dart';
 import 'models/printer_model.dart';
 import 'halaman_format_struk.dart'; 
@@ -64,6 +64,13 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
       _tampilkanDialogInputIP();
       return;
     }
+    
+    if (_printer.connectionType == PrinterConnectionType.usb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fitur USB sedang dalam pengembangan. Gunakan Bluetooth/Wi-Fi.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
 
     setState(() => _busy = true);
     try {
@@ -92,7 +99,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 devices.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.all(16.0),
-                        child: Text('Tidak ada perangkat ditemukan', style: TextStyle(color: Colors.grey)),
+                        child: Text('Tidak ada perangkat ditemukan. Pastikan Bluetooth aktif dan printer sudah dipairing.', style: TextStyle(color: Colors.grey)),
                       )
                     : ListView.builder(
                         shrinkWrap: true,
@@ -107,10 +114,12 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                               Navigator.pop(context);
                               _saveSettings(
                                 _printer.copyWith(
-                                  deviceName: dev['name'],
+                                  name: dev['name'],
                                   address: dev['address'],
-                                  isConnected: true, // Simulasi perangkat terpilih dan terhubung
                                 ),
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Printer berhasil dipilih dan disimpan!'), backgroundColor: Color(0xFF10B981)),
                               );
                             },
                           );
@@ -132,7 +141,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
 
   // --- LOGIKA INPUT IP UNTUK JARINGAN LAN/WIFI ---
   void _tampilkanDialogInputIP() {
-    final TextEditingController ipController = TextEditingController(text: _printer.address ?? '192.168.1.200:9100');
+    final TextEditingController ipController = TextEditingController(text: _printer.address ?? '192.168.1.200');
 
     showDialog(
       context: context,
@@ -144,8 +153,8 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
           content: TextField(
             controller: ipController,
             decoration: const InputDecoration(
-              labelText: 'Alamat IP & Port',
-              hintText: 'Contoh: 192.168.1.200:9100',
+              labelText: 'Alamat IP Printer',
+              hintText: 'Contoh: 192.168.1.200',
               border: OutlineInputBorder(),
             ),
           ),
@@ -160,10 +169,12 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 Navigator.pop(context);
                 _saveSettings(
                   _printer.copyWith(
-                    deviceName: 'Network Printer (LAN)',
+                    name: 'Network Printer (LAN)',
                     address: ipController.text.trim(),
-                    isConnected: true,
                   ),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('IP Printer berhasil disimpan!'), backgroundColor: Color(0xFF10B981)),
                 );
               },
               child: const Text('Simpan', style: TextStyle(color: Colors.white)),
@@ -202,6 +213,8 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
         body: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
       );
     }
+
+    bool isPrinterSet = _printer.address != null && _printer.address!.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA), 
@@ -243,7 +256,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
               subtitle: Text(widget.namaCabang, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
               trailing: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
               onTap: () {
-                // Logika pindah cabang jika diperlukan dari halaman ini
+                // Logika pindah cabang jika diperlukan dari halaman ini (bisa diarahkan ke HalamanPilihCabang)
               },
             ),
           ),
@@ -268,10 +281,10 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                       const Text('Printer struk utama', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       const SizedBox(height: 2),
                       Text(
-                        _printer.deviceName ?? 'Belum ada perangkat terhubung',
+                        _printer.name ?? 'Belum ada perangkat terhubung',
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                       ),
-                      if (_printer.address != null) ...[
+                      if (isPrinterSet) ...[
                         const SizedBox(height: 2),
                         Text(_printer.address!, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                       ]
@@ -281,13 +294,13 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _printer.isConnected ? Colors.green.shade50 : const Color(0xFFFFF7E6),
+                    color: isPrinterSet ? Colors.green.shade50 : const Color(0xFFFFF7E6),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    _printer.isConnected ? 'Online' : 'Offline',
+                    isPrinterSet ? 'Tersimpan' : 'Kosong',
                     style: TextStyle(
-                      color: _printer.isConnected ? Colors.green.shade700 : const Color(0xFFD97706),
+                      color: isPrinterSet ? Colors.green.shade700 : const Color(0xFFD97706),
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -322,10 +335,13 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
-              onPressed: _busy ? null : _cariPerangkat, // <-- TOMBOL CARI AKTIF
+              onPressed: _busy ? null : _cariPerangkat, 
               child: _busy 
                 ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Cari Perangkat Printer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                : Text(
+                    _printer.connectionType == PrinterConnectionType.wifi ? 'Atur IP Printer' : 'Cari Perangkat Printer', 
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)
+                  ),
             ),
           ),
           const SizedBox(height: 20),
@@ -351,8 +367,8 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
                       child: Row(
                         children: [
-                          Expanded(child: _buildKertasTab(58)),
-                          Expanded(child: _buildKertasTab(80)),
+                          Expanded(child: _buildKertasTab(PrinterPaperSize.mm58, '58 mm')),
+                          Expanded(child: _buildKertasTab(PrinterPaperSize.mm80, '80 mm')),
                         ],
                       ),
                     ),
@@ -405,7 +421,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 child: _buildAksiButton(
                   Icons.print_outlined, 
                   'Cetak Tes', 
-                  () => _jalankanAksi(() => _service.printTest(_printer), 'Struk uji berhasil dikirim!') // <-- LOGIKA CETAK AKTIF
+                  () => _jalankanAksi(() => _service.printTest(_printer), 'Struk uji berhasil dicetak!')
                 ),
               ),
               const SizedBox(width: 8),
@@ -445,7 +461,10 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
   Widget _buildKoneksiTab(PrinterConnectionType type, IconData icon, String label) {
     bool isSelected = _printer.connectionType == type;
     return InkWell(
-      onTap: () => _saveSettings(_printer.copyWith(connectionType: type, deviceName: null, address: null, isConnected: false)),
+      onTap: () {
+        // Jika ganti koneksi, reset nama & address printer lama
+        _saveSettings(_printer.copyWith(connectionType: type, name: null, address: null));
+      },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -468,10 +487,10 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
     );
   }
 
-  Widget _buildKertasTab(int width) {
-    bool isSelected = _printer.paperWidth == width;
+  Widget _buildKertasTab(PrinterPaperSize size, String label) {
+    bool isSelected = _printer.paperSize == size;
     return InkWell(
-      onTap: () => _saveSettings(_printer.copyWith(paperWidth: width)),
+      onTap: () => _saveSettings(_printer.copyWith(paperSize: size)),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -482,7 +501,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
         ),
         alignment: Alignment.center,
         child: Text(
-          '$width mm',
+          label,
           style: TextStyle(
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

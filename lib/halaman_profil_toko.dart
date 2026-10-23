@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'tema.dart'; 
 import 'core/services/api_service.dart'; 
+import 'halaman_pengaturan_printer.dart'; // Import halaman pengaturan printer
 
 class HalamanProfilToko extends StatefulWidget {
   const HalamanProfilToko({super.key});
@@ -20,6 +21,7 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  String _storeId = '0'; // Menyimpan ID cabang saat ini
 
   @override
   void initState() {
@@ -40,6 +42,9 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
     final prefs = await SharedPreferences.getInstance();
 
     try {
+      // Ambil Store ID aktif
+      _storeId = prefs.get('store_id')?.toString() ?? '0';
+
       // 1. Muat dari Cache Lokal (Fast Render UI)
       _namaController.text = prefs.getString('nama_toko') ?? '';
       _teleponController.text = prefs.getString('telepon_toko') ?? '';
@@ -100,7 +105,6 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profil toko berhasil diperbarui!'), backgroundColor: AppColors.primaryEmerald),
         );
-        Navigator.pop(context);
       } else {
         final res = json.decode(response.body);
         throw Exception(res['message'] ?? 'Gagal memperbarui profil toko');
@@ -172,7 +176,6 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
                     ),
-                    // Validasi opsional nomor telepon (hanya angka jika diisi)
                     validator: (val) {
                       if (val != null && val.isNotEmpty && !RegExp(r'^[0-9+]+$').hasMatch(val)) {
                         return 'Hanya boleh berisi angka dan simbol +';
@@ -197,7 +200,7 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
                   SizedBox(
                     width: double.infinity,
@@ -214,6 +217,44 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
                           : const Text('Simpan Perubahan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     ),
                   ),
+
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 16),
+
+                  // --- MENU PENGATURAN TAMBAHAN ---
+                  const Text('Pengaturan Tambahan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  const SizedBox(height: 16),
+                  
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(8)),
+                        child: const Icon(Icons.print, color: AppColors.primaryEmerald),
+                      ),
+                      title: const Text('Pengaturan Printer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      subtitle: const Text('Kelola printer Bluetooth, Wi-Fi, dan ukuran kertas', style: TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => HalamanPengaturanPrinter(
+                              storeId: _storeId,
+                              namaCabang: _namaController.text.isNotEmpty ? _namaController.text : 'Toko Cabang',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),

@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 
-// Package Cetak & PDF
+// Package PDF
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'core/services/transaction_service.dart';
+import 'core/services/printer_service.dart'; // Import Printer Service Baru
 import 'tema.dart';
 
 class HalamanDetailTransaksi extends StatefulWidget {
@@ -60,77 +57,23 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   }
 
   // ==========================================
-  // FITUR 1: CETAK ULANG BLUETOOTH (Tanpa Buat Transaksi Baru)
+  // FITUR 1: CETAK ULANG (Menggunakan PrinterService Terpusat)
   // ==========================================
-  Future<void> _cetakUlangStrukBluetooth() async {
+  Future<void> _cetakUlangStruk() async {
     if (_detail == null) return;
-    if (kIsWeb || Platform.isIOS) {
-      _showNotif('Cetak Bluetooth hanya didukung di Android.', Colors.red);
-      return;
-    }
-
+    
     _showNotif('Mencetak ulang struk...', AppColors.smartBlue);
     try {
-      final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm58, profile);
-      List<int> bytes = [];
-
-      bytes += generator.text("SMART KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
-      bytes += generator.text(_detail!['store_name'] ?? 'Toko Anda', styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      
-      // Tambahkan penanda bahwa ini adalah struk cetak ulang (Opsional)
-      bytes += generator.text("** CETAK ULANG **", styles: const PosStyles(align: PosAlign.center, bold: true));
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      
-      bytes += generator.row([PosColumn(text: "No", width: 4), PosColumn(text: ": ${widget.invoiceNumber}", width: 8)]);
-      bytes += generator.row([PosColumn(text: "Tgl", width: 4), PosColumn(text: ": ${_detail!['created_at']}", width: 8)]);
-      bytes += generator.row([PosColumn(text: "Ksr", width: 4), PosColumn(text: ": ${_detail!['cashier_name'] ?? 'Kasir'}", width: 8)]);
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-
-      List items = _detail!['items'] ?? [];
-      for (var item in items) {
-        bytes += generator.text("${item['product_name']}", styles: const PosStyles(align: PosAlign.left));
-        bytes += generator.row([
-          PosColumn(text: "${item['qty']} x ${_formatCurrency(item['price'])}", width: 8),
-          PosColumn(text: _formatCurrency(item['total']), width: 4, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "TOTAL TAGIHAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatCurrency(_detail!['grand_total']), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      
-      // CETAK RINCIAN MULTIPLE PAYMENTS
-      List payments = _detail!['payments'] ?? [];
-      for(var pay in payments) {
-        bytes += generator.row([PosColumn(text: "BAYAR (${pay['method']})", width: 7), PosColumn(text: _formatCurrency(pay['amount']), width: 5, styles: const PosStyles(align: PosAlign.right))]);
-      }
-      
-      // Hitung kembalian jika ada
-      double totalBayar = payments.fold(0, (sum, item) => sum + (double.tryParse(item['amount'].toString()) ?? 0));
-      double kembali = totalBayar - double.parse(_detail!['grand_total'].toString());
-      if (kembali > 0) {
-         bytes += generator.row([PosColumn(text: "KEMBALI", width: 7), PosColumn(text: _formatCurrency(kembali), width: 5, styles: const PosStyles(align: PosAlign.right))]);
-      }
-
-      bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.feed(2);
-
-      bool isConnected = await PrintBluetoothThermal.connectionStatus;
-      if (isConnected) {
-        await PrintBluetoothThermal.writeBytes(bytes);
-        _showNotif('Struk berhasil dicetak ulang!', AppColors.primaryEmerald);
-      } else {
-        _showNotif('Printer tidak terhubung. Periksa pengaturan printer.', Colors.red);
-      }
+      // PrinterService akan otomatis mengecek cabang aktif, 
+      // ukuran kertas, dan koneksi (Bluetooth/Wifi)
+      await PrinterService().cetakStruk(_detail!); 
     } catch (e) {
-      _showNotif('Gagal mencetak: $e', Colors.red);
+      _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
     }
   }
 
   // ==========================================
-  // FITUR 2: SIMPAN PDF & BAGIKAN
+  // FITUR 2: SIMPAN PDF & BAGIKAN (Mendukung Split Payment)
   // ==========================================
   Future<void> _bagikanPDF() async {
     if (_detail == null) return;
@@ -179,6 +122,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 ]
               ),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
+              // RINCIAN PEMBAYARAN PDF
               ...payments.map((p) => pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [pw.Text('BAYAR (${p['method']})'), pw.Text(_formatCurrency(p['amount']))]
@@ -384,10 +328,9 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
-                // Mengubah pemanggilan fungsi cetak ulang
-                onPressed: _cetakUlangStrukBluetooth,
+                // Memanggil logika router printer yang baru
+                onPressed: _cetakUlangStruk,
                 icon: const Icon(Icons.print, color: Colors.white),
-                // Mengubah label tombol
                 label: const Text('Cetak Ulang Struk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryEmerald,

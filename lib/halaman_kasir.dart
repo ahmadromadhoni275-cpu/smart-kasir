@@ -1,20 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:shared_preferences/shared_preferences.dart'; // Tambahan untuk memuat pengaturan cabang
-
-// Package Cetak
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 import 'tema.dart';
 import 'core/services/api_service.dart';
 import 'core/services/payment_method_service.dart'; 
 import 'halaman_shift.dart'; 
 import 'core/services/printer_service.dart';
-import 'core/services/printer_storage_service.dart';
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -26,7 +19,7 @@ class HalamanKasir extends StatefulWidget {
 class _HalamanKasirState extends State<HalamanKasir> {
   bool _isCheckingShift = true; 
   bool _hasActiveShift = false; 
-  bool _hasAutoRedirected = false; // Mencegah infinite loop redirect
+  bool _hasAutoRedirected = false; 
 
   bool _isLoading = true;
   List<dynamic> _products = [];
@@ -37,9 +30,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
   String? _selectedTable;
   double _discount = 0;
   
-  // State Metode Pembayaran Aktif (Dinamis dari Backend)
+  // State Metode Pembayaran Aktif
   List<Map<String, dynamic>> _activePaymentMethods = [
-    {'type': 'CASH', 'name': 'Tunai (Cash)'} // Default selalu ada
+    {'type': 'CASH', 'name': 'Tunai (Cash)'} 
   ];
   
   final TextEditingController _searchCtrl = TextEditingController();
@@ -60,12 +53,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
       if (response.statusCode == 200) {
         final resData = json.decode(response.body);
         if (resData['data'] != null) {
-          // SHIFT AKTIF -> Tampilkan Kasir
           _hasActiveShift = true;
           _muatProduk(); 
-          _fetchMetodePembayaran(); // Ambil metode pembayaran aktif toko
+          _fetchMetodePembayaran(); 
         } else {
-          // SHIFT TUTUP
           _hasActiveShift = false;
           
           if (!_hasAutoRedirected && mounted) {
@@ -223,12 +214,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =========================================================
-  // MODAL PEMBAYARAN & CHECKOUT KE CI4 (MENDUKUNG SPLIT PAYMENT)
+  // MODAL PEMBAYARAN & CHECKOUT
   // =========================================================
   void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
     
-    // State Pembayaran Dinamis
     List<Map<String, dynamic>> appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
@@ -245,7 +235,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
             totalBayarInput += double.tryParse(p['ctrl'].text) ?? 0;
           }
           double kurang = _grandTotal - totalBayarInput;
-          if (kurang < 0) kurang = 0; // Jika ada kembalian
+          if (kurang < 0) kurang = 0; 
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -262,13 +252,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       child: Column(
                         children: [
                           const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                          Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
                         ],
                       ),
                     ),
                     const SizedBox(height: 24),
                     
-                    // List Metode Pembayaran
                     ...appliedPayments.asMap().entries.map((entry) {
                       int idx = entry.key;
                       Map<String, dynamic> payItem = entry.value;
@@ -293,7 +282,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                                 controller: payItem['ctrl'],
                                 keyboardType: TextInputType.number,
                                 decoration: const InputDecoration(prefixText: 'Rp ', isDense: true, border: OutlineInputBorder()),
-                                onChanged: (_) => setModalState((){}), // Trigger hitung ulang
+                                onChanged: (_) => setModalState((){}), 
                               ),
                             ),
                             if (appliedPayments.length > 1)
@@ -306,7 +295,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       );
                     }),
                     
-                    // Tombol Split Payment
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -344,7 +332,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
                   setModalState(() => isProcessing = true);
                   
-                  // Format payments payload untuk Backend
                   List<Map<String, dynamic>> paymentsPayload = appliedPayments.map((p) => {
                     "method": p['method'],
                     "amount": double.tryParse(p['ctrl'].text) ?? 0
@@ -367,34 +354,31 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
                   final res = await ApiService.post('cashier/transactions', payload);
                   if (res.statusCode == 201) {
-                    final data = json.decode(res.body)['data'];
+                    // Ambil data respon lengkap dari backend
+                    final dataTransaksi = json.decode(res.body)['data'];
                     Navigator.pop(ctx);
-                    
-                    // SIMPAN DATA KERANJANG UNTUK DICETAK SEBELUM DIKOSONGKAN
-                    final itemsToPrint = List<Map<String, dynamic>>.from(_cart);
-                    final totalToPrint = _grandTotal;
                     
                     setState(() { _cart.clear(); _selectedTable = null; });
 
                     // ====================================================
-                    // INTEGRASI CETAK OTOMATIS (TERGANTUNG PENGATURAN TOKO)
+                    // INTEGRASI KECERDASAN ROUTER PRINTER (AUTO-PRINT)
                     // ====================================================
                     final prefs = await SharedPreferences.getInstance();
                     final storeId = prefs.getString('store_id') ?? '';
-                    final settingString = prefs.getString('printer_settings_$storeId'); // Baca setting sesuai cabang
+                    final printerService = PrinterService();
+                    final printerConfig = await printerService.loadSettings(storeId);
                     
-                    if (settingString != null) {
-                      final printerSettings = json.decode(settingString);
-                      if (printerSettings['auto_print'] == true) {
-                        _showNotif('Mencetak struk otomatis...', AppColors.smartBlue);
-                        // Lakukan cetak secara background tanpa mengganggu UI
-                        _cetakStruk(data['invoice'], itemsToPrint, totalToPrint, paymentsPayload, data['kembalian']);
+                    if (printerConfig.autoPrint) {
+                      _showNotif('Mencetak struk otomatis...', AppColors.smartBlue);
+                      try {
+                        await printerService.cetakStruk(dataTransaksi);
+                      } catch (e) {
+                        _showNotif('Gagal mencetak: ${e.toString().replaceAll('Exception: ', '')}', Colors.red);
                       }
                     }
                     // ====================================================
                     
-                    // Tampilkan Sukses UI
-                    _tampilkanSukses(data['invoice'], data['kembalian'], itemsToPrint, totalToPrint, paymentsPayload);
+                    _tampilkanSukses(dataTransaksi);
                     _muatProduk(); 
                   } else {
                     _showNotif('Gagal: ${json.decode(res.body)['message']}', Colors.red);
@@ -411,72 +395,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
   // =========================================================
-  // LOGIKA CETAK STRUK BLUETOOTH DARI KASIR
+  // UI SUKSES TRANSAKSI
   // =========================================================
-  Future<void> _cetakStruk(String invoice, List<Map<String, dynamic>> items, double total, List<Map<String, dynamic>> payments, dynamic kembalian) async {
-    if (kIsWeb || Platform.isIOS) {
-      _showNotif('Platform tidak didukung.', Colors.red);
-      return;
-    }
-    
-    try {
-      final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm58, profile);
-      List<int> bytes = [];
+  void _tampilkanSukses(Map<String, dynamic> dataTransaksi) {
+    String invoice = dataTransaksi['invoice'] ?? dataTransaksi['invoice_number'] ?? '-';
+    dynamic kembalian = dataTransaksi['kembalian'] ?? 0;
 
-      bytes += generator.text("SMART KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "No", width: 4), PosColumn(text: ": $invoice", width: 8)]);
-      bytes += generator.row([PosColumn(text: "Tgl", width: 4), PosColumn(text: ": ${DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now())}", width: 8)]);
-      
-      if (_selectedTable != null) {
-        bytes += generator.row([PosColumn(text: "Meja", width: 4), PosColumn(text: ": $_selectedTable", width: 8)]);
-      }
-      
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-
-      for (var item in items) {
-        String namaMenu = item['name'];
-        if (item['order_type'] == 'TAKEAWAY') namaMenu += ' (TA)';
-        
-        bytes += generator.text(namaMenu, styles: const PosStyles(align: PosAlign.left));
-        if (item['note'] != null) {
-          bytes += generator.text(" * ${item['note']}", styles: const PosStyles(align: PosAlign.left));
-        }
-        bytes += generator.row([
-          PosColumn(text: "${item['quantity']} x ${_formatRupiah(item['price'])}", width: 8),
-          PosColumn(text: _formatRupiah(item['price'] * item['quantity']), width: 4, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "TOTAL TAGIHAN", width: 7, styles: const PosStyles(bold: true)), PosColumn(text: _formatRupiah(total), width: 5, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      
-      // CETAK SETIAP METODE PEMBAYARAN GABUNGAN
-      for (var pay in payments) {
-        bytes += generator.row([PosColumn(text: "BAYAR (${pay['method']})", width: 7), PosColumn(text: _formatRupiah(pay['amount']), width: 5, styles: const PosStyles(align: PosAlign.right))]);
-      }
-      
-      if (kembalian > 0) {
-        bytes += generator.row([PosColumn(text: "KEMBALI", width: 7), PosColumn(text: _formatRupiah(kembalian), width: 5, styles: const PosStyles(align: PosAlign.right))]);
-      }
-      bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.feed(2);
-
-      bool isConnected = await PrintBluetoothThermal.connectionStatus;
-      if (isConnected) {
-        await PrintBluetoothThermal.writeBytes(bytes);
-        _showNotif('Berhasil mencetak!', AppColors.primaryEmerald);
-      } else {
-        _showNotif('Printer tidak terhubung.', Colors.red);
-      }
-    } catch (e) {
-      _showNotif('Gagal mencetak: $e', Colors.red);
-    }
-  }
-
-  void _tampilkanSukses(String invoice, dynamic kembalian, List<Map<String, dynamic>> itemsToPrint, double totalToPrint, List<Map<String, dynamic>> paymentsPayload) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -504,9 +428,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       side: const BorderSide(color: Color(0xFF1E293B)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                     ),
-                    onPressed: () {
-                      _showNotif('Mencetak struk...', AppColors.smartBlue);
-                      _cetakStruk(invoice, itemsToPrint, totalToPrint, paymentsPayload, kembalian);
+                    onPressed: () async {
+                      // ====================================================
+                      // PANGGIL ROUTER PRINTER UNTUK CETAK MANUAL
+                      // ====================================================
+                      try {
+                        _showNotif('Mencetak struk...', AppColors.smartBlue);
+                        await PrinterService().cetakStruk(dataTransaksi);
+                      } catch (e) {
+                        _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
+                      }
                     }, 
                     icon: const Icon(Icons.print, color: Color(0xFF1E293B)), 
                     label: const Text('Cetak', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold))
@@ -586,7 +517,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       Text(_formatRupiah(double.parse(p['selling_price'].toString())), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
                       if (isJasa)
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFF7E7CE), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: Color(0xFFB8860B), fontWeight: FontWeight.bold)))
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFF7E7CE), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: const Color(0xFFB8860B), fontWeight: FontWeight.bold)))
                       else
                         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: habis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(12)), child: Text(habis ? 'HABIS' : 'Stok: ${p['stock']}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? Colors.red : Colors.grey.shade700))),
                     ],
@@ -600,7 +531,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   Widget _buildCartPanel() {
     return Container(
-      width: 380, // Dibuat sedikit lebih lebar agar lega di tablet
+      width: 380, 
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(left: BorderSide(color: Colors.grey.shade200)),
@@ -701,7 +632,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 const SizedBox(height: 4),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon', style: TextStyle(color: Colors.grey)), Text('- ${_formatRupiah(_discount)}', style: const TextStyle(color: Colors.red))]),
                 const Divider(height: 24),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1E293B))), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: AppColors.primaryEmerald))]),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: const Color(0xFF1E293B))), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: AppColors.primaryEmerald))]),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity, height: 54,
