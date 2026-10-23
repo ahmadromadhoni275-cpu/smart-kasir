@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart'; // <-- Import Printer Service
 import 'tema.dart';
 
 class HalamanLaporanProduk extends StatefulWidget {
@@ -113,6 +114,50 @@ class _HalamanLaporanProdukState extends State<HalamanLaporanProduk> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   }
 
+  // ==========================================
+  // LOGIKA CETAK LAPORAN PRODUK
+  // ==========================================
+  Future<void> _cetakLaporanProduk() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun metrik utama
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      'total_item_terjual': '$_totalItemQty Unit',
+      'total_omzet_produk': _totalRevenue,
+      '-- PRODUK TERLARIS --': '', // Sebagai pembatas/judul sub-bagian
+    };
+
+    // Menyusun Top 10 Produk ke dalam struktur map agar bisa di-looping otomatis oleh PrinterService
+    int batasCetak = _products.length > 10 ? 10 : _products.length;
+    for (int i = 0; i < batasCetak; i++) {
+      var item = _products[i];
+      String nama = item['product_name']?.toString() ?? 'Produk';
+      String qty = item['qty']?.toString() ?? '0';
+      
+      // Format Key: "Qty x Nama Produk", Value: Total Revenue-nya
+      dataLaporan['$qty x $nama'] = double.tryParse(item['revenue']?.toString() ?? '0') ?? 0.0;
+    }
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN PRODUK");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan produk berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -124,6 +169,15 @@ class _HalamanLaporanProdukState extends State<HalamanLaporanProduk> {
           backgroundColor: Colors.white,
           elevation: 0,
           iconTheme: const IconThemeData(color: AppColors.navyActive),
+          // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+              tooltip: 'Cetak Laporan',
+              onPressed: _isLoading ? null : _cetakLaporanProduk,
+            ),
+            const SizedBox(width: 8),
+          ],
           bottom: const TabBar(
             labelColor: AppColors.primaryEmerald,
             unselectedLabelColor: AppColors.textSecondary,

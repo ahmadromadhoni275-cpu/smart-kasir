@@ -3,10 +3,8 @@ import 'package:intl/intl.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
-
 import 'core/services/transaction_service.dart';
+import 'core/services/printer_service.dart'; 
 import 'models/transaction_model.dart';
 import 'tema.dart'; 
 import 'halaman_detail_transaksi.dart'; 
@@ -24,7 +22,7 @@ class _HalamanLaporanTransaksiState extends State<HalamanLaporanTransaksi> {
   
   List<TransactionReport> _transactions = [];
   bool _isLoading = false;
-  bool _isPrinting = false; // State untuk loading cetak
+  bool _isPrinting = false; 
   String _errorMessage = '';
   
   // Filter State
@@ -129,56 +127,60 @@ class _HalamanLaporanTransaksiState extends State<HalamanLaporanTransaksi> {
   }
 
   // ==========================================
-  // FITUR CETAK CEPAT DARI LIST
+  // LOGIKA CETAK REKAP LAPORAN (Tombol AppBar)
   // ==========================================
-  Future<void> _cetakCepat(int transactionId, String invoice) async {
-    if (kIsWeb || Platform.isIOS) {
-      _showNotif('Platform tidak didukung.', Colors.red);
-      return;
+  Future<void> _cetakLaporanTransaksi() async {
+    if (_isLoading || _transactions.isEmpty) return;
+
+    _showNotif('Menyiapkan pencetakan rekap...', AppColors.smartBlue);
+
+    double totalNominal = 0;
+    for (var tx in _transactions) {
+      totalNominal += tx.grandTotal;
     }
 
+    String filterLabel = _filterWaktu == 'rentang' 
+        ? '${DateFormat('dd MMM').format(_startDate)} - ${DateFormat('dd MMM').format(_endDate)}'
+        : _filterWaktu.replaceAll('_', ' ').toUpperCase();
+
+    Map<String, dynamic> dataLaporan = {
+      'periode': filterLabel,
+      'Status_Filter': _selectedStatus.isEmpty ? 'SEMUA' : _selectedStatus,
+      'Data_Ditampilkan': '${_transactions.length} Transaksi',
+      'Total_Nominal_Tampil': totalNominal,
+      '-- RINCIAN TRANSAKSI --': '',
+    };
+
+    // Mencetak maksimal 15 transaksi agar kertas tidak terlalu panjang
+    int batasCetak = _transactions.length > 15 ? 15 : _transactions.length;
+    for (int i = 0; i < batasCetak; i++) {
+      var tx = _transactions[i];
+      // Ambil 8 karakter terakhir invoice agar tidak kepanjangan di kertas struk
+      String shortInv = tx.invoiceNumber.length > 10 ? tx.invoiceNumber.substring(tx.invoiceNumber.length - 8) : tx.invoiceNumber;
+      dataLaporan['$shortInv (${tx.transactionStatus})'] = tx.grandTotal;
+    }
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "DAFTAR TRANSAKSI");
+      _showNotif('Rekap transaksi berhasil dicetak!', AppColors.primaryEmerald);
+    } catch (e) {
+      _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
+    }
+  }
+
+  // ==========================================
+  // FITUR CETAK CEPAT (Tombol di dalam List)
+  // ==========================================
+  Future<void> _cetakCepat(int transactionId, String invoice) async {
     setState(() => _isPrinting = true);
     _showNotif('Menyiapkan struk $invoice...', AppColors.smartBlue);
 
     try {
-      // Tarik detail barang dari API secara diam-diam
+      // Tarik detail barang dari API dan serahkan ke PrinterService
       final detail = await _transactionService.getTransactionDetail(transactionId);
-      
-      final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm58, profile);
-      List<int> bytes = [];
-
-      bytes += generator.text("SMART KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
-      bytes += generator.text(detail['store_name'] ?? 'Toko Anda', styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "No", width: 4), PosColumn(text: ": $invoice", width: 8)]);
-      bytes += generator.row([PosColumn(text: "Tgl", width: 4), PosColumn(text: ": ${detail['created_at']}", width: 8)]);
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-
-      List items = detail['items'] ?? [];
-      for (var item in items) {
-        bytes += generator.text("${item['product_name']}", styles: const PosStyles(align: PosAlign.left));
-        bytes += generator.row([
-          PosColumn(text: "${item['qty']} x ${_formatCurrency(item['price'])}", width: 8),
-          PosColumn(text: _formatCurrency(item['total']), width: 4, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      
-      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.row([PosColumn(text: "TOTAL", width: 6, styles: const PosStyles(bold: true)), PosColumn(text: _formatCurrency(detail['grand_total']), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true))]);
-      bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text("Terima Kasih", styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.feed(2);
-
-      bool isConnected = await PrintBluetoothThermal.connectionStatus;
-      if (isConnected) {
-        await PrintBluetoothThermal.writeBytes(bytes);
-        _showNotif('Berhasil mencetak!', AppColors.primaryEmerald);
-      } else {
-        _showNotif('Printer tidak terhubung.', Colors.red);
-      }
+      await PrinterService().cetakStruk(detail);
     } catch (e) {
-      _showNotif('Gagal mencetak: $e', Colors.red);
+      _showNotif('Gagal mencetak: ${e.toString().replaceAll('Exception: ', '')}', Colors.red);
     } finally {
       setState(() => _isPrinting = false);
     }
@@ -208,6 +210,15 @@ class _HalamanLaporanTransaksiState extends State<HalamanLaporanTransaksi> {
         backgroundColor: const Color(0xFF1E293B), // Tema Navy Premium
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
+        // --- TOMBOL CETAK REKAP DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Daftar Transaksi',
+            onPressed: _isLoading || _transactions.isEmpty ? null : _cetakLaporanTransaksi,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [

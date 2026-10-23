@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import 'core/services/return_service.dart';
+import 'core/services/printer_service.dart'; 
 import 'tema.dart';
 
 class HalamanDetailRetur extends StatefulWidget {
@@ -37,10 +39,63 @@ class _HalamanDetailReturState extends State<HalamanDetailRetur> {
 
   String _formatCurrency(double amount) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
 
+  // ==========================================
+  // LOGIKA CETAK BUKTI RETUR / REFUND
+  // ==========================================
+  Future<void> _cetakStrukRetur() async {
+    if (_detail == null) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan bukti retur...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    try {
+      final retur = _detail!['return'];
+      final items = _detail!['items'] as List;
+
+      Map<String, dynamic> dataLaporan = {
+        'No_Retur': retur['return_number'] ?? '-',
+        'No_Invoice': retur['invoice_number'] ?? '-',
+        'Tanggal': retur['created_at'] ?? '-',
+        'Kasir': retur['cashier_name'] ?? '-',
+        'Metode_Refund': retur['refund_method'] ?? '-',
+        'Alasan': retur['reason'] ?? '-',
+        '-- BARANG DIRETUR --': '',
+      };
+
+      // Memasukkan daftar barang yang diretur
+      for (var item in items) {
+        String nama = item['product_name'] ?? 'Produk';
+        String qty = item['quantity']?.toString() ?? '0';
+        double amount = double.tryParse(item['amount'].toString()) ?? 0;
+        
+        dataLaporan['$nama (x$qty)'] = amount;
+      }
+
+      dataLaporan['-- TOTAL --'] = '';
+      dataLaporan['TOTAL REFUND'] = double.tryParse(retur['total_amount'].toString()) ?? 0;
+
+      await PrinterService().cetakLaporan(dataLaporan, "BUKTI RETUR & REFUND");
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bukti retur berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(appBar: AppBar(backgroundColor: const Color(0xFF1E293B)), body: const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
+      return Scaffold(
+        appBar: AppBar(backgroundColor: const Color(0xFF1E293B)), 
+        body: const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+      );
     }
 
     final retur = _detail!['return'];
@@ -52,6 +107,15 @@ class _HalamanDetailReturState extends State<HalamanDetailRetur> {
         title: const Text('Detail Retur', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF1E293B),
         iconTheme: const IconThemeData(color: Colors.white),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Bukti Retur',
+            onPressed: _isLoading || _detail == null ? null : _cetakStrukRetur,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

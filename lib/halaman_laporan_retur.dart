@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart'; // <-- Import Printer Service
 import 'tema.dart';
 
 class HalamanLaporanRetur extends StatefulWidget {
@@ -131,6 +132,52 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
     }
   }
 
+  // ==========================================
+  // LOGIKA CETAK LAPORAN RETUR
+  // ==========================================
+  Future<void> _cetakLaporanRetur() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun rekapitulasi data retur
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      'Total_Transaksi_Retur': '$_totalTransactions Transaksi',
+      'Total_Unit_Retur': '$_totalUnits Unit',
+      'Nilai_Barang_Retur': _totalReturnValue,
+      'Total_Dana_Refund': _totalRefunded,
+      '-- RINCIAN RETUR TERAKHIR --': '',
+    };
+
+    // Menyusun beberapa daftar retur terakhir (Maksimal 10 agar pas di struk)
+    int batasCetak = _returns.length > 10 ? 10 : _returns.length;
+    for (int i = 0; i < batasCetak; i++) {
+      var r = _returns[i];
+      String retNum = r['return_number']?.toString() ?? 'RET';
+      String status = r['return_status']?.toString().toUpperCase() ?? 'PENDING';
+      double refund = double.tryParse(r['refunded_amount']?.toString() ?? '0') ?? 0;
+
+      dataLaporan['$retNum ($status)'] = refund;
+    }
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN RETUR");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan Retur berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -140,6 +187,15 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Laporan',
+            onPressed: _isLoading || _returns.isEmpty ? null : _cetakLaporanRetur,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))

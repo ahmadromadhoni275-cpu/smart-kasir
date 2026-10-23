@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart';
 import 'tema.dart';
 
 class HalamanLaporanLabaRugi extends StatefulWidget {
@@ -113,6 +114,48 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
     return amount < 0 ? "-${format.format(amount.abs())}" : format.format(amount);
   }
 
+  // ==========================================
+  // LOGIKA CETAK LAPORAN LABA RUGI
+  // ==========================================
+  Future<void> _cetakLaporanLabaRugi() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun data keuangan untuk dicetak
+    // Note: PrinterService secara otomatis memformat data berjenis num/double menjadi rupiah
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      '-- PENDAPATAN --': '',
+      'Penjualan_Kotor': _grossSales,
+      'Diskon_Penjualan': _totalDiscount > 0 ? -(_totalDiscount) : 0,
+      'Retur_Penjualan': _totalReturns > 0 ? -(_totalReturns) : 0,
+      'Penjualan_Bersih_(Net)': _netSales,
+      '-- HPP & BIAYA --': '',
+      'Harga_Pokok_(COGS)': _totalCogs > 0 ? -(_totalCogs) : 0,
+      'Laba_Kotor_(Gross)': _grossProfit,
+      'Biaya_Operasional': _totalExpenses > 0 ? -(_totalExpenses) : 0,
+      '-- LABA BERSIH --': '',
+      'LABA_RUGI_BERSIH': _netProfit,
+    };
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN LABA RUGI");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan Laba Rugi berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,6 +165,15 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Laporan',
+            onPressed: _isLoading ? null : _cetakLaporanLabaRugi,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [

@@ -282,5 +282,119 @@ class PrinterService {
 
     return bytes;
   }
+  
+  // ==========================================
+  // 7. ROUTER CETAK LAPORAN (SHIFT / HARIAN)
+  // ==========================================
+  Future<void> cetakLaporan(Map<String, dynamic> dataLaporan, String judulLaporan) async {
+    if (kIsWeb || Platform.isIOS) {
+      throw Exception('Pencetakan hanya didukung di perangkat Android/Windows.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final storeId = prefs.getString('store_id') ?? '0';
+    
+    final PrinterModel printerConfig = await loadSettings(storeId);
+
+    if (printerConfig.address == null || printerConfig.address!.isEmpty) {
+      throw Exception('Printer belum dikonfigurasi. Silakan atur di Pengaturan Toko.');
+    }
+
+    // Generate byte khusus layout laporan
+    final List<int> bytes = await _generateLaporanBytes(dataLaporan, judulLaporan, printerConfig);
+
+    bool isSuccess = false;
+    
+    if (printerConfig.connectionType == PrinterConnectionType.bluetooth) {
+      isSuccess = await _cetakBluetooth(printerConfig.address!, bytes);
+    } else if (printerConfig.connectionType == PrinterConnectionType.wifi) {
+      isSuccess = await _cetakWifi(printerConfig.address!, bytes);
+    } else if (printerConfig.connectionType == PrinterConnectionType.usb) {
+      isSuccess = await _cetakUsb(printerConfig.address!, bytes);
+    } else {
+      throw Exception('Tipe koneksi printer tidak dikenali.');
+    }
+
+    if (!isSuccess) {
+      throw Exception('Gagal mengirim data ke printer. Pastikan printer menyala dan terhubung.');
+    }
+  }
+
+  // ==========================================
+  // 8. GENERATOR DESAIN STRUK LAPORAN
+  // ==========================================
+  Future<List<int>> _generateLaporanBytes(Map<String, dynamic> data, String judulLaporan, PrinterModel printerConfig) async {
+    final profile = await CapabilityProfile.load();
+    final paper = printerConfig.paperSize == PrinterPaperSize.mm80 ? PaperSize.mm80 : PaperSize.mm58;
+    final generator = Generator(paper, profile); 
+    List<int> bytes = [];
+
+    // Ambil Data Toko Aktif
+    final prefs = await SharedPreferences.getInstance();
+    final namaToko = prefs.getString('nama_toko') ?? 'SMART KASIR';
+    final alamatToko = prefs.getString('alamat_toko') ?? '';
+
+    String formatRp(dynamic val) {
+      double parsed = double.tryParse(val.toString()) ?? 0;
+      return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(parsed);
+    }
+
+    // --- HEADER TOKO ---
+    bytes += generator.text(namaToko.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
+    if (alamatToko.isNotEmpty) {
+      bytes += generator.text(alamatToko, styles: const PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
+    }
+    
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+    
+    // --- JUDUL LAPORAN ---
+    bytes += generator.text(judulLaporan.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+    // --- INFO WAKTU & KASIR ---
+    String waktuCetak = DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now());
+    bytes += generator.row([PosColumn(text: "Dicetak", width: 4), PosColumn(text: ": $waktuCetak", width: 8)]);
+    
+    if (data['periode'] != null) {
+      bytes += generator.row([PosColumn(text: "Periode", width: 4), PosColumn(text: ": ${data['periode']}", width: 8)]);
+    }
+    if (data['cashier_name'] != null) {
+      bytes += generator.row([PosColumn(text: "Kasir", width: 4), PosColumn(text: ": ${data['cashier_name']}", width: 8)]);
+    }
+    bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+
+    // --- KONTEN LAPORAN DINAMIS ---
+    // Di sini kita mencetak key-value dari data yang dilempar dari halaman laporan
+    data.forEach((key, value) {
+      // Kita abaikan key yang sudah dicetak di atas atau tidak perlu dicetak
+      if (key != 'periode' && key != 'cashier_name' && key != 'raw_data') {
+        
+        // Ubah format key "total_revenue" menjadi "Total Revenue"
+        String label = key.replaceAll('_', ' ').split(' ').map((str) => str.length > 0 ? str[0].toUpperCase() + str.substring(1) : '').join(' ');
+
+        // Cek apakah nilainya adalah angka/uang yang butuh diformat
+        String nilaiCetak = value.toString();
+        if (value is num || (value is String && double.tryParse(value) != null)) {
+          // Jika nilainya angka besar, asumsikan itu uang
+          double numVal = double.tryParse(value.toString()) ?? 0;
+          if (numVal > 1000 || key.toLowerCase().contains('total') || key.toLowerCase().contains('pendapatan') || key.toLowerCase().contains('kas')) {
+            nilaiCetak = formatRp(numVal);
+          }
+        }
+
+        bytes += generator.row([
+          PosColumn(text: label, width: 7, styles: const PosStyles(fontType: PosFontType.fontB)),
+          PosColumn(text: nilaiCetak, width: 5, styles: const PosStyles(align: PosAlign.right, fontType: PosFontType.fontB, bold: true)),
+        ]);
+      }
+    });
+
+    // --- FOOTER ---
+    bytes += generator.text("================================", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text("Laporan Selesai", styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.feed(2);
+
+    return bytes;
+  }
 
 }

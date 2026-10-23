@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart'; // <-- Import Printer Service
 import 'tema.dart';
 
 class HalamanLaporanShift extends StatefulWidget {
@@ -143,6 +144,78 @@ class _HalamanLaporanShiftState extends State<HalamanLaporanShift> {
     } catch (e) { return dateStr; }
   }
 
+  // ==========================================
+  // LOGIKA CETAK LAPORAN REKAP SHIFT
+  // ==========================================
+  Future<void> _cetakLaporanShift() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun data rekapitulasi shift
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      'Total_Shift': '$_totalShifts Shift',
+      'Total_Pemasukan_Tunai': _totalCashSales,
+      'Total_Selisih_Kas': _totalDifference < 0 ? -(_totalDifference) : _totalDifference, 
+      '-- RINCIAN SHIFT TERAKHIR --': '',
+    };
+
+    // Menyusun rincian beberapa shift terakhir (Maksimal 10 agar kertas tidak terlalu panjang)
+    int batasCetak = _shifts.length > 10 ? 10 : _shifts.length;
+    for (int i = 0; i < batasCetak; i++) {
+      var s = _shifts[i];
+      String kasir = s['user_name']?.toString() ?? 'Kasir';
+      String status = s['status']?.toString().toUpperCase() ?? 'OPEN';
+      
+      // Ambil tanggal buka saja (tanpa jam) untuk diprint sebagai identifier
+      String tgl = '-';
+      if (s['opened_at'] != null) {
+        try {
+          tgl = DateFormat('dd MMM').format(DateTime.parse(s['opened_at'].toString()));
+        } catch (_) {}
+      }
+
+      double diff = 0;
+      if (status == 'CLOSED') {
+        double expected = double.tryParse(s['expected_cash']?.toString() ?? '0') ?? 0;
+        double actual = double.tryParse(s['actual_cash']?.toString() ?? '0') ?? 0;
+        if (s['expected_cash'] == null) {
+          double opening = double.tryParse(s['opening_cash']?.toString() ?? '0') ?? 0;
+          double sales = double.tryParse(s['cash_sales']?.toString() ?? '0') ?? 0;
+          double cashIn = double.tryParse(s['cash_in']?.toString() ?? '0') ?? 0;
+          double cashOut = double.tryParse(s['cash_out']?.toString() ?? '0') ?? 0;
+          double withdraw = double.tryParse(s['withdrawal']?.toString() ?? '0') ?? 0;
+          expected = opening + sales + cashIn - cashOut - withdraw;
+        }
+        diff = double.tryParse(s['difference']?.toString() ?? '0') ?? (actual - expected);
+      }
+
+      // Format: "Kasir A (12 Okt)" -> Selisihnya (hanya tampil jika status sudah ditutup)
+      if (status == 'CLOSED') {
+        dataLaporan['$kasir ($tgl)'] = diff < 0 ? -diff : diff;
+      } else {
+        dataLaporan['$kasir ($tgl)'] = 'MASIH BERJALAN';
+      }
+    }
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "REKAP LAPORAN SHIFT");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan Shift berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -152,6 +225,15 @@ class _HalamanLaporanShiftState extends State<HalamanLaporanShift> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Laporan',
+            onPressed: _isLoading || _shifts.isEmpty ? null : _cetakLaporanShift,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))

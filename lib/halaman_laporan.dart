@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart';
 import 'tema.dart';
 import 'halaman_laporan_penjualan.dart'; 
 import 'halaman_laporan_pembayaran.dart';
@@ -88,6 +89,39 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   }
 
+  // ==========================================
+  // LOGIKA CETAK RINGKASAN DASHBOARD
+  // ==========================================
+  Future<void> _cetakRingkasanLaporan() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun data dashboard untuk dilempar ke PrinterService
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      'total_transaksi': _transactionCount.toString(),
+      'rata_rata_transaksi': _averageTransaction,
+      'total_omzet_bersih': _netSales,
+    };
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "RINGKASAN BISNIS");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ringkasan berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,6 +130,15 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
         title: const Text('Laporan Bisnis', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 1,
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Ringkasan',
+            onPressed: _isLoading ? null : _cetakRingkasanLaporan,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
@@ -247,7 +290,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
       );
     }
 
-    // Cari nilai tertinggi untuk rasio tinggi grafik
     double maxTotal = 0;
     for (var item in _chartData) {
       double total = double.tryParse(item['total'].toString()) ?? 0;
@@ -265,7 +307,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
           double total = double.tryParse(item['total'].toString()) ?? 0;
           double heightFactor = maxTotal == 0 ? 0 : total / maxTotal;
           
-          // Ambil tanggal saja misal '2026-10-12' -> '12'
           String tglStr = item['date'].toString();
           String labelTgl = tglStr.length >= 10 ? tglStr.substring(8, 10) : '-';
 
@@ -276,7 +317,7 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
               children: [
                 Container(
                   width: 24,
-                  height: 120 * heightFactor, // Tinggi maksimal bar 120
+                  height: 120 * heightFactor, 
                   decoration: BoxDecoration(color: AppColors.primaryEmerald.withOpacity(0.8), borderRadius: BorderRadius.circular(4)),
                 ),
                 const SizedBox(height: 8),
@@ -289,7 +330,7 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     );
   }
 
-    Widget _buildTopProdukCard() {
+  Widget _buildTopProdukCard() {
     if (_topProducts.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -306,7 +347,6 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
           var item = entry.value;
           bool isLast = index == _topProducts.length - 1;
           
-          // Pengamanan parsing berlapis (Null Safety)
           String namaProduk = item['product_name']?.toString() ?? 'Produk Tidak Diketahui';
           String qty = item['qty']?.toString() ?? '0';
           double revenue = double.tryParse(item['revenue']?.toString() ?? '0') ?? 0.0;
@@ -330,7 +370,7 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     );
   }
 
-    Widget _buildLaporanMenu(IconData icon, String title, Color color) {
+  Widget _buildLaporanMenu(IconData icon, String title, Color color) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
@@ -350,7 +390,7 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
           } else if (title == 'Shift') {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanShift()));
           } else if (title == 'Retur') {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanRetur())); // <-- MENU TERAKHIR SELESAI
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanLaporanRetur()));
           }
         },
         child: Column(

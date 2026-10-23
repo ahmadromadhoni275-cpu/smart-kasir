@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart'; 
 import 'tema.dart';
 
 class HalamanLaporanPenjualan extends StatefulWidget {
@@ -151,6 +152,45 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
   }
 
   // ==========================================
+  // LOGIKA CETAK LAPORAN PENJUALAN
+  // ==========================================
+  Future<void> _cetakLaporanPenjualan() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun data rekap penjualan
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      'Total_Transaksi': '$_transactionCount Transaksi',
+      'Total_Penjualan': _totalSales,
+      '-- REKAP HARIAN --': '',
+    };
+
+    // Tambahkan rekap penjualan per hari ke dalam struk
+    _dailyRecap.forEach((tanggal, total) {
+      String tglBagus = _formatDateUI(tanggal);
+      dataLaporan[tglBagus] = total;
+    });
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN PENJUALAN");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan Penjualan berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
+  // ==========================================
   // WIDGET BUILDER
   // ==========================================
   @override
@@ -162,6 +202,15 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Laporan',
+            onPressed: _isLoading || _transactions.isEmpty ? null : _cetakLaporanPenjualan,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))

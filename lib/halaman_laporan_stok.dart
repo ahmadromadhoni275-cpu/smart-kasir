@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart'; // <-- Import Printer Service
 import 'tema.dart';
 
 class HalamanLaporanStok extends StatefulWidget {
@@ -135,6 +136,71 @@ class _HalamanLaporanStokState extends State<HalamanLaporanStok> with SingleTick
   }
 
   // ==========================================
+  // LOGIKA CETAK LAPORAN STOK
+  // ==========================================
+  Future<void> _cetakLaporanStok() async {
+    if (_tabController.index == 0 && _isLoadingStock) return;
+    if (_tabController.index == 1 && _isLoadingMovements) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    try {
+      if (_tabController.index == 0) {
+        // CETAK TAB 1: STOK TERKINI
+        Map<String, dynamic> dataLaporan = {
+          'periode': DateFormat('dd MMM yyyy').format(DateTime.now()),
+          'Total_Produk': _totalProducts.toString(),
+          'Total_Unit_Tersedia': _totalStockUnits.toString(),
+          'Status_Stok_Menipis': _lowStockCount.toString(),
+          '-- RINCIAN STOK TERKINI --': '',
+        };
+
+        int batasCetak = _currentStocks.length > 20 ? 20 : _currentStocks.length;
+        for (int i = 0; i < batasCetak; i++) {
+          var p = _currentStocks[i];
+          String nama = p['product_name']?.toString() ?? 'Produk';
+          String stok = p['stock']?.toString() ?? '0';
+          dataLaporan[nama] = '$stok Unit';
+        }
+
+        await PrinterService().cetakLaporan(dataLaporan, "LAPORAN STOK GUDANG");
+        
+      } else {
+        // CETAK TAB 2: RIWAYAT PERGERAKAN
+        Map<String, dynamic> dataLaporan = {
+          'periode': _selectedFilter,
+          '-- RIWAYAT PERGERAKAN --': '',
+        };
+
+        int batasCetak = _stockMovements.length > 20 ? 20 : _stockMovements.length;
+        for (int i = 0; i < batasCetak; i++) {
+          var mv = _stockMovements[i];
+          String type = mv['type']?.toString().toUpperCase() ?? 'ADJ';
+          String nama = mv['product_name']?.toString() ?? 'Produk';
+          String qty = mv['quantity']?.toString() ?? '0';
+          String prefix = type == 'IN' ? '+' : type == 'OUT' ? '-' : '';
+          
+          dataLaporan['$nama ($type)'] = '$prefix$qty Unit';
+        }
+
+        await PrinterService().cetakLaporan(dataLaporan, "LAPORAN PERGERAKAN STOK");
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
+  // ==========================================
   // BUILDER UI
   // ==========================================
   @override
@@ -146,12 +212,24 @@ class _HalamanLaporanStokState extends State<HalamanLaporanStok> with SingleTick
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Laporan',
+            onPressed: (_tabController.index == 0 && _isLoadingStock) || (_tabController.index == 1 && _isLoadingMovements) 
+                ? null 
+                : _cetakLaporanStok,
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.primaryEmerald,
           unselectedLabelColor: AppColors.textSecondary,
           indicatorColor: AppColors.primaryEmerald,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+          onTap: (index) => setState(() {}), // Refresh state untuk tombol print
           tabs: const [Tab(text: 'Stok Terkini'), Tab(text: 'Riwayat Pergerakan')],
         ),
       ),

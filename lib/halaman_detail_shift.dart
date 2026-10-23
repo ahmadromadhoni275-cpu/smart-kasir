@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import 'tema.dart';
 import 'core/services/api_service.dart';
+import 'core/services/printer_service.dart';
 
 class HalamanDetailShift extends StatefulWidget {
   final int shiftId;
@@ -73,6 +74,77 @@ class _HalamanDetailShiftState extends State<HalamanDetailShift> {
     }
   }
 
+  void _showNotif(String pesan, Color warna) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+      backgroundColor: warna,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  // ==========================================
+  // LOGIKA CETAK DETAIL SHIFT (Z-REPORT / X-REPORT)
+  // ==========================================
+  Future<void> _cetakStrukShift() async {
+    if (_shift == null) return;
+    _showNotif('Menyiapkan pencetakan struk shift...', AppColors.smartBlue);
+
+    try {
+      double opening = double.tryParse(_shift!['opening_cash'].toString()) ?? 0;
+      double expected = double.tryParse(_shift!['expected_cash'].toString()) ?? 0;
+      double actual = double.tryParse(_shift!['actual_cash'].toString()) ?? 0;
+      double diff = double.tryParse(_shift!['difference'].toString()) ?? 0;
+      bool isClosed = _shift!['status'] == 'CLOSED';
+
+      Map<String, dynamic> dataLaporan = {
+        'periode': 'Shift #${widget.shiftId}',
+        'Kasir': _shift!['user_name'] ?? 'Kasir',
+        'Status': isClosed ? 'DITUTUP' : 'BERJALAN',
+        '-- RINGKASAN KAS --': '',
+        'Modal_Awal': opening,
+        'Kas_Sistem': expected,
+      };
+
+      if (isClosed) {
+        dataLaporan['Fisik_Aktual'] = actual;
+        dataLaporan['Selisih'] = diff; // Jika minus, akan otomatis merah/ada tanda minus di struk
+      }
+
+      dataLaporan['-- PERGERAKAN KAS --'] = '';
+      
+      // Melakukan perulangan untuk mencetak semua mutasi (CASH_IN, CASH_OUT, dll)
+      for (int i = 0; i < _movements.length; i++) {
+        var mv = _movements[i];
+        String type = mv['type'] ?? 'UNKNOWN';
+        String desc = mv['description'] ?? type;
+        double amount = double.tryParse(mv['amount'].toString()) ?? 0;
+        bool isMinus = ['CASH_OUT', 'WITHDRAWAL', 'REFUND'].contains(type);
+        
+        String time = '';
+        if (mv['created_at'] != null) {
+          try {
+            time = DateFormat('HH:mm').format(DateTime.parse(mv['created_at']).toLocal());
+          } catch (_) {}
+        }
+        
+        // Format Key: "Deskripsi (Jam)" -> Value: Nominalnya
+        String key = '$desc ($time)';
+        // Jika kuncinya sama persis (kasus langka), tambahkan spasi unik agar tidak tertimpa di Map
+        while (dataLaporan.containsKey(key)) {
+          key += ' ';
+        }
+        
+        dataLaporan[key] = isMinus ? -amount : amount;
+      }
+
+      await PrinterService().cetakLaporan(dataLaporan, isClosed ? "STRUK PENUTUPAN SHIFT" : "STRUK CEK SHIFT");
+      _showNotif('Struk shift berhasil dicetak!', AppColors.primaryEmerald);
+    } catch (e) {
+      _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,6 +154,15 @@ class _HalamanDetailShiftState extends State<HalamanDetailShift> {
         elevation: 1,
         title: Text('Detail Shift #${widget.shiftId}', style: const TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Struk Shift',
+            onPressed: _isLoading || _shift == null ? null : _cetakStrukShift,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))

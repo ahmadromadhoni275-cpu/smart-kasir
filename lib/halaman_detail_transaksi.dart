@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 // Package PDF
 import 'package:pdf/pdf.dart';
@@ -7,7 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'core/services/transaction_service.dart';
-import 'core/services/printer_service.dart'; // Import Printer Service Baru
+import 'core/services/printer_service.dart'; 
 import 'tema.dart';
 
 class HalamanDetailTransaksi extends StatefulWidget {
@@ -64,8 +66,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
     
     _showNotif('Mencetak ulang struk...', AppColors.smartBlue);
     try {
-      // PrinterService akan otomatis mengecek cabang aktif, 
-      // ukuran kertas, dan koneksi (Bluetooth/Wifi)
       await PrinterService().cetakStruk(_detail!); 
     } catch (e) {
       _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
@@ -328,7 +328,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
-                // Memanggil logika router printer yang baru
                 onPressed: _cetakUlangStruk,
                 icon: const Icon(Icons.print, color: Colors.white),
                 label: const Text('Cetak Ulang Struk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

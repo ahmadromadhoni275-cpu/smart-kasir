@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
+import 'core/services/printer_service.dart';
 import 'tema.dart';
 
 class HalamanLaporanPembayaran extends StatefulWidget {
@@ -139,6 +140,49 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
     }
   }
 
+  // ==========================================
+  // LOGIKA CETAK LAPORAN PEMBAYARAN
+  // ==========================================
+  Future<void> _cetakLaporanPembayaran() async {
+    if (_isLoading) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
+    );
+
+    // Menyusun rekapitulasi data pembayaran
+    Map<String, dynamic> dataLaporan = {
+      'periode': _selectedFilter,
+      'Total_Frekuensi': '$_totalCount Transaksi',
+      'Total_Nominal': _totalAmount,
+      '-- RINCIAN METODE --': '',
+    };
+
+    // Menyusun daftar metode pembayaran yang digunakan
+    for (var pay in _payments) {
+      String method = pay['payment_group']?.toString() ?? 'LAINNYA';
+      double total = double.tryParse(pay['total_amount']?.toString() ?? '0') ?? 0.0;
+      int count = int.tryParse(pay['payment_count']?.toString() ?? '0') ?? 0;
+
+      // Key: "CASH (15x)", Value: Nominalnya
+      dataLaporan['$method (${count}x)'] = total;
+    }
+
+    try {
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN PEMBAYARAN");
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan Pembayaran berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,6 +192,15 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
+        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            tooltip: 'Cetak Laporan',
+            onPressed: _isLoading || _payments.isEmpty ? null : _cetakLaporanPembayaran,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
@@ -161,10 +214,10 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
                       SliverToBoxAdapter(child: _buildFilterPanel()),
                       SliverToBoxAdapter(child: _buildSummaryCards()),
                       
-                      SliverToBoxAdapter(
+                      const SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
-                          child: const Text('Rincian Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                          padding: EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
+                          child: Text('Rincian Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                         ),
                       ),
                       
