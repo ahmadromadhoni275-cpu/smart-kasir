@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart'; // Tambahan untuk memuat pengaturan cabang
 
 // Package Cetak
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -10,8 +11,10 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
 import 'core/services/api_service.dart';
-import 'core/services/payment_method_service.dart'; // Pastikan path service metode pembayaran benar
+import 'core/services/payment_method_service.dart'; 
 import 'halaman_shift.dart'; 
+import 'core/services/printer_service.dart';
+import 'core/services/printer_storage_service.dart';
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -351,7 +354,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     "table_id": _selectedTable != null ? int.tryParse(_selectedTable!.replaceAll('Meja ', '')) : null,
                     "discount": _discount,
                     "tax": 0,
-                    "payments": paymentsPayload, // Mengirimkan array payments
+                    "payments": paymentsPayload, 
                     "items": _cart.map((c) => {
                       "product_id": c['product_id'],
                       "name": c['name'], 
@@ -372,8 +375,25 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     final totalToPrint = _grandTotal;
                     
                     setState(() { _cart.clear(); _selectedTable = null; });
+
+                    // ====================================================
+                    // INTEGRASI CETAK OTOMATIS (TERGANTUNG PENGATURAN TOKO)
+                    // ====================================================
+                    final prefs = await SharedPreferences.getInstance();
+                    final storeId = prefs.getString('store_id') ?? '';
+                    final settingString = prefs.getString('printer_settings_$storeId'); // Baca setting sesuai cabang
                     
-                    // Tampilkan Sukses & Siapkan Cetak
+                    if (settingString != null) {
+                      final printerSettings = json.decode(settingString);
+                      if (printerSettings['auto_print'] == true) {
+                        _showNotif('Mencetak struk otomatis...', AppColors.smartBlue);
+                        // Lakukan cetak secara background tanpa mengganggu UI
+                        _cetakStruk(data['invoice'], itemsToPrint, totalToPrint, paymentsPayload, data['kembalian']);
+                      }
+                    }
+                    // ====================================================
+                    
+                    // Tampilkan Sukses UI
                     _tampilkanSukses(data['invoice'], data['kembalian'], itemsToPrint, totalToPrint, paymentsPayload);
                     _muatProduk(); 
                   } else {
@@ -398,7 +418,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       _showNotif('Platform tidak didukung.', Colors.red);
       return;
     }
-    _showNotif('Mencetak struk...', AppColors.smartBlue);
+    
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
@@ -484,7 +504,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       side: const BorderSide(color: Color(0xFF1E293B)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                     ),
-                    onPressed: () => _cetakStruk(invoice, itemsToPrint, totalToPrint, paymentsPayload, kembalian), 
+                    onPressed: () {
+                      _showNotif('Mencetak struk...', AppColors.smartBlue);
+                      _cetakStruk(invoice, itemsToPrint, totalToPrint, paymentsPayload, kembalian);
+                    }, 
                     icon: const Icon(Icons.print, color: Color(0xFF1E293B)), 
                     label: const Text('Cetak', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold))
                   )

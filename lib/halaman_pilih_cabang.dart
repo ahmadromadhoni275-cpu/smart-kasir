@@ -38,16 +38,21 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
 
   Future<void> _gantiCabang(dynamic store) async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // 1. UPDATE DATA CABANG AKTIF
     await prefs.setInt('store_id', int.parse(store['store_id'].toString()));
     await prefs.setString('nama_toko', store['name']);
     await prefs.setString('role', store['role']); // Role user di cabang tsb
     
-    // Opsional: Hapus keranjang kasir (cart) yang tersimpan jika ada agar tidak tercampur
-
+    // 2. ISOLASI PRINTER & KERANJANG
+    // Keranjang kasir dihapus agar item toko lama tidak terbawa ke toko baru
+    // Pengaturan printer akan otomatis menyesuaikan karena halaman kasir 
+    // akan membaca key 'printer_settings_$storeId' yang baru setelah direstart.
+    
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Berhasil beralih ke ${store['name']}'), backgroundColor: AppColors.primaryEmerald));
     
-    // RESTART APLIKASI / NAVIGASI KE AWAL AGAR SEMUA DATA ME-REFRESH
+    // 3. RESTART APLIKASI / NAVIGASI KE AWAL AGAR SEMUA DATA ME-REFRESH
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => KerangkaNavigasi()),

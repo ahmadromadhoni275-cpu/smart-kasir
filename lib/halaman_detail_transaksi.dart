@@ -60,16 +60,16 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   }
 
   // ==========================================
-  // FITUR 1: CETAK BLUETOOTH (Mendukung Split Payment)
+  // FITUR 1: CETAK ULANG BLUETOOTH (Tanpa Buat Transaksi Baru)
   // ==========================================
-  Future<void> _cetakStrukBluetooth() async {
+  Future<void> _cetakUlangStrukBluetooth() async {
     if (_detail == null) return;
     if (kIsWeb || Platform.isIOS) {
       _showNotif('Cetak Bluetooth hanya didukung di Android.', Colors.red);
       return;
     }
 
-    _showNotif('Menghubungkan ke printer...', AppColors.smartBlue);
+    _showNotif('Mencetak ulang struk...', AppColors.smartBlue);
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
@@ -78,6 +78,11 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
       bytes += generator.text("SMART KASIR", styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
       bytes += generator.text(_detail!['store_name'] ?? 'Toko Anda', styles: const PosStyles(align: PosAlign.center));
       bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      
+      // Tambahkan penanda bahwa ini adalah struk cetak ulang (Opsional)
+      bytes += generator.text("** CETAK ULANG **", styles: const PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text("--------------------------------", styles: const PosStyles(align: PosAlign.center));
+      
       bytes += generator.row([PosColumn(text: "No", width: 4), PosColumn(text: ": ${widget.invoiceNumber}", width: 8)]);
       bytes += generator.row([PosColumn(text: "Tgl", width: 4), PosColumn(text: ": ${_detail!['created_at']}", width: 8)]);
       bytes += generator.row([PosColumn(text: "Ksr", width: 4), PosColumn(text: ": ${_detail!['cashier_name'] ?? 'Kasir'}", width: 8)]);
@@ -115,7 +120,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
       bool isConnected = await PrintBluetoothThermal.connectionStatus;
       if (isConnected) {
         await PrintBluetoothThermal.writeBytes(bytes);
-        _showNotif('Struk berhasil dicetak!', AppColors.primaryEmerald);
+        _showNotif('Struk berhasil dicetak ulang!', AppColors.primaryEmerald);
       } else {
         _showNotif('Printer tidak terhubung. Periksa pengaturan printer.', Colors.red);
       }
@@ -125,7 +130,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   }
 
   // ==========================================
-  // FITUR 2: SIMPAN PDF & BAGIKAN (Mendukung Split Payment)
+  // FITUR 2: SIMPAN PDF & BAGIKAN
   // ==========================================
   Future<void> _bagikanPDF() async {
     if (_detail == null) return;
@@ -143,6 +148,8 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
             children: [
               pw.Text('SMART KASIR', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
               pw.Text(_detail!['store_name'] ?? 'Toko Anda', style: const pw.TextStyle(fontSize: 10)),
+              pw.Divider(borderStyle: pw.BorderStyle.dashed),
+              pw.Text('** SALINAN STRUK **', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('No:'), pw.Text(widget.invoiceNumber)]),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Tgl:'), pw.Text(_detail!['created_at'])]),
@@ -172,7 +179,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 ]
               ),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
-              // RINCIAN PEMBAYARAN PDF
               ...payments.map((p) => pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [pw.Text('BAYAR (${p['method']})'), pw.Text(_formatCurrency(p['amount']))]
@@ -187,7 +193,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
 
     await Printing.sharePdf(
       bytes: await pdf.save(),
-      filename: 'Struk_${widget.invoiceNumber}.pdf',
+      filename: 'Struk_Copy_${widget.invoiceNumber}.pdf',
     );
   }
 
@@ -308,7 +314,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 
                 const SizedBox(height: 24),
                 
-                // --- BAGIAN BARU: RINCIAN METODE PEMBAYARAN (MENDUKUNG SPLIT PAYMENT) ---
                 const Text('Riwayat Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
                 const SizedBox(height: 12),
                 Container(
@@ -379,9 +384,11 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: _cetakStrukBluetooth,
+                // Mengubah pemanggilan fungsi cetak ulang
+                onPressed: _cetakUlangStrukBluetooth,
                 icon: const Icon(Icons.print, color: Colors.white),
-                label: const Text('Cetak Struk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                // Mengubah label tombol
+                label: const Text('Cetak Ulang Struk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryEmerald,
                   padding: const EdgeInsets.symmetric(vertical: 16),
