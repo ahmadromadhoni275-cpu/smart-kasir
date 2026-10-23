@@ -4,6 +4,7 @@ import 'dart:async';
 import 'tema.dart'; // Pastikan AppColors tersedia
 import 'models/printer_job_model.dart';
 import 'core/services/print_job_service.dart';
+import 'halaman_detail_cetak.dart';
 
 class HalamanRiwayatCetak extends StatefulWidget {
   final String storeId;
@@ -249,7 +250,7 @@ class _HalamanRiwayatCetakState extends State<HalamanRiwayatCetak> {
     );
   }
 
-  Widget _buildKartuRiwayat(PrinterJobModel data) {
+    Widget _buildKartuRiwayat(PrinterJobModel data) {
     Color statusBgColor;
     Color statusTextColor;
     String statusTeks;
@@ -281,69 +282,86 @@ class _HalamanRiwayatCetakState extends State<HalamanRiwayatCetak> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          // Navigasi ke Halaman Detail Cetak
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => HalamanDetailCetak(printJob: data),
+            ),
+          ).then((_) {
+            // Segarkan data saat kembali dari halaman detail
+            _muatData();
+          });
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(data.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: statusBgColor, borderRadius: BorderRadius.circular(8)),
-                child: Text(statusTeks, style: TextStyle(color: statusTextColor, fontSize: 10, fontWeight: FontWeight.bold)),
-              )
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text('${data.documentType} · ${data.connectionType}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 4),
-          Text(formatWaktu, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          
-          if (data.errorMessage != null && data.errorMessage!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(Icons.info_outline, size: 14, color: Colors.red.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(data.errorMessage!, style: TextStyle(fontSize: 11, color: Colors.red.shade700))),
+                  Text(data.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: statusBgColor, borderRadius: BorderRadius.circular(8)),
+                    child: Text(statusTeks, style: TextStyle(color: statusTextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                  )
                 ],
               ),
-            ),
-          ],
-          
-          if (data.status == 'FAILED') ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF10B981),
-                  side: const BorderSide(color: Color(0xFF10B981)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              const SizedBox(height: 6),
+              Text('${data.documentType} · ${data.connectionType}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Text(formatWaktu, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              
+              if (data.errorMessage != null && data.errorMessage!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, size: 14, color: Colors.red.shade700),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(data.errorMessage!, style: TextStyle(fontSize: 11, color: Colors.red.shade700))),
+                    ],
+                  ),
                 ),
-                onPressed: () => _cobaCetakUlang(data.id),
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Coba Lagi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
-            )
-          ]
-        ],
+              ],
+              
+              if (data.status == 'FAILED') ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF10B981), // AppColors.primaryEmerald
+                      side: const BorderSide(color: Color(0xFF10B981)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    onPressed: () => _cobaCetakUlang(data.id),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Coba Lagi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                )
+              ]
+            ],
+          ),
+        ),
       ),
     );
   }
-
+  
   Widget _buildKosong() {
     return Center(
       child: Column(
