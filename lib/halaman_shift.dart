@@ -10,6 +10,7 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import 'tema.dart';
 import 'core/services/shift_service.dart';
+import 'halaman_riwayat_shift.dart';
 
 class HalamanShift extends StatefulWidget {
   const HalamanShift({super.key});

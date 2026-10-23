@@ -21,7 +21,7 @@ class KerangkaNavigasi extends StatefulWidget {
   const KerangkaNavigasi({super.key});
 
   @override
-  State<KerangkaNavigasi> createState() => _KerangkaNavigasiUtamaState();
+  State<KerangkaNavigasi> createState() => _KerangkaNavigasiState();
 }
 
 class _KerangkaNavigasiState extends State<KerangkaNavigasi> {

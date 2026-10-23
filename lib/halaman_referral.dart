@@ -66,15 +66,15 @@ class _HalamanReferralState extends State<HalamanReferral> {
                   _buildKartuKode(),
                   const SizedBox(height: 24),
                   
-                  // Navigasi ke Riwayat & Hadiah
+                  // Navigasi ke Riwayat & Hadiah (Sudah diaktifkan)
                   Row(
                     children: [
                       Expanded(child: _buildTombolAksi('Riwayat Referral', Icons.history, () {
-                        // Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanRiwayatReferral()));
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanRiwayatReferral()));
                       })),
                       const SizedBox(width: 12),
                       Expanded(child: _buildTombolAksi('Hadiah Saya', Icons.card_giftcard, () {
-                        // Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanHadiahReferral()));
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanHadiahReferral()));
                       })),
                     ],
                   ),
@@ -117,7 +117,8 @@ class _HalamanReferralState extends State<HalamanReferral> {
             children: [
               Text('$valid', style: TextStyle(color: gold, fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(width: 4),
-              Text('dari $target referral', style: const TextStyle(color: Colors.white70, fontSize: 14))),
+              // PERBAIKAN: Menghapus 1 tanda kurung tutup ")" ekstra di baris bawah ini
+              Text('dari $target referral', style: const TextStyle(color: Colors.white70, fontSize: 14)),
             ],
           ),
           const SizedBox(height: 12),
@@ -157,7 +158,7 @@ class _HalamanReferralState extends State<HalamanReferral> {
 
   Widget _buildKartuKode() {
     final String kode = dataSummary?['referral_code'] ?? '-';
-    final String tautan = 'https://smartkasir.id/ref/$kode';
+    final String tautan = 'https://smartkasir.shop/ref/$kode'; // <- Update nama domain Anda
 
     return Container(
       padding: const EdgeInsets.all(20),
