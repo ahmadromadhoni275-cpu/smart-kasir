@@ -16,6 +16,8 @@ import 'halaman_pengaturan_toko.dart';
 import 'halaman_pilih_cabang.dart';
 import 'halaman_langganan_saas.dart';
 import 'halaman_referral.dart'; 
+import 'halaman_pusat_bantuan.dart';
+// import 'halaman_notifikasi.dart'; // Aktifkan jika halaman notifikasi sudah ada
 
 class KerangkaNavigasi extends StatefulWidget {
   const KerangkaNavigasi({super.key});
@@ -164,9 +166,26 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
           children: [
             const Icon(Icons.point_of_sale, color: AppColors.primaryEmerald, size: 28),
             const SizedBox(width: 12),
-            _buildStoreSelector(isDesktop: false),
+            Expanded(child: _buildStoreSelector(isDesktop: false)),
           ],
         ),
+        // <-- TAMBAHAN MENU HEADER MOBILE (BANTUAN & NOTIFIKASI) -->
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.headset_mic_outlined, color: AppColors.navyActive),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPusatBantuan()));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
+            onPressed: () {
+              // TODO: Arahkan ke halaman notifikasi
+              // Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanNotifikasi()));
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: _halaman[_currentIndex],
       bottomNavigationBar: Container(
@@ -292,6 +311,27 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                       _buildStoreSelector(isDesktop: true),
                       Row(
                         children: [
+                          // <-- TAMBAHAN MENU HEADER DESKTOP (BANTUAN & NOTIFIKASI) -->
+                          IconButton(
+                            icon: const Icon(Icons.headset_mic_outlined, color: AppColors.navyActive),
+                            tooltip: 'Pusat Bantuan AI',
+                            onPressed: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPusatBantuan()));
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
+                            tooltip: 'Notifikasi',
+                            onPressed: () {
+                              // TODO: Arahkan ke halaman notifikasi
+                              // Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanNotifikasi()));
+                            },
+                          ),
+                          const SizedBox(width: 16),
+                          Container(height: 32, width: 1, color: AppColors.border), // Garis pembatas
+                          const SizedBox(width: 16),
+                          
+                          // Profil Pengguna
                           CircleAvatar(radius: 18, backgroundColor: AppColors.primaryEmerald.withOpacity(0.1), child: const Icon(Icons.person, size: 20, color: AppColors.primaryEmerald)),
                           const SizedBox(width: 12),
                           Column(
@@ -322,11 +362,19 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(color: isDesktop ? AppColors.background : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-        child: Row(children: [
-          const Icon(Icons.storefront, size: 18, color: AppColors.textPrimary),
-          const SizedBox(width: 8),
-          Text(_tokoAktif, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-          const Icon(Icons.arrow_drop_down, color: AppColors.textSecondary)
+        child: Row(
+          mainAxisSize: MainAxisSize.min, // Agar fleksibel di mobile
+          children: [
+            const Icon(Icons.storefront, size: 18, color: AppColors.textPrimary),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                _tokoAktif, 
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, color: AppColors.textSecondary)
         ]),
       ),
     );

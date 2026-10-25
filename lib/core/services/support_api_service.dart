@@ -86,4 +86,41 @@ class SupportApiService {
 
     return response.statusCode == 200;
   }
+  // --- TIKET BANTUAN ---
+
+  Future<List<dynamic>> getTickets() async {
+    final headers = await _getHeaders();
+    final response = await http.get(Uri.parse('$baseUrl/tickets'), headers: headers);
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    throw Exception('Gagal memuat tiket');
+  }
+
+  Future<int> createTicket(String subject, String description, String priority) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/tickets'),
+      headers: headers,
+      body: jsonEncode({'subject': subject, 'description': description, 'priority': priority}),
+    );
+    if (response.statusCode == 201) return jsonDecode(response.body)['ticket_id'];
+    throw Exception('Gagal membuat tiket');
+  }
+
+  Future<Map<String, dynamic>> getTicketDetail(int ticketId) async {
+    final headers = await _getHeaders();
+    final response = await http.get(Uri.parse('$baseUrl/tickets/$ticketId'), headers: headers);
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
+    throw Exception('Gagal memuat detail tiket');
+  }
+
+  Future<bool> replyTicket(int ticketId, String message) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/tickets/$ticketId/reply'),
+      headers: headers,
+      body: jsonEncode({'message': message}),
+    );
+    return response.statusCode == 201;
+  }
+  
 }

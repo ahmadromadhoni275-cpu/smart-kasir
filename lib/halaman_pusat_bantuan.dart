@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import 'tema.dart'; // File tema yang berisi AppColors
 import 'core/services/support_api_service.dart'; // Import service API
+import 'halaman_riwayat_bantuan.dart'; // Import halaman riwayat
+import 'halaman_detail_tiket_bantuan.dart'; // <-- IMPORT HALAMAN TIKET BANTUAN
 
 // Model untuk menampung data pesan di UI
 class SupportMessage {
@@ -65,18 +67,20 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
     super.dispose();
   }
 
-  // INISIALISASI PERCAKAPAN (Ambil dari API)
+  // INISIALISASI PERCAKAPAN
   Future<void> _initializeChat() async {
     setState(() => _isInitializing = true);
     
     try {
-      final convs = await _apiService.getConversations();
+      if (_activeConversationId == null) {
+        final convs = await _apiService.getConversations();
+        if (convs.isNotEmpty && convs.first['status'] == 'ACTIVE') {
+          _activeConversationId = int.parse(convs.first['support_conversation_id'].toString());
+        }
+      }
       
-      if (convs.isNotEmpty && convs.first['status'] == 'ACTIVE') {
-        _activeConversationId = int.parse(convs.first['support_conversation_id'].toString());
-        
+      if (_activeConversationId != null) {
         final history = await _apiService.getMessages(_activeConversationId!);
-        
         if (mounted) {
           setState(() {
             _messages.clear();
@@ -96,6 +100,7 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
         _activeConversationId = await _apiService.startConversation();
         if (mounted) {
           setState(() {
+            _messages.clear();
             _messages.add(
               SupportMessage(
                 id: 'welcome',
@@ -132,7 +137,93 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
     });
   }
 
-  // MENGIRIM PESAN (Panggil API Backend)
+  // --- FUNGSI BARU: DIALOG ESKALASI TIKET ---
+  Future<void> _showTicketEscalationDialog({String? prefilledDescription}) async {
+    final subjectCtrl = TextEditingController(text: 'Kendala: ');
+    final descCtrl = TextEditingController(text: prefilledDescription ?? '');
+    
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        bool isSubmitting = false;
+        
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: const [
+                  Icon(Icons.support_agent, color: AppColors.navyActive),
+                  SizedBox(width: 8),
+                  Text('Buat Tiket Bantuan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Jawaban AI belum menyelesaikan masalah? Jangan khawatir, sampaikan detail kendala Anda kepada tim Support manusia kami.', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: subjectCtrl,
+                      decoration: const InputDecoration(labelText: 'Topik/Subjek Masalah', border: OutlineInputBorder(), isDense: true),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 4,
+                      decoration: const InputDecoration(labelText: 'Jelaskan Detail Masalah', border: OutlineInputBorder(), alignLabelWithHint: true),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(context),
+                  child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting ? null : () async {
+                    if (subjectCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Subjek dan detail harus diisi.')));
+                      return;
+                    }
+                    
+                    setStateDialog(() => isSubmitting = true);
+                    try {
+                      final ticketId = await _apiService.createTicket(subjectCtrl.text.trim(), descCtrl.text.trim(), 'HIGH');
+                      if (mounted) {
+                        Navigator.pop(context); // Tutup Dialog
+                        // Navigasi ke Halaman Tiket
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => HalamanDetailTiket(ticketId: ticketId)),
+                        );
+                      }
+                    } catch (e) {
+                      setStateDialog(() => isSubmitting = false);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuat tiket.')));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryEmerald,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
+                  child: isSubmitting 
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                      : const Text('Kirim Tiket', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  // MENGIRIM PESAN
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _activeConversationId == null) return;
 
@@ -178,17 +269,20 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
           _isTyping = false;
           _messages.add(SupportMessage(
             id: 'err_${DateTime.now().millisecondsSinceEpoch}',
-            text: 'Maaf, gagal terhubung ke server Smart Assist. Silakan periksa koneksi internet Anda.',
+            text: 'Maaf, gagal terhubung ke server Smart Assist. Sepertinya ada kendala koneksi.',
             isUser: false,
             timestamp: DateTime.now(),
           ));
         });
         _scrollToBottom();
+        
+        // TRIGGER 1: Tawarkan tiket jika server AI down
+        _showTicketEscalationDialog(prefilledDescription: "Pesan gagal terkirim:\n$userText");
       }
     }
   }
 
-  // MENGIRIM FEEDBACK (Jempol)
+  // MENGIRIM FEEDBACK
   Future<void> _giveFeedback(SupportMessage message, bool isHelpful) async {
     if (message.id.startsWith('temp_') || message.id.startsWith('err_') || message.id == 'welcome') return;
     
@@ -204,6 +298,25 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
             duration: Duration(seconds: 2),
           ),
         );
+        
+        // TRIGGER 2: Tawarkan tiket jika balasan tidak membantu (Jempol Bawah)
+        if (!isHelpful) {
+          // Cari pesan user sebelum jawaban AI ini untuk konteks
+          String userContext = '';
+          int msgIndex = _messages.indexOf(message);
+          if (msgIndex > 0 && _messages[msgIndex - 1].isUser) {
+            userContext = _messages[msgIndex - 1].text;
+          }
+          
+          // Delay sedikit agar SnackBar "Terima kasih" terlihat sebentar sebelum dialog muncul
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted) {
+              _showTicketEscalationDialog(
+                prefilledDescription: "Pertanyaan Saya:\n$userContext\n\n*Jawaban AI belum menyelesaikan masalah saya.*"
+              );
+            }
+          });
+        }
       }
     } catch (e) {
       debugPrint("Gagal kirim feedback: $e");
@@ -312,10 +425,23 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
       ),
       actions: [
         IconButton(
+          icon: const Icon(Icons.history),
+          tooltip: 'Riwayat Percakapan',
+          onPressed: () async {
+            final selectedConvId = await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HalamanRiwayatBantuan()),
+            );
+            if (selectedConvId != null && selectedConvId != _activeConversationId) {
+              _activeConversationId = int.parse(selectedConvId.toString());
+              _initializeChat(); 
+            }
+          },
+        ),
+        IconButton(
           icon: const Icon(Icons.add_comment),
           tooltip: 'Mulai Ulang Percakapan',
           onPressed: () {
-            // Memaksa membuat sesi baru dengan mereset id
             _activeConversationId = null;
             _initializeChat();
           },
@@ -385,14 +511,12 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
                     ),
                   ),
                   
-                  // TOMBOL NAVIGASI MENU (Action Route)
                   if (!isMe && msg.actionRoute != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
                         onPressed: () {
-                          // Buka halaman sesuai route yang diberikan AI
                           Navigator.pushNamed(context, msg.actionRoute!);
                         },
                         style: OutlinedButton.styleFrom(
@@ -407,7 +531,6 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
 
                   const SizedBox(height: 8),
                   
-                  // INFO WAKTU & FEEDBACK
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -451,7 +574,6 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
               ),
             ),
           ),
-          
           if (isMe) const SizedBox(width: 8),
         ],
       ),
@@ -515,9 +637,7 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
                 ),
               ),
             ),
-            
             const SizedBox(width: 8),
-            
             Container(
               decoration: const BoxDecoration(color: AppColors.navyActive, shape: BoxShape.circle),
               child: IconButton(

@@ -5,7 +5,9 @@ import 'core/services/profile_service.dart';
 
 import 'halaman_edit_profil_akun.dart';
 import 'halaman_ganti_kata_sandi.dart';
-import 'halaman_login.dart'; // Aktifkan dan sesuaikan dengan halaman login Anda
+// <-- IMPORT HALAMAN TIKET BANTUAN -->
+import 'halaman_daftar_tiket_bantuan.dart'; 
+import 'halaman_login.dart'; 
 
 class HalamanProfilAkun extends StatefulWidget {
   const HalamanProfilAkun({super.key});
@@ -118,6 +120,7 @@ class _HalamanProfilAkunState extends State<HalamanProfilAkun> {
               ),
               const SizedBox(height: 24),
 
+              // SECTION PENGATURAN KEAMANAN & DATA
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 child: Text('Pengaturan Keamanan & Data', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 12)),
@@ -127,6 +130,17 @@ class _HalamanProfilAkunState extends State<HalamanProfilAkun> {
               }),
               _buildMenuTile(Icons.lock_outline, 'Ganti Kata Sandi', 'Perbarui kata sandi untuk keamanan', () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanGantiKataSandi()));
+              }),
+              
+              const SizedBox(height: 12),
+
+              // SECTION BANTUAN & DUKUNGAN (MENU TIKET BARU)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Text('Bantuan & Dukungan', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 12)),
+              ),
+              _buildMenuTile(Icons.headset_mic_outlined, 'Tiket Bantuan Saya', 'Pantau status kendala dan eskalasi AI', () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanDaftarTiket()));
               }),
               
               const SizedBox(height: 32),
@@ -154,7 +168,11 @@ class _HalamanProfilAkunState extends State<HalamanProfilAkun> {
       child: ListTile(
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: AppColors.navyActive)),
+        leading: Container(
+          padding: const EdgeInsets.all(8), 
+          decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(10)), 
+          child: Icon(icon, color: AppColors.navyActive)
+        ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         trailing: const Icon(Icons.chevron_right, color: Colors.grey),
