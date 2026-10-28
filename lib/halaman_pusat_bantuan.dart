@@ -6,6 +6,7 @@ import 'tema.dart'; // File tema yang berisi AppColors
 import 'core/services/support_api_service.dart'; // Import service API
 import 'halaman_riwayat_bantuan.dart'; // Import halaman riwayat
 import 'halaman_detail_tiket_bantuan.dart'; // <-- IMPORT HALAMAN TIKET BANTUAN
+import 'halaman_daftar_tiket_bantuan.dart';
 
 // Model untuk menampung data pesan di UI
 class SupportMessage {
@@ -424,6 +425,18 @@ class _HalamanPusatBantuanState extends State<HalamanPusatBantuan> {
         ],
       ),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.assignment_outlined), // Ikon List Tiket
+          tooltip: 'Daftar Tiket Bantuan',
+          onPressed: () {
+            // Import file ini di bagian atas jika belum: 
+            // import 'halaman_daftar_tiket_bantuan.dart';
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HalamanDaftarTiket()),
+            );
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.history),
           tooltip: 'Riwayat Percakapan',
