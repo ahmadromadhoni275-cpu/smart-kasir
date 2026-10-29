@@ -8,6 +8,8 @@ import 'halaman_registrasi.dart';
 import 'halaman_beranda.dart';
 // TODO: Sesuaikan path import ApiClient ini dengan lokasi folder Anda
 import 'core/network/api_client.dart'; 
+// <-- TAMBAHKAN IMPORT FCM SERVICE DI SINI -->
+import 'core/services/fcm_service.dart';
 
 class HalamanLogin extends StatefulWidget {
   const HalamanLogin({super.key});
@@ -55,10 +57,15 @@ class _HalamanLoginState extends State<HalamanLogin> {
         }
 
         final prefs = await SharedPreferences.getInstance();
+        
         // 1. SIMPAN IDENTITAS UNIVERSAL & JWT TOKEN
         await prefs.setString('jwt_token', token);
         await prefs.setInt('user_id', int.parse(data['user_id'].toString()));
         await prefs.setString('username', data['name']);
+
+        // <-- TAMBAHAN: DAFTARKAN FCM TOKEN KE SERVER SETELAH JWT TERSIMPAN -->
+        await FcmService.registerDeviceToken();
+        // <--------------------------------------------------------------------
 
         // 2. CEK JUMLAH CABANG UNTUK ROUTING
         if (stores.length == 1) {
@@ -82,7 +89,7 @@ class _HalamanLoginState extends State<HalamanLogin> {
           }
         }
       } else {
-        // Fallback jika API merespons 200 tapi statusnya bukan success (jarang terjadi di CI4 kita)
+        // Fallback jika API merespons 200 tapi statusnya bukan success
         _showNotif(resData['message'] ?? 'Login Gagal', AppColors.error);
       }
     } on DioException catch (e) {

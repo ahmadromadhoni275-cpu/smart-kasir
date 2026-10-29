@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'dart:convert';
+import 'tema.dart'; // File tema yang memuat AppColors
+import 'core/services/notification_api_service.dart';
 
 class HalamanNotifikasi extends StatefulWidget {
   const HalamanNotifikasi({super.key});
@@ -12,299 +11,217 @@ class HalamanNotifikasi extends StatefulWidget {
 }
 
 class _HalamanNotifikasiState extends State<HalamanNotifikasi> {
-  final String baseUrl = 'https://smartkasir.shop/api/notifikasi';
-  List dataNotifikasi = [];
-  bool isLoading = true;
-  int tokoId = 1;
+  final NotificationApiService _apiService = NotificationApiService();
+  
+  bool _isLoading = true;
+  List<dynamic> _notifications = [];
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _muatData();
+    _fetchNotifications();
   }
 
-  Future<void> _muatData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      tokoId = prefs.getInt('toko_id') ?? 1;
-    });
-    ambilNotifikasi();
-  }
-
-  Future<void> ambilNotifikasi() async {
-    setState(() => isLoading = true);
+  Future<void> _fetchNotifications() async {
+    setState(() => _isLoading = true);
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl?toko_id=$tokoId'),
-        headers: {'ngrok-skip-browser-warning': 'true'},
-      );
-
-      if (response.statusCode == 200) {
-        final res = json.decode(response.body);
+      final res = await _apiService.getNotifications();
+      if (mounted) {
         setState(() {
-          dataNotifikasi = res['data'] ?? [];
-          isLoading = false;
+          _notifications = res['data'] ?? [];
+          _unreadCount = res['unread_count'] ?? 0;
+          _isLoading = false;
         });
-      } else {
-        setState(() => isLoading = false);
       }
     } catch (e) {
-      setState(() => isLoading = false);
-    }
-  }
-
-  // Fungsi untuk menandai satu pesan telah dibaca
-  Future<void> tandaiDibaca(int idNotif, int index) async {
-    // Ubah UI seketika agar terasa cepat
-    setState(() {
-      dataNotifikasi[index]['is_read'] = 1;
-    });
-
-    try {
-      await http.post(
-        Uri.parse('$baseUrl/tandai-dibaca'),
-        body: jsonEncode({'id': idNotif}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    } catch (e) {
-      debugPrint('Gagal update status baca: $e');
-    }
-  }
-
-  // Fungsi massal: Tandai semua dibaca
-  Future<void> tandaiSemuaDibaca() async {
-    setState(() {
-      for (var item in dataNotifikasi) {
-        item['is_read'] = 1;
-      }
-    });
-
-    try {
-      await http.post(
-        Uri.parse('$baseUrl/tandai-semua-dibaca'),
-        body: jsonEncode({'toko_id': tokoId}),
-        headers: {'Content-Type': 'application/json'},
-      );
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Semua notifikasi ditandai telah dibaca')),
+          const SnackBar(content: Text('Gagal memuat notifikasi.'), backgroundColor: AppColors.error)
         );
       }
-    } catch (e) {
-      debugPrint('Error: $e');
     }
   }
 
-  // Fungsi massal: Hapus semua
-  Future<void> hapusSemua() async {
-    setState(() => isLoading = true);
+  Future<void> _markAllRead() async {
     try {
-      await http.post(
-        Uri.parse('$baseUrl/hapus-semua'),
-        body: jsonEncode({'toko_id': tokoId}),
-        headers: {'Content-Type': 'application/json'},
-      );
+      await _apiService.markAllAsRead();
       setState(() {
-        dataNotifikasi.clear();
-        isLoading = false;
+        _unreadCount = 0;
+        for (var notif in _notifications) {
+          notif['is_read'] = 1;
+        }
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Semua notifikasi berhasil dihapus')),
-        );
-      }
     } catch (e) {
-      setState(() => isLoading = false);
+      debugPrint('Gagal menandai semua dibaca: $e');
     }
   }
 
-  // Menampilkan Pop-up detail pesan ala aplikasi chat
-  void tampilkanDetailPesan(Map item, int index) {
-    // Jika belum dibaca, langsung tandai dibaca saat di-klik
-    if (item['is_read'].toString() == '0') {
-      tandaiDibaca(int.parse(item['id'].toString()), index);
+  Future<void> _handleNotifClick(dynamic notif) async {
+    // 1. Tandai sebagai dibaca jika statusnya belum dibaca (0)
+    if (notif['is_read'] == 0 || notif['is_read'] == "0") {
+      setState(() {
+        notif['is_read'] = 1;
+        if (_unreadCount > 0) _unreadCount--;
+      });
+      _apiService.markAsRead(int.parse(notif['notification_id'].toString()));
     }
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Row(
-            children: [
-              Icon(
-                item['tipe'] == 'pembayaran' ? Icons.payment : Icons.campaign,
-                color: Colors.blueAccent,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  item['judul'] ?? 'Pemberitahuan',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  formatWaktu(item['created_at'].toString()),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                const Divider(),
-                const SizedBox(height: 10),
-                Text(
-                  item['pesan'] ?? '',
-                  style: const TextStyle(fontSize: 15, height: 1.5),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Tutup', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
-    );
+    // 2. Navigasi ke Action Route jika tersedia
+    final route = notif['action_route'];
+    if (route != null && route.toString().isNotEmpty) {
+      // Pastikan route yang dikirim dari server sudah didaftarkan di MaterialApp(routes: {...})
+      Navigator.pushNamed(context, route.toString());
+    }
   }
 
-  String formatWaktu(String waktuServer) {
-    try {
-      DateTime parsed = DateTime.parse("${waktuServer.replaceAll(' ', 'T')}+07:00").toLocal();
-      return DateFormat('dd MMM yyyy, HH:mm').format(parsed);
-    } catch (e) {
-      return waktuServer;
+  // --- HELPER IKON & WARNA BERDASARKAN KATEGORI ---
+  IconData _getIcon(String type) {
+    switch (type.toUpperCase()) {
+      case 'TRANSACTION': return Icons.receipt_long;
+      case 'STOCK': return Icons.inventory_2_outlined;
+      case 'SHIFT': return Icons.swap_horiz;
+      case 'SUBSCRIPTION': return Icons.diamond_outlined;
+      case 'REFERRAL': return Icons.card_giftcard;
+      case 'SUPPORT': return Icons.headset_mic_outlined;
+      case 'SECURITY': return Icons.security;
+      case 'SYSTEM': return Icons.campaign_outlined;
+      default: return Icons.notifications_none; 
+    }
+  }
+
+  Color _getIconColor(String type) {
+    switch (type.toUpperCase()) {
+      case 'TRANSACTION': return AppColors.primaryEmerald;
+      case 'STOCK': return Colors.orange;
+      case 'SHIFT': return Colors.teal;
+      case 'SUBSCRIPTION': return Colors.purple;
+      case 'REFERRAL': return Colors.pink;
+      case 'SUPPORT': return Colors.blue;
+      case 'SECURITY': return AppColors.error;
+      case 'SYSTEM': return AppColors.navyActive;
+      default: return AppColors.textSecondary;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Notifikasi', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
-        elevation: 0,
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        iconTheme: const IconThemeData(color: AppColors.navyActive),
+        title: const Text('Notifikasi', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold, fontSize: 16)),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'tandai') {
-                tandaiSemuaDibaca();
-              } else if (value == 'hapus') {
-                hapusSemua();
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(
-                value: 'tandai',
-                child: Row(
-                  children: [
-                    Icon(Icons.mark_email_read, color: Colors.blue),
-                    SizedBox(width: 10),
-                    Text('Tandai semua dibaca'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'hapus',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_sweep, color: Colors.red),
-                    SizedBox(width: 10),
-                    Text('Hapus semua'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          if (_unreadCount > 0)
+            TextButton(
+              onPressed: _markAllRead,
+              child: const Text('Tandai Semua Dibaca', style: TextStyle(color: AppColors.primaryEmerald, fontWeight: FontWeight.bold, fontSize: 12)),
+            )
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : dataNotifikasi.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.notifications_off_outlined, size: 60, color: Colors.grey),
-                      SizedBox(height: 10),
-                      Text('Belum ada notifikasi sistem.', style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                )
+      body: _isLoading 
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+          : _notifications.isEmpty
+              ? _buildEmptyState()
               : RefreshIndicator(
-                  onRefresh: ambilNotifikasi,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(15),
-                    itemCount: dataNotifikasi.length,
+                  onRefresh: _fetchNotifications,
+                  color: AppColors.primaryEmerald,
+                  child: ListView.separated(
+                    itemCount: _notifications.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (context, index) {
-                      var item = dataNotifikasi[index];
-                      bool isUnread = item['is_read'].toString() == '0';
+                      final notif = _notifications[index];
+                      final bool isUnread = notif['is_read'] == 0 || notif['is_read'] == "0";
+                      final DateTime date = DateTime.parse(notif['created_at']).toLocal();
+                      
+                      final iconColor = _getIconColor(notif['type']);
 
-                      // Menentukan ikon berdasarkan tipe (opsional, jika dari server ada field 'tipe')
-                      IconData iconNotif = Icons.notifications;
-                      if (item['tipe'] == 'pembayaran') iconNotif = Icons.receipt_long;
-                      if (item['tipe'] == 'pengumuman') iconNotif = Icons.campaign;
+                      return Material(
+                        color: isUnread ? AppColors.primaryEmerald.withOpacity(0.05) : Colors.white,
+                        child: InkWell(
+                          onTap: () => _handleNotifClick(notif),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Ikon Kategori
+                                CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: iconColor.withOpacity(0.1),
+                                  child: Icon(_getIcon(notif['type']), color: iconColor, size: 22),
+                                ),
+                                const SizedBox(width: 12),
+                                
+                                // Konten Teks
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        notif['title'],
+                                        style: TextStyle(
+                                          fontWeight: isUnread ? FontWeight.bold : FontWeight.w600, 
+                                          color: AppColors.navyActive, 
+                                          fontSize: 14
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        notif['message'], 
+                                        style: TextStyle(
+                                          color: isUnread ? AppColors.textPrimary : AppColors.textSecondary, 
+                                          fontSize: 13,
+                                          height: 1.4
+                                        )
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        DateFormat('dd MMM yyyy • HH:mm').format(date),
+                                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: isUnread ? Colors.blue.shade50 : Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          border: isUnread ? Border.all(color: Colors.blue.shade200) : null,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withAlpha(20),
-                              blurRadius: 5,
-                              offset: const Offset(0, 3),
-                            )
-                          ],
-                        ),
-                        child: ListTile(
-                          onTap: () => tampilkanDetailPesan(item, index),
-                          contentPadding: const EdgeInsets.all(15),
-                          leading: CircleAvatar(
-                            backgroundColor: isUnread ? Colors.blueAccent : Colors.grey.shade400,
-                            child: Icon(iconNotif, color: Colors.white),
-                          ),
-                          title: Text(
-                            item['judul'] ?? 'Pemberitahuan',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis, // Terpotong jika terlalu panjang
-                            style: TextStyle(
-                              fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                              fontSize: 16,
+                                // Indikator Titik Merah (Unread)
+                                if (isUnread)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 6, left: 8),
+                                    width: 10, 
+                                    height: 10, 
+                                    decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle)
+                                  ),
+                              ],
                             ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 5),
-                              Text(
-                                item['pesan'] ?? '',
-                                maxLines: 2, // Pesan di luar hanya tampil 2 baris
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.black87, fontSize: 13),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                formatWaktu(item['created_at'].toString()),
-                                style: const TextStyle(color: Colors.grey, fontSize: 11),
-                              ),
-                            ],
                           ),
                         ),
                       );
                     },
                   ),
                 ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.notifications_off_outlined, size: 72, color: AppColors.textSecondary.withOpacity(0.3)),
+          const SizedBox(height: 16),
+          const Text('Belum Ada Notifikasi', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+          const SizedBox(height: 8),
+          const Text(
+            'Pengumuman sistem, info transaksi,\ndan pembaruan stok akan muncul di sini.', 
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 14)
+          ),
+        ],
+      ),
     );
   }
 }
