@@ -169,7 +169,7 @@ class PrinterService {
   // ==========================================
   Future<List<int>> _generateStrukBytes(Map<String, dynamic> data, PrinterModel printerConfig) async {
     final profile = await CapabilityProfile.load();
-    final paper = printerConfig.paperSize == PrinterPaperSize.mm80 ? PaperSize.mm80 : PaperSize.mm58;
+    final paper = printerConfig.paperWidth == 80 ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paper, profile); 
     List<int> bytes = [];
 
@@ -325,7 +325,7 @@ class PrinterService {
   // ==========================================
   Future<List<int>> _generateLaporanBytes(Map<String, dynamic> data, String judulLaporan, PrinterModel printerConfig) async {
     final profile = await CapabilityProfile.load();
-    final paper = printerConfig.paperSize == PrinterPaperSize.mm80 ? PaperSize.mm80 : PaperSize.mm58;
+    final paper = printerConfig.paperWidth == 80 ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paper, profile); 
     List<int> bytes = [];
 

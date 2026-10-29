@@ -154,7 +154,7 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
         // Notifikasi & Bantuan (Sering jadi target Broadcast)
         '/notifikasi': (context) => const HalamanNotifikasi(),
         '/pusat_bantuan': (context) => const HalamanPusatBantuan(),
-        '/tiket_bantuan': (context) => const HalamanDaftarTiketBantuan(),
+        '/tiket_bantuan': (context) => HalamanDaftarTiketBantuan(),
         
         // Transaksi & Laporan
         '/riwayat_transaksi': (context) => const HalamanRiwayatTransaksi(),

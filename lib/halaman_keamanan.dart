@@ -43,17 +43,17 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
 
   Future<void> _simpanPasswordBaru() async {
     if (_passLamaCtrl.text.isEmpty || _passBaruCtrl.text.isEmpty || _konfirmasiCtrl.text.isEmpty) {
-      _tampilkanNotif('Perhatian', 'Semua kolom password wajib diisi!', AppColors.premiumGold);
+      _tampilkanNotif('Perhatian', 'Semua kolom password wajib diisi!', Colors.orange);
       return;
     }
 
     if (_passBaruCtrl.text != _konfirmasiCtrl.text) {
-      _tampilkanNotif('Gagal', 'Password baru dan konfirmasi tidak cocok!', AppColors.red);
+      _tampilkanNotif('Gagal', 'Password baru dan konfirmasi tidak cocok!', Colors.red);
       return;
     }
 
     if (_passBaruCtrl.text.length < 6) {
-      _tampilkanNotif('Lemah', 'Password baru minimal 6 karakter.', AppColors.red);
+      _tampilkanNotif('Lemah', 'Password baru minimal 6 karakter.', Colors.red);
       return;
     }
 
@@ -72,16 +72,16 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
       );
 
       if (response.statusCode == 200) {
-        _tampilkanNotif('Berhasil!', 'Password akun Anda berhasil diperbarui.', AppColors.emerald);
+        _tampilkanNotif('Berhasil!', 'Password akun Anda berhasil diperbarui.', AppColors.primaryEmerald);
         _passLamaCtrl.clear();
         _passBaruCtrl.clear();
         _konfirmasiCtrl.clear();
       } else {
         final res = json.decode(response.body);
-        _tampilkanNotif('Gagal', res['message'] ?? 'Password lama salah atau terjadi kesalahan.', AppColors.red);
+        _tampilkanNotif('Gagal', res['message'] ?? 'Password lama salah atau terjadi kesalahan.', Colors.red);
       }
     } catch (e) {
-      _tampilkanNotif('Error', 'Kesalahan jaringan: $e', AppColors.red);
+      _tampilkanNotif('Error', 'Kesalahan jaringan: $e', Colors.red);
     }
 
     setState(() => isLoading = false);
@@ -92,15 +92,15 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Row(
           children: [
-            Icon(warna == AppColors.emerald ? Icons.check_circle : Icons.error_outline, color: AppColors.white),
+            Icon(warna == AppColors.primaryEmerald ? Icons.check_circle : Icons.error_outline, color: Colors.white),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-                  Text(pesan, style: const TextStyle(fontSize: 12, color: AppColors.white)),
+                  Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(pesan, style: const TextStyle(fontSize: 12, color: Colors.white)),
                 ],
               ),
             ),
@@ -121,10 +121,10 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
     return Scaffold(
       backgroundColor: AppColors.lightGray,
       appBar: AppBar(
-        backgroundColor: AppColors.deepNavy,
+        backgroundColor: AppColors.navyActive,
         elevation: 0,
-        title: const Text('Keamanan & Privasi', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white)),
-        iconTheme: const IconThemeData(color: AppColors.white),
+        title: const Text('Keamanan & Privasi', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 50),
@@ -136,20 +136,20 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
               width: double.infinity,
               padding: const EdgeInsets.all(25),
               decoration: const BoxDecoration(
-                color: AppColors.deepNavy,
+                color: AppColors.navyActivey,
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
               ),
               child: Column(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(color: AppColors.white.withOpacity(0.1), shape: BoxShape.circle),
-                    child: const Icon(Icons.shield_outlined, size: 50, color: AppColors.white),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                    child: const Icon(Icons.shield_outlined, size: 50, color: Colors.white),
                   ),
                   const SizedBox(height: 15),
-                  const Text('Amankan Akun Anda', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.white)),
+                  const Text('Amankan Akun Anda', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 5),
-                  Text('Perbarui kata sandi secara berkala untuk menjaga keamanan.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.white.withOpacity(0.7))),
+                  Text('Perbarui kata sandi secara berkala untuk menjaga keamanan.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7))),
                   const SizedBox(height: 10),
                 ],
               ),
@@ -160,7 +160,7 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
             // --- FORM UBAH PASSWORD ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('Ubah Kata Sandi', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+              child: Text('Ubah Kata Sandi', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary)),
             ),
             const SizedBox(height: 15),
             
@@ -168,7 +168,7 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
               margin: const EdgeInsets.symmetric(horizontal: 20),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppColors.white,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
               ),
@@ -185,15 +185,15 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.teal,
+                        backgroundColor: AppColors.primaryEmeraldl,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 0,
                       ),
                       onPressed: isLoading ? null : _simpanPasswordBaru,
                       child: isLoading
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
-                          : const Text('Simpan Password', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.white)),
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Simpan Password', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
                     ),
                   ),
                 ],
@@ -205,22 +205,22 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
             // --- OTENTIKASI TAMBAHAN (FITUR PREMIUM UI) ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('Otentikasi Tambahan', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+              child: Text('Otentikasi Tambahan', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary)),
             ),
             const SizedBox(height: 15),
 
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
-                color: AppColors.white,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
               ),
               child: SwitchListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                activeColor: AppColors.emerald,
-                title: const Text('Gunakan PIN Akses Kasir', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText)),
-                subtitle: const Text('Minta PIN setiap kali membuka layar transaksi.', style: TextStyle(fontSize: 11, color: AppColors.slateGray)),
+                activeColor: AppColors.primaryEmerald,
+                title: const Text('Gunakan PIN Akses Kasir', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary)),
+                subtitle: const Text('Minta PIN setiap kali membuka layar transaksi.', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                 secondary: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(color: AppColors.smartBlue.withOpacity(0.1), shape: BoxShape.circle),
@@ -249,13 +249,13 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.slateGray)),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
           const SizedBox(height: 8),
           TextField(
             controller: controller,
             obscureText: isObscure,
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.lock_outline, color: AppColors.slateGray, size: 20),
+              prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary, size: 20),
               suffixIcon: IconButton(
                 icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: AppColors.smartBlue, size: 20),
                 onPressed: () => onToggle(!isObscure),

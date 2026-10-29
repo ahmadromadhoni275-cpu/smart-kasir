@@ -114,7 +114,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                               Navigator.pop(context);
                               _saveSettings(
                                 _printer.copyWith(
-                                  name: dev['name'],
+                                  deviceName: dev['name'],
                                   address: dev['address'],
                                 ),
                               );
@@ -169,7 +169,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                 Navigator.pop(context);
                 _saveSettings(
                   _printer.copyWith(
-                    name: 'Network Printer (LAN)',
+                    deviceName: 'Network Printer (LAN)',
                     address: ipController.text.trim(),
                   ),
                 );
@@ -281,7 +281,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                       const Text('Printer struk utama', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       const SizedBox(height: 2),
                       Text(
-                        _printer.name ?? 'Belum ada perangkat terhubung',
+                        _printer.deviceName ?? 'Belum ada perangkat terhubung',
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                       ),
                       if (isPrinterSet) ...[
@@ -367,8 +367,8 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
                       child: Row(
                         children: [
-                          Expanded(child: _buildKertasTab(PrinterPaperSize.mm58, '58 mm')),
-                          Expanded(child: _buildKertasTab(PrinterPaperSize.mm80, '80 mm')),
+                          Expanded(child: _buildKertasTab(58, '58 mm')),
+                          Expanded(child: _buildKertasTab(80, '80 mm')),
                         ],
                       ),
                     ),
@@ -463,7 +463,7 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
     return InkWell(
       onTap: () {
         // Jika ganti koneksi, reset nama & address printer lama
-        _saveSettings(_printer.copyWith(connectionType: type, name: null, address: null));
+        _saveSettings(_printer.copyWith(connectionType: type, deviceName: null, address: null));
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -487,25 +487,25 @@ class _HalamanPengaturanPrinterState extends State<HalamanPengaturanPrinter> {
     );
   }
 
-  Widget _buildKertasTab(PrinterPaperSize size, String label) {
-    bool isSelected = _printer.paperSize == size;
+  Widget _buildKertasTab(int width, String label) {
+    bool isSelected = _printer.paperWidth == width;
     return InkWell(
-      onTap: () => _saveSettings(_printer.copyWith(paperSize: size)),
-      borderRadius: BorderRadius.circular(8),
+      onTap: () => _saveSettings(_printer.copyWith(paperWidth: width)),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? AppColors.primaryEmerald : Colors.transparent, // Sesuaikan warna jika error
           borderRadius: BorderRadius.circular(8),
-          border: isSelected ? Border.all(color: const Color(0xFF10B981)) : null,
+          border: Border.all(
+            color: isSelected ? AppColors.primaryEmerald : Colors.grey.shade300,
+          ),
         ),
         alignment: Alignment.center,
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? const Color(0xFF10B981) : Colors.grey,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : Colors.grey.shade600,
           ),
         ),
       ),
