@@ -16,6 +16,7 @@ import 'halaman_shift.dart';
 import 'halaman_riwayat_stok.dart';
 import 'halaman_profil_akun.dart';
 import 'halaman_keamanan.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 // 1. Handler Notifikasi Background
 @pragma('vm:entry-point')
@@ -26,6 +27,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('id_ID', null);
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
