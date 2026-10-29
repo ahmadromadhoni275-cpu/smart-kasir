@@ -245,61 +245,64 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald));
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        bool isDesktop = constraints.maxWidth > 800;
-        
-        return RefreshIndicator(
-          color: AppColors.primaryEmerald,
-          onRefresh: _muatData,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Salam & Tanggal
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Column(
+    // 1. TAMBAHKAN SCAFFOLD SEBAGAI ROOT HALAMAN
+    return Scaffold(
+      backgroundColor: AppColors.background, // Background warna tema
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                bool isDesktop = constraints.maxWidth > 800;
+                
+                return RefreshIndicator(
+                  color: AppColors.primaryEmerald,
+                  onRefresh: _muatData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(), // Pastikan bisa di-scroll & refresh
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Selamat datang kembali 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                        SizedBox(height: 4),
-                        Text('Pantau performa bisnis Anda hari ini.', style: TextStyle(color: AppColors.textSecondary)),
+                        // Salam & Tanggal
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Selamat datang kembali 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                                SizedBox(height: 4),
+                                Text('Pantau performa bisnis Anda hari ini.', style: TextStyle(color: AppColors.textSecondary)),
+                              ],
+                            ),
+                            if (isDesktop)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
+                                child: Text(DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(DateTime.now()), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                              )
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Notifikasi Shift (Hanya relevan bagi Manager/Kasir)
+                        if (_role == 'KASIR' || _role == 'MANAGER') _buildShiftWidget(),
+
+                        // 4 Kartu Ringkasan
+                        _buildSummarySection(),
+                        
+                        const SizedBox(height: 24),
+
+                        // Bagian Bawah (Transaksi & Produk Terlaris)
+                        _buildBottomSection(isDesktop),
+                        
+                        const SizedBox(height: 40),
                       ],
                     ),
-                    if (isDesktop)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-                        child: Text(DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(DateTime.now()), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                      )
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Notifikasi Shift (Hanya relevan bagi Manager/Kasir)
-                if (_role == 'KASIR' || _role == 'MANAGER') _buildShiftWidget(),
-
-                // 4 Kartu Ringkasan
-                _buildSummarySection(),
-                
-                const SizedBox(height: 24),
-
-                // Bagian Bawah (Transaksi & Produk Terlaris)
-                _buildBottomSection(isDesktop),
-                
-                const SizedBox(height: 40),
-              ],
+                  ),
+                );
+              },
             ),
-          ),
-        );
-      },
     );
   }
 }
