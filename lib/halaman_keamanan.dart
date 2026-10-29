@@ -136,7 +136,7 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
               width: double.infinity,
               padding: const EdgeInsets.all(25),
               decoration: const BoxDecoration(
-                color: AppColors.navyActivey,
+                color: AppColors.navyActive,
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
               ),
               child: Column(
@@ -185,7 +185,7 @@ class _HalamanKeamananState extends State<HalamanKeamanan> {
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryEmeraldl,
+                        backgroundColor: AppColors.primaryEmerald,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 0,

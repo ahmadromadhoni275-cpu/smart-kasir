@@ -145,7 +145,6 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
       home: const KerangkaNavigasi(),
       
       // Daftarkan rute global Anda di sini agar fungsi pushNamed() bisa bekerja
-            // Daftarkan rute global Anda di sini agar fungsi pushNamed() bisa bekerja
       routes: {
         // Otentikasi & Utama
         '/login': (context) => const HalamanLogin(),
@@ -154,7 +153,7 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
         // Notifikasi & Bantuan (Sering jadi target Broadcast)
         '/notifikasi': (context) => const HalamanNotifikasi(),
         '/pusat_bantuan': (context) => const HalamanPusatBantuan(),
-        '/tiket_bantuan': (context) => HalamanDaftarTiketBantuan(),
+        '/tiket_bantuan': (context) => const HalamanDaftarTiket(),
         
         // Transaksi & Laporan
         '/riwayat_transaksi': (context) => const HalamanRiwayatTransaksi(),
