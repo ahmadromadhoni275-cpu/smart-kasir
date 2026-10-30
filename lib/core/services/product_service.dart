@@ -8,7 +8,7 @@ class Product {
   final String? categoryName; // Tambahan
   final String sku; 
   final String name;
-  final double price;
+  final double sellingPrice;
   final int stock;
   final String? image;
 
@@ -18,7 +18,7 @@ class Product {
     this.categoryName,
     required this.sku,
     required this.name,
-    required this.price,
+    required this.sellingPrice,
     required this.stock,
     this.image,
   });

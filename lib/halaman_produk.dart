@@ -87,7 +87,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
     final bool isEdit = produk != null;
     final skuCtrl = TextEditingController(text: isEdit ? produk.sku : '');
     final nameCtrl = TextEditingController(text: isEdit ? produk.name : '');
-    final priceCtrl = TextEditingController(text: isEdit ? produk.price.toInt().toString() : '');
+    final priceCtrl = TextEditingController(text: isEdit ? produk.sellingPrice.toInt().toString() : '');
     final stockCtrl = TextEditingController(text: isEdit ? produk.stock.toString() : '');
     
     int? selectedCategoryId;
@@ -152,7 +152,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                       final data = {
                         'sku': skuCtrl.text,
                         'name': nameCtrl.text,
-                        'price': priceCtrl.text,
+                        'selling_price': priceCtrl.text,
                         'stock': stockCtrl.text.isEmpty ? '0' : stockCtrl.text,
                         'category_id': selectedCategoryId, 
                       };
@@ -323,7 +323,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  Text(_formatCurrency(p.price), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
+                                  Text(_formatCurrency(p.sellingPrice), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
                                   const SizedBox(width: 12),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
