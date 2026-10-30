@@ -1,23 +1,34 @@
 import 'dart:convert';
-import 'api_service.dart'; // Sesuaikan import dengan ApiService Anda
+import 'api_service.dart';
 
 class StockService {
   // 1. Ringkasan Stok
-  static Future<Map<String, dynamic>> getSummary() async {
+  static Future> getSummary() async {
     final response = await ApiService.get('stock');
     if (response.statusCode == 200) {
-      return json.decode(response.body)['data'];
+      final resData = json.decode(response.body);
+      // Mendukung 'success' ataupun true
+      if (resData['status'] == 'success' || resData['status'] == true) { 
+        return resData['data'];
+      }
     }
     throw Exception('Gagal memuat ringkasan stok');
   }
 
   // 2. Daftar Produk untuk Stok
   static Future<List<dynamic>> getProducts({String search = ''}) async {
+    // Pastikan endpoint ini sesuai dengan routes di CI4 (biasanya '/stock/products')
     final response = await ApiService.get('stock/products?search=$search');
+    
     if (response.statusCode == 200) {
-      return json.decode(response.body)['data'];
+      final resData = json.decode(response.body);
+      if (resData['status'] == 'success' || resData['status'] == true) {
+        return resData['data'] ?? [];
+      }
+      throw Exception(resData['message'] ?? 'Format data produk tidak valid');
+    } else {
+      throw Exception('Error Server: ${response.statusCode}');
     }
-    throw Exception('Gagal memuat daftar produk');
   }
 
   // 3. Stok Masuk
@@ -52,7 +63,10 @@ class StockService {
   static Future<List<dynamic>> getMovements({String type = '', int page = 1}) async {
     final response = await ApiService.get('stock/movements?type=$type&page=$page');
     if (response.statusCode == 200) {
-      return json.decode(response.body)['data'];
+      final resData = json.decode(response.body);
+      if (resData['status'] == 'success' || resData['status'] == true) {
+         return resData['data'];
+      }
     }
     throw Exception('Gagal memuat riwayat stok');
   }

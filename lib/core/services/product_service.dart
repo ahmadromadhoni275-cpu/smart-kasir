@@ -4,8 +4,8 @@ import '../network/api_client.dart';
 // --- MODEL PRODUK ---
 class Product {
   final int id;
-  final int? categoryId;      // Tambahan
-  final String? categoryName; // Tambahan
+  final int? categoryId;      
+  final String? categoryName; 
   final String sku; 
   final String name;
   final double sellingPrice;
