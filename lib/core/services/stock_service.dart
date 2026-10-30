@@ -64,10 +64,12 @@ class StockService {
     final response = await ApiService.get('stock/movements?type=$type&page=$page');
     if (response.statusCode == 200) {
       final resData = json.decode(response.body);
+      // Mendukung 'success' ataupun true agar aman
       if (resData['status'] == 'success' || resData['status'] == true) {
-         return resData['data'];
+         return resData['data'] ?? [];
       }
+      throw Exception(resData['message'] ?? 'Gagal memuat riwayat stok');
     }
-    throw Exception('Gagal memuat riwayat stok');
+    throw Exception('Gagal menghubungi server');
   }
 }
