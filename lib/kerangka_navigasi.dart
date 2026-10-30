@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
 
 // --- IMPORT SEMUA HALAMAN YANG SUDAH DIBUAT ---
+import 'halaman_beranda.dart';
 import 'halaman_kasir.dart';
 import 'halaman_produk.dart';
 import 'halaman_kategori.dart';
@@ -17,7 +18,7 @@ import 'halaman_pilih_cabang.dart';
 import 'halaman_langganan_saas.dart';
 import 'halaman_referral.dart'; 
 import 'halaman_pusat_bantuan.dart';
-// import 'halaman_notifikasi.dart'; // Aktifkan jika halaman notifikasi sudah ada
+import 'halaman_notifikasi.dart'; 
 
 class KerangkaNavigasi extends StatefulWidget {
   const KerangkaNavigasi({super.key});
@@ -36,7 +37,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   // RUMAH / INDEKS HALAMAN UNIVERSAL (Total 13 Halaman)
   // =========================================================
   late final List<Widget> _halaman = [
-    const Center(child: Text('0: Dashboard (Home)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), 
+    const HalamanBeranda(), 
     const HalamanKasir(),                                 
     const HalamanProduk(),                                
     const HalamanLaporan(),                               
