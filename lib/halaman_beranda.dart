@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async'; // Tambahan untuk Timer Carousel
+
 import 'tema.dart';
 import 'core/services/api_service.dart';
 
@@ -17,10 +19,40 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   String _role = 'KASIR';
   Map<String, dynamic> _dataDashboard = {};
 
+  // Variabel untuk Carousel
+  final PageController _pageController = PageController();
+  int _currentCarouselIndex = 0;
+  Timer? _carouselTimer;
+
   @override
   void initState() {
     super.initState();
     _muatData();
+    _mulaiCarousel();
+  }
+
+  @override
+  void dispose() {
+    _carouselTimer?.cancel(); // Wajib batalkan timer saat keluar halaman
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // Timer dinamis mendeteksi jumlah banner aktif dari server
+  void _mulaiCarousel() {
+    _carouselTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_pageController.hasClients) {
+        List banners = _dataDashboard['banners'] ?? [];
+        if (banners.length > 1) {
+          int nextPage = (_currentCarouselIndex + 1) % banners.length;
+          _pageController.animateToPage(
+            nextPage,
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeInOutCubic,
+          );
+        }
+      }
+    });
   }
 
   Future<void> _muatData() async {
@@ -44,6 +76,119 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
 
   String _formatRupiah(num angka) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
+  }
+
+  // =================================================================
+  // HELPER UNTUK CAROUSEL DINAMIS
+  // =================================================================
+  IconData _getBannerIcon(String iconName) {
+    switch (iconName.toLowerCase()) {
+      case 'print': return Icons.print;
+      case 'workspace_premium': return Icons.workspace_premium;
+      case 'campaign': return Icons.campaign;
+      case 'info': return Icons.info_outline;
+      case 'warning': return Icons.warning_amber_rounded;
+      case 'update': return Icons.system_update;
+      case 'discount': return Icons.local_offer;
+      default: return Icons.campaign;
+    }
+  }
+
+  List<Color> _getBannerGradient(String theme) {
+    switch (theme.toLowerCase()) {
+      case 'blue': return [Colors.blue.shade700, Colors.blue.shade400];
+      case 'gold': return [AppColors.goldPremium ?? Colors.orange, Colors.orange.shade300];
+      case 'red': return [AppColors.error, Colors.red.shade400];
+      case 'purple': return [Colors.purple.shade700, Colors.purple.shade400];
+      case 'emerald':
+      default: return [AppColors.primaryEmerald, Colors.teal.shade400];
+    }
+  }
+
+  Widget _buildCarousel() {
+    List rawBanners = _dataDashboard['banners'] ?? [];
+    
+    // Jika tidak ada banner aktif dari server, sembunyikan widget carousel
+    if (rawBanners.isEmpty) return const SizedBox.shrink();
+
+    List<Widget> slides = rawBanners.map((b) {
+      return _buildSlideItem(
+        b['title'] ?? '',
+        b['description'] ?? '',
+        _getBannerIcon(b['icon_name'] ?? ''),
+        _getBannerGradient(b['color_theme'] ?? ''),
+      );
+    }).toList();
+
+    int safeIndex = _currentCarouselIndex >= slides.length ? 0 : _currentCarouselIndex;
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 140,
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() => _currentCarouselIndex = index);
+            },
+            children: slides,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            slides.length,
+            (index) => AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              height: 6,
+              width: safeIndex == index ? 24 : 6,
+              decoration: BoxDecoration(
+                color: safeIndex == index ? AppColors.primaryEmerald : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSlideItem(String title, String desc, IconData icon, List<Color> gradientColors) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(colors: gradientColors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        boxShadow: [
+          BoxShadow(color: gradientColors[0].withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Text(
+                  desc, 
+                  style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4), 
+                  maxLines: 2, 
+                  overflow: TextOverflow.ellipsis
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Icon(icon, size: 60, color: Colors.white.withOpacity(0.25)),
+        ],
+      ),
+    );
   }
 
   // =================================================================
@@ -103,7 +248,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
           childAspectRatio: childAspectRatio,
           children: [
             _buildSummaryCard('Pendapatan', _formatRupiah(summary['sales'] ?? 0), '+12.5% vs kemarin', Icons.account_balance_wallet, AppColors.primaryEmerald),
-            _buildSummaryCard('Transaksi', '${summary['transactions'] ?? 0}', '+8.2% vs kemarin', Icons.receipt_long, AppColors.goldPremium),
+            _buildSummaryCard('Transaksi', '${summary['transactions'] ?? 0}', '+8.2% vs kemarin', Icons.receipt_long, AppColors.goldPremium ?? Colors.orange), // Tambah fallback warna
             
             // Laba hanya muncul untuk OWNER & MANAGER
             if (_role != 'KASIR')
@@ -168,7 +313,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
                 children: [
-                  Text('#${idx + 1}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.goldPremium, fontSize: 14)),
+                  Text('#${idx + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.goldPremium ?? Colors.orange, fontSize: 14)), // Tambah fallback warna
                   const SizedBox(width: 16),
                   Expanded(child: Text(prod['name'], style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary))),
                   Text('${prod['jumlah_terjual']} terjual', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
@@ -245,9 +390,8 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. TAMBAHKAN SCAFFOLD SEBAGAI ROOT HALAMAN
     return Scaffold(
-      backgroundColor: AppColors.background, // Background warna tema
+      backgroundColor: AppColors.background,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
           : LayoutBuilder(
@@ -258,7 +402,7 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                   color: AppColors.primaryEmerald,
                   onRefresh: _muatData,
                   child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(), // Pastikan bisa di-scroll & refresh
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,6 +428,10 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                           ],
                         ),
                         const SizedBox(height: 24),
+
+                        // <--- TAMBAHAN WIDGET CAROUSEL --->
+                        _buildCarousel(),
+                        const SizedBox(height: 16),
 
                         // Notifikasi Shift (Hanya relevan bagi Manager/Kasir)
                         if (_role == 'KASIR' || _role == 'MANAGER') _buildShiftWidget(),

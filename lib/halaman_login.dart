@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tema.dart';
 import 'halaman_registrasi.dart';
-import 'halaman_beranda.dart';
+import 'kerangka_navigasi.dart'; 
 // TODO: Sesuaikan path import ApiClient ini dengan lokasi folder Anda
 import 'core/network/api_client.dart'; 
 // <-- TAMBAHKAN IMPORT FCM SERVICE DI SINI -->
@@ -77,9 +77,9 @@ class _HalamanLoginState extends State<HalamanLogin> {
           await prefs.setString('role', store['role']); // OWNER, MANAGER, KASIR
           await prefs.setBool('is_logged_in', true);
 
-          if (mounted) {
+                    if (mounted) {
             Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (context) => const HalamanBeranda()));
+                context, MaterialPageRoute(builder: (context) => const KerangkaNavigasi()));
           }
         } else {
           // ALUR PILIH CABANG (> 1 Cabang)
