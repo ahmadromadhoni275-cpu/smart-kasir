@@ -25,11 +25,16 @@ class _HalamanRiwayatStokState extends State<HalamanRiwayatStok> {
     setState(() => _isLoading = true);
     try {
       final mvs = await StockService.getMovements(type: _filterType);
-      setState(() => _movements = mvs);
+      if (mounted) setState(() => _movements = mvs);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: AppColors.error));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')), 
+          backgroundColor: AppColors.error
+        ));
+      }
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Color _getColorByType(String type) {
@@ -94,25 +99,27 @@ class _HalamanRiwayatStokState extends State<HalamanRiwayatStok> {
                           itemBuilder: (ctx, i) {
                             final mv = _movements[i];
                             String type = mv['type'] ?? 'UNKNOWN';
-                            int qty = int.tryParse(mv['quantity'].toString()) ?? 0;
+                            int qty = int.tryParse(mv['quantity']?.toString() ?? '0') ?? 0;
                             String prefix = (type == 'IN' || type == 'RETURN' || qty > 0) ? '+' : '';
 
-                            DateTime date = DateTime.parse(mv['created_at']).toLocal();
+                            // PERBAIKAN: Keamanan Parsing Tanggal (Anti-Crash)
+                            String rawDate = mv['created_at']?.toString() ?? '';
+                            DateTime date = DateTime.tryParse(rawDate)?.toLocal() ?? DateTime.now();
                             String formattedDate = DateFormat('dd MMM yyyy, HH:mm').format(date);
 
                             return Card(
                               elevation: 0,
                               margin: const EdgeInsets.only(bottom: 12),
-                             shape: RoundedRectangleBorder(
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(color: AppColors.border),
+                                side: const BorderSide(color: AppColors.border),
                               ),
                               child: ListTile(
                                 leading: CircleAvatar(
                                   backgroundColor: _getColorByType(type).withOpacity(0.1),
                                   child: Icon(_getIconByType(type), color: _getColorByType(type)),
                                 ),
-                                title: Text(mv['product_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                title: Text(mv['product_name']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.bold)),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -128,7 +135,7 @@ class _HalamanRiwayatStokState extends State<HalamanRiwayatStok> {
                                   children: [
                                     Text('$prefix$qty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _getColorByType(type))),
                                     const SizedBox(height: 4),
-                                    Text('${mv['stock_before']} ➔ ${mv['stock_after']}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                                    Text('${mv['stock_before'] ?? 0} ➔ ${mv['stock_after'] ?? 0}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
                                   ],
                                 ),
                               ),
