@@ -24,17 +24,23 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
     _fetchRiwayat();
   }
 
-  Future<void> _fetchRiwayat() async {
+    Future<void> _fetchRiwayat() async {
     setState(() { _isLoading = true; _errorMessage = ''; });
     try {
       final response = await ApiService.get('shifts');
       if (response.statusCode == 200) {
         final resData = json.decode(response.body);
-        setState(() {
-          _riwayatShifts = resData['data'] ?? [];
-        });
+        
+        // SUPPORT STRING 'success' ATAU BOOLEAN true
+        if (resData['status'] == 'success' || resData['status'] == true) {
+          setState(() {
+            _riwayatShifts = resData['data'] ?? [];
+          });
+        } else {
+          setState(() => _errorMessage = resData['message'] ?? 'Gagal memuat riwayat shift.');
+        }
       } else {
-        setState(() => _errorMessage = 'Gagal memuat riwayat shift.');
+        setState(() => _errorMessage = 'Gagal memuat riwayat shift (Error ${response.statusCode}).');
       }
     } catch (e) {
       setState(() => _errorMessage = 'Terjadi kesalahan jaringan.');
@@ -44,10 +50,15 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
 
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
   
-  String _formatTanggal(String dateStr) {
-    if (dateStr.isEmpty) return '-';
-    DateTime date = DateTime.parse(dateStr).toLocal();
-    return DateFormat('dd MMM yyyy • HH:mm', 'id_ID').format(date);
+  // PERLINDUNGAN NULL-SAFE UNTUK TANGGAL
+  String _formatTanggal(dynamic dateStr) {
+    if (dateStr == null || dateStr.toString().isEmpty) return '-';
+    try {
+      DateTime date = DateTime.parse(dateStr.toString()).toLocal();
+      return DateFormat('dd MMM yyyy • HH:mm', 'id_ID').format(date);
+    } catch (e) {
+      return '-';
+    }
   }
 
   @override
