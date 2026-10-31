@@ -2,12 +2,19 @@ import 'dart:convert';
 import 'api_service.dart';
 
 class ProfileService {
-  static Future<Map<String, dynamic>> getProfile() async {
+  static Future> getProfile() async {
     final response = await ApiService.get('profile');
     if (response.statusCode == 200) {
-      return json.decode(response.body)['data'];
+      final resData = json.decode(response.body);
+      
+      // Deteksi status success (string) atau true (boolean)
+      if (resData['status'] == 'success' || resData['status'] == true) {
+        return resData['data'] ?? {}; // Cegah null jika data tidak ada
+      }
+      
+      throw Exception(resData['message'] ?? 'Gagal memuat data profil');
     }
-    throw Exception('Gagal memuat data profil');
+    throw Exception('Error Server: ${response.statusCode}');
   }
 
   static Future<void> updateProfile(Map<String, dynamic> data) async {

@@ -36,7 +36,7 @@ class _HalamanProfilAkunState extends State<HalamanProfilAkun> {
       final data = await ProfileService.getProfile();
       setState(() => _profileData = data);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error));
+      debugPrint(e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
