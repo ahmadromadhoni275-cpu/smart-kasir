@@ -59,7 +59,7 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
     _fetchSummary();
   }
 
-  Future<void> _fetchSummary() async {
+    Future<void> _fetchSummary() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -72,11 +72,21 @@ class _HalamanLaporanState extends State<HalamanLaporan> {
       final data = await _service.getSummary(strDateFrom, strDateTo);
       
       setState(() {
-        _netSales = double.tryParse(data['net_sales']?.toString() ?? '0') ?? 0.0;
-        _transactionCount = int.tryParse(data['transaction_count']?.toString() ?? '0') ?? 0;
-        _averageTransaction = double.tryParse(data['average_transaction']?.toString() ?? '0') ?? 0.0;
-        _chartData = data['chart_data'] ?? [];
-        _topProducts = data['top_products'] ?? [];
+        // PERLINDUNGAN NULL-SAFE: Mencegah crash jika key API berbeda 
+        // atau jika API mengembalikan null.
+        if (data != null) {
+            _netSales = double.tryParse((data['net_sales'] ?? data['total_sales'] ?? data['revenue'] ?? '0').toString()) ?? 0.0;
+            _transactionCount = int.tryParse((data['transaction_count'] ?? data['total_transactions'] ?? data['transactions'] ?? '0').toString()) ?? 0;
+            _averageTransaction = double.tryParse((data['average_transaction'] ?? data['avg_transaction'] ?? '0').toString()) ?? 0.0;
+            _chartData = data['chart_data'] ?? data['chart'] ?? data['grafik'] ?? [];
+            _topProducts = data['top_products'] ?? data['top'] ?? data['terlaris'] ?? [];
+        } else {
+            _netSales = 0.0;
+            _transactionCount = 0;
+            _averageTransaction = 0.0;
+            _chartData = [];
+            _topProducts = [];
+        }
       });
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
