@@ -226,7 +226,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  void _tampilkanModalPembayaran() {
+    void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
     
     var appliedPayments = [
@@ -242,7 +242,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
           
           double totalBayarInput = 0;
           for (var p in appliedPayments) {
-            totalBayarInput += double.tryParse(p['ctrl'].text) ?? 0;
+            // PERBAIKAN: Cast p['ctrl'] ke TextEditingController
+            totalBayarInput += double.tryParse((p['ctrl'] as TextEditingController).text) ?? 0;
           }
           double kurang = _grandTotal - totalBayarInput;
           if (kurang < 0) kurang = 0; 
@@ -310,7 +311,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       child: TextButton.icon(
                         onPressed: () {
                           setModalState(() {
-                            appliedPayments.add({'method': _activePaymentMethods.first['type'], 'ctrl': TextEditingController(text: kurang.toInt().toString())});
+                            // PERBAIKAN: Menggunakan Map bertipe eksplisit agar aman dari error Object
+                            appliedPayments.add({
+                              'method': _activePaymentMethods.first['type'].toString(), 
+                              'ctrl': TextEditingController(text: kurang.toInt().toString())
+                            });
                           });
                         }, 
                         icon: const Icon(Icons.add, size: 16), 
