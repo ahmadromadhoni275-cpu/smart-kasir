@@ -4,35 +4,37 @@ import '../network/api_client.dart';
 class ReportService {
   final Dio _dio = ApiClient().dio;
 
-  // Helper untuk mengecek status aman (Bisa String 'success' atau Boolean true)
-  bool _isSuccess(dynamic status) {
-    return status == 'success' || status == true;
-  }
-
   // Memanggil endpoint GET /reports untuk ringkasan (Summary)
-  Future> getSummary(String dateFrom, String dateTo) async {
+  Future<Map<String, dynamic>> getSummary(String dateFrom, String dateTo) async {
     try {
       final response = await _dio.get(
         '/reports',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return response.data['data'] ?? {}; 
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
+        return response.data['data']; 
       }
       throw Exception('Gagal memuat ringkasan laporan');
     } on DioException catch (e) {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
-  
-  // Memanggil endpoint GET /reports/sales untuk Laporan Penjualan
+    // Memanggil endpoint GET /reports/sales untuk Laporan Penjualan
   Future<List<dynamic>> getSales(String dateFrom, String dateTo) async {
     try {
       final response = await _dio.get(
         '/reports/sales',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? [];
       }
       throw Exception('Gagal memuat laporan penjualan');
@@ -41,14 +43,19 @@ class ReportService {
     }
   }
 
-  // Memanggil endpoint GET /reports/products
-  Future> getProductSales(String dateFrom, String dateTo) async {
+  // (Nanti tambahkan fungsi getSales, getPayments, dll di sini saat sub-halaman dibangun)
+    // Memanggil endpoint GET /reports/products
+  Future<Map<String, dynamic>> getProductSales(String dateFrom, String dateTo) async {
     try {
       final response = await _dio.get(
         '/reports/products',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? {'products': [], 'categories': []};
       }
       throw Exception('Gagal memuat laporan produk');
@@ -62,9 +69,13 @@ class ReportService {
     try {
       final response = await _dio.get(
         '/reports/payments',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? [];
       }
       throw Exception('Gagal memuat laporan pembayaran');
@@ -72,15 +83,18 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
-  
-  // Memanggil endpoint GET /reports/profit-loss
-  Future> getProfitLoss(String dateFrom, String dateTo) async {
+    // Memanggil endpoint GET /reports/profit-loss
+  Future<Map<String, dynamic>> getProfitLoss(String dateFrom, String dateTo) async {
     try {
       final response = await _dio.get(
         '/reports/profit-loss',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? {};
       }
       throw Exception('Gagal memuat laporan laba rugi');
@@ -89,11 +103,11 @@ class ReportService {
     }
   }
   
-  // GET /reports/stock (Stok Terkini)
+    // GET /reports/stock (Stok Terkini)
   Future<List<dynamic>> getStockReport() async {
     try {
       final response = await _dio.get('/reports/stock');
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? [];
       }
       throw Exception('Gagal memuat laporan stok');
@@ -107,9 +121,12 @@ class ReportService {
     try {
       final response = await _dio.get(
         '/reports/stock-movements',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? [];
       }
       throw Exception('Gagal memuat riwayat pergerakan stok');
@@ -117,15 +134,18 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
-  
-  // Memanggil endpoint GET /reports/shifts
+    // Memanggil endpoint GET /reports/shifts
   Future<List<dynamic>> getShifts(String dateFrom, String dateTo) async {
     try {
       final response = await _dio.get(
         '/reports/shifts',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? [];
       }
       throw Exception('Gagal memuat laporan shift');
@@ -133,15 +153,18 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
-  
-  // Memanggil endpoint GET /reports/returns
+    // Memanggil endpoint GET /reports/returns
   Future<List<dynamic>> getReturns(String dateFrom, String dateTo) async {
     try {
       final response = await _dio.get(
         '/reports/returns',
-        queryParameters: {'date_from': dateFrom, 'date_to': dateTo},
+        queryParameters: {
+          'date_from': dateFrom,
+          'date_to': dateTo,
+        },
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+
+      if (response.statusCode == 200 && response.data['status'] == true) {
         return response.data['data'] ?? [];
       }
       throw Exception('Gagal memuat laporan retur');
@@ -149,4 +172,5 @@ class ReportService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
+
 }

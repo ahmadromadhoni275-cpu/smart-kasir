@@ -25,16 +25,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
   List<dynamic> _products = [];
   String _searchQuery = '';
   
-  // State Keranjang & Checkout
+  // PERBAIKAN: Menambahkan > yang terhapus
   List> _cart = [];
-  final TextEditingController _noMejaCtrl = TextEditingController(); // UBAH: Jadi TextField
+  final TextEditingController _noMejaCtrl = TextEditingController(); 
   double _discount = 0;
   
-  // State Fitur Toko Dinamis (Dari Database/SharedPreferences)
   bool _enableTableNumber = false;
   bool _enableServices = false;
 
-  // State Metode Pembayaran Aktif
+  // PERBAIKAN: Menambahkan > yang terhapus
   List> _activePaymentMethods = [
     {'type': 'CASH', 'name': 'Tunai (Cash)'} 
   ];
@@ -44,13 +43,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
   @override
   void initState() {
     super.initState();
-    _loadStoreSettings(); // Muat Pengaturan Toko Dulu
+    _loadStoreSettings(); 
     _cekShiftAktif();
   }
 
-  // =========================================================
-  // MEMUAT PENGATURAN TOKO (DARI LOKAL / API)
-  // =========================================================
   Future<void> _loadStoreSettings() async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -76,9 +72,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
   }
 
-  // =========================================================
-  // CEK STATUS SHIFT, PRODUK, & METODE BAYAR
-  // =========================================================
   Future<void> _cekShiftAktif() async {
     setState(() => _isCheckingShift = true);
     try {
@@ -138,11 +131,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
-  // =========================================================
-  // LOGIKA KERANJANG
-  // =========================================================
   void _addToCart(dynamic product) {
-    // PARSING HARGA: Prioritaskan selling_price, baru price jika kosong
     double hargaJual = double.tryParse((product['selling_price'] ?? product['price'] ?? 0).toString()) ?? 0;
     int maxStok = int.tryParse(product['stock'].toString()) ?? 0;
 
@@ -163,7 +152,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
         _cart.add({
           'product_id': product['product_id'],
           'name': product['name'],
-          'price': hargaJual, // Masuk keranjang sebagai 'price' agar UI tak perlu rombak banyak
+          'price': hargaJual,
           'quantity': 1,
           'order_type': 'DINE_IN', 
           'note': null,
@@ -181,9 +170,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
   double get _grandTotal => _subtotal - _discount;
 
-  // =========================================================
-  // MODAL JASA MANUAL
-  // =========================================================
   void _tampilkanFormJasaManual() {
     TextEditingController namaCtrl = TextEditingController();
     TextEditingController hargaCtrl = TextEditingController();
@@ -241,12 +227,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  // =========================================================
-  // MODAL PEMBAYARAN & CHECKOUT
-  // =========================================================
   void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
     
+    // PERBAIKAN: Menambahkan > yang terhapus
     List> appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
@@ -297,9 +281,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             Expanded(
                               flex: 2,
                               child: DropdownButtonFormField<String>(
-                                value: payItem['method'],
+                                value: payItem['method'].toString(),
                                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
-                                items: _activePaymentMethods.map((m) => DropdownMenuItem<String>(value: m['type'], child: Text(m['name'], style: const TextStyle(fontSize: 13)))).toList(),
+                                items: _activePaymentMethods.map((m) => DropdownMenuItem<String>(value: m['type'].toString(), child: Text(m['name'].toString(), style: const TextStyle(fontSize: 13)))).toList(),
                                 onChanged: (val) => setModalState(() => payItem['method'] = val!),
                               ),
                             ),
@@ -307,7 +291,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                             Expanded(
                               flex: 3,
                               child: TextField(
-                                controller: payItem['ctrl'],
+                                controller: payItem['ctrl'] as TextEditingController,
                                 keyboardType: TextInputType.number,
                                 decoration: const InputDecoration(prefixText: 'Rp ', isDense: true, border: OutlineInputBorder()),
                                 onChanged: (_) => setModalState((){}), 
@@ -360,12 +344,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
                   setModalState(() => isProcessing = true);
                   
-                  List> paymentsPayload = appliedPayments.map((p) => {
-                    "method": p['method'],
-                    "amount": double.tryParse(p['ctrl'].text) ?? 0
+                  // PERBAIKAN: Menambahkan > yang terhapus
+                  final List> paymentsPayload = appliedPayments.map>((p) => {
+                    "method": p['method'].toString(),
+                    "amount": double.tryParse((p['ctrl'] as TextEditingController).text) ?? 0
                   }).toList();
                   
-                  // PAYLOAD API: Mengambil table_number dari TextField jika aktif
                   final payload = {
                     "table_number": _enableTableNumber ? _noMejaCtrl.text : null,
                     "discount": _discount,
@@ -414,9 +398,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  // =========================================================
-  // UI SUKSES TRANSAKSI
-  // =========================================================
   void _tampilkanSukses(Map<String, dynamic> dataTransaksi) {
     String invoice = dataTransaksi['invoice'] ?? dataTransaksi['invoice_number'] ?? '-';
     dynamic kembalian = dataTransaksi['kembalian'] ?? 0;
@@ -456,7 +437,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
                       }
                     }, 
-                    icon: const Icon(Icons.print, color: Color(0xFF1E293B)), 
+                    icon: const Icon(Icons.print, color: const Color(0xFF1E293B)), 
                     label: const Text('Cetak', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold))
                   )
                 ),
@@ -485,9 +466,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
   }
 
-  // =========================================================
-  // UI KOMPONEN (PRODUK)
-  // =========================================================
   Widget _buildProductGrid() {
     return _isLoading 
       ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
@@ -579,7 +557,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(child: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B)))),
+                              Expanded(child: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: const Color(0xFF1E293B)))),
                               Text(_formatRupiah(item['price'] * item['quantity']), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
                             ],
                           ),
@@ -628,7 +606,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
             decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
             child: Column(
               children: [
-                // PERBAIKAN: TextField Nomor Meja, Hanya Muncul Jika Diaktifkan
                 if (_enableTableNumber) ...[
                   TextField(
                     controller: _noMejaCtrl,
@@ -723,7 +700,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     ),
                   ),
                   
-                  // PERBAIKAN: Tombol Jasa Manual (Hanya Muncul Jika Aktif)
                   if (_enableServices) ...[
                     const SizedBox(width: 12),
                     ElevatedButton.icon(

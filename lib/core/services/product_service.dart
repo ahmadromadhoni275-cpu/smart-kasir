@@ -37,8 +37,8 @@ class Product {
       
       name: json['name'] ?? '',
       
-      // Mengambil 'selling_price' sesuai tabel CI4 Anda
-      price: double.tryParse(json['selling_price']?.toString() ?? json['price']?.toString() ?? '') ?? 0.0,
+      // PERBAIKAN: Mengubah 'price:' menjadi 'sellingPrice:' agar sesuai dengan deklarasi class
+      sellingPrice: double.tryParse(json['selling_price']?.toString() ?? json['price']?.toString() ?? '') ?? 0.0,
       
       stock: int.tryParse(json['stock']?.toString() ?? '') ?? 0,
       image: json['image']?.toString(),

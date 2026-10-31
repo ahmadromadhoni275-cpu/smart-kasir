@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'api_service.dart';
 
 class ProfileService {
+  // PERBAIKAN: Menambahkan > yang terhapus
   static Future> getProfile() async {
     final response = await ApiService.get('profile');
     if (response.statusCode == 200) {

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'api_service.dart';
 
 class StockService {
-  // 1. Ringkasan Stok
+  // PERBAIKAN: Menambahkan > yang terhapus
   static Future> getSummary() async {
     final response = await ApiService.get('stock');
     if (response.statusCode == 200) {
