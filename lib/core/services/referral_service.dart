@@ -5,10 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ReferralService {
   final String baseUrl = 'https://smartkasir.shop/api/referral';
 
-  // PERBAIKAN: Menambahkan > yang terhapus
-  Future> getSummary() async {
+  // PERBAIKAN: Menggunakan dynamic
+  Future<dynamic> getSummary() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_token') ?? ''; // Pastikan key token Anda benar ('jwt_token' atau 'token')
+    final token = prefs.getString('jwt_token') ?? ''; 
     final storeId = prefs.getInt('store_id')?.toString() ?? '';
 
     final response = await http.get(
@@ -56,8 +56,8 @@ class ReferralService {
     }
   }
   
-  // PERBAIKAN: Menambahkan > yang terhapus
-  Future> getRewards() async {
+  // PERBAIKAN: Menggunakan dynamic
+  Future<dynamic> getRewards() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token') ?? '';
 

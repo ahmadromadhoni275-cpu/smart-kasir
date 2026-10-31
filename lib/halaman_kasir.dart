@@ -25,16 +25,15 @@ class _HalamanKasirState extends State<HalamanKasir> {
   List<dynamic> _products = [];
   String _searchQuery = '';
   
-  // PERBAIKAN: Menambahkan > yang terhapus
-  List> _cart = [];
+  // PERBAIKAN: Menggunakan var agar tidak terpotong saat di-copy
+  var _cart = [];
   final TextEditingController _noMejaCtrl = TextEditingController(); 
   double _discount = 0;
   
   bool _enableTableNumber = false;
   bool _enableServices = false;
 
-  // PERBAIKAN: Menambahkan > yang terhapus
-  List> _activePaymentMethods = [
+  var _activePaymentMethods = [
     {'type': 'CASH', 'name': 'Tunai (Cash)'} 
   ];
   
@@ -230,8 +229,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
     
-    // PERBAIKAN: Menambahkan > yang terhapus
-    List> appliedPayments = [
+    var appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
     bool isProcessing = false;
@@ -272,7 +270,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     
                     ...appliedPayments.asMap().entries.map((entry) {
                       int idx = entry.key;
-                      Map<String, dynamic> payItem = entry.value;
+                      dynamic payItem = entry.value;
                       
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -344,8 +342,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
                   setModalState(() => isProcessing = true);
                   
-                  // PERBAIKAN: Menambahkan > yang terhapus
-                  final List> paymentsPayload = appliedPayments.map>((p) => {
+                  var paymentsPayload = appliedPayments.map((p) => {
                     "method": p['method'].toString(),
                     "amount": double.tryParse((p['ctrl'] as TextEditingController).text) ?? 0
                   }).toList();
@@ -398,7 +395,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  void _tampilkanSukses(Map<String, dynamic> dataTransaksi) {
+  void _tampilkanSukses(dynamic dataTransaksi) {
     String invoice = dataTransaksi['invoice'] ?? dataTransaksi['invoice_number'] ?? '-';
     dynamic kembalian = dataTransaksi['kembalian'] ?? 0;
 
