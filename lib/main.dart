@@ -152,7 +152,8 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
 class AuthChecker extends StatelessWidget {
   const AuthChecker({super.key});
 
-  Future> _checkLoginStatus() async {
+  // Menggunakan dynamic agar aman dari karakter yang terpotong saat copy-paste
+  Future<dynamic> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     
     final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
@@ -167,7 +168,7 @@ class AuthChecker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder>(
+    return FutureBuilder(
       future: _checkLoginStatus(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -179,7 +180,7 @@ class AuthChecker extends StatelessWidget {
           );
         }
 
-        final data = snapshot.data;
+        final data = snapshot.data as Map<dynamic, dynamic>?;
         final bool isLoggedIn = data?['is_logged_in'] ?? false;
         final bool hasStoreSelected = data?['has_store_selected'] ?? false;
 
