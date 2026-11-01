@@ -5,7 +5,6 @@ import 'core/services/category_service.dart';
 import 'models/category_model.dart';          
 import 'tema.dart';
 
-// --- IMPORT HALAMAN STOK ---
 import 'halaman_stok_masuk.dart';
 import 'halaman_penyesuaian_stok.dart';
 import 'halaman_riwayat_stok.dart';
@@ -22,7 +21,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
   final CategoryService _categoryService = CategoryService();
   final TextEditingController _searchCtrl = TextEditingController();
   
-  List<dynamic> _products = [];
+  List<Product> _products = [];
   List<Category> _categories = [];
   
   bool _isLoading = true;
@@ -42,7 +41,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
       ]);
       
       setState(() {
-        _products = results[0] as List;
+        _products = results[0] as List<Product>;
         _categories = (results[1] as List<Category>).where((c) => c.status == 'ACTIVE').toList();
       });
     } catch (e) {
@@ -56,8 +55,8 @@ class _HalamanProdukState extends State<HalamanProduk> {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Hapus Produk?'),
-        content: const Text('Data produk tidak dapat dikembalikan setelah dihapus.'),
+        title: const Text('Hapus Item?'),
+        content: const Text('Data item tidak dapat dikembalikan setelah dihapus.'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
@@ -75,7 +74,7 @@ class _HalamanProdukState extends State<HalamanProduk> {
     setState(() => _isLoading = true);
     try {
       await _productService.deleteProduct(id);
-      _showNotif('Produk berhasil dihapus', AppColors.greenAccent);
+      _showNotif('Item berhasil dihapus', AppColors.greenAccent);
       _fetchInitialData();
     } catch (e) {
       _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
@@ -83,12 +82,15 @@ class _HalamanProdukState extends State<HalamanProduk> {
     }
   }
 
-  void _tampilFormProduk({dynamic produk}) {
+  void _tampilFormProduk({Product? produk}) {
     final bool isEdit = produk != null;
     final skuCtrl = TextEditingController(text: isEdit ? produk.sku : '');
     final nameCtrl = TextEditingController(text: isEdit ? produk.name : '');
     final priceCtrl = TextEditingController(text: isEdit ? produk.sellingPrice.toInt().toString() : '');
     final stockCtrl = TextEditingController(text: isEdit ? produk.stock.toString() : '');
+    
+    // PERBAIKAN: Default value untuk tipe produk
+    String selectedType = isEdit ? produk.productType : 'PRODUCT';
     
     int? selectedCategoryId;
     if (isEdit && produk.categoryId != null) {
@@ -102,6 +104,8 @@ class _HalamanProdukState extends State<HalamanProduk> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          bool isJasa = selectedType == 'SERVICE';
+          
           return Container(
             decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 24, top: 24, left: 24, right: 24),
@@ -109,34 +113,57 @@ class _HalamanProdukState extends State<HalamanProduk> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(isEdit ? 'Edit Produk' : 'Tambah Produk Baru', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                const SizedBox(height: 20),
+                Text(isEdit ? 'Edit Item' : 'Tambah Item Baru', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                const SizedBox(height: 16),
+                
+                // --- PILIH TIPE (BARANG FISIK / JASA) ---
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Barang Fisik', style: TextStyle(fontWeight: FontWeight.bold))),
+                        selected: !isJasa,
+                        selectedColor: AppColors.primaryEmerald.withOpacity(0.2),
+                        showCheckmark: false,
+                        onSelected: (val) => setModalState(() => selectedType = 'PRODUCT'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Jasa / Layanan', style: TextStyle(fontWeight: FontWeight.bold))),
+                        selected: isJasa,
+                        selectedColor: AppColors.primaryEmerald.withOpacity(0.2),
+                        showCheckmark: false,
+                        onSelected: (val) => setModalState(() => selectedType = 'SERVICE'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 
                 DropdownButtonFormField<int>(
                   value: selectedCategoryId,
-                  decoration: InputDecoration(labelText: 'Kategori Produk', prefixIcon: const Icon(Icons.category), filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                  decoration: InputDecoration(labelText: 'Kategori', prefixIcon: const Icon(Icons.category), filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
                   hint: const Text('Pilih Kategori'),
-                  items: _categories.map((cat) {
-                    return DropdownMenuItem<int>(
-                      value: cat.categoryId,
-                      child: Text(cat.name),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    setModalState(() => selectedCategoryId = val);
-                  },
+                  items: _categories.map((cat) => DropdownMenuItem<int>(value: cat.categoryId, child: Text(cat.name))).toList(),
+                  onChanged: (val) => setModalState(() => selectedCategoryId = val),
                 ),
                 const SizedBox(height: 12),
                 
-                TextField(controller: skuCtrl, decoration: _inputDecor('SKU / Barcode', Icons.qr_code)),
+                TextField(controller: skuCtrl, decoration: _inputDecor(isJasa ? 'Kode Jasa (Opsional)' : 'SKU / Barcode', Icons.qr_code)),
                 const SizedBox(height: 12),
-                TextField(controller: nameCtrl, decoration: _inputDecor('Nama Produk *', Icons.shopping_bag)),
+                TextField(controller: nameCtrl, decoration: _inputDecor('Nama Item *', isJasa ? Icons.design_services : Icons.shopping_bag)),
                 const SizedBox(height: 12),
+                
                 Row(
                   children: [
                     Expanded(child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, decoration: _inputDecor('Harga Jual *', Icons.monetization_on))),
-                    const SizedBox(width: 12),
-                    Expanded(child: TextField(controller: stockCtrl, keyboardType: TextInputType.number, decoration: _inputDecor('Stok', Icons.inventory))),
+                    // Hanya tampilkan input stok jika tipe produk adalah Barang Fisik
+                    if (!isJasa) ...[
+                      const SizedBox(width: 12),
+                      Expanded(child: TextField(controller: stockCtrl, keyboardType: TextInputType.number, decoration: _inputDecor('Stok Awal', Icons.inventory))),
+                    ]
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -153,8 +180,9 @@ class _HalamanProdukState extends State<HalamanProduk> {
                         'sku': skuCtrl.text,
                         'name': nameCtrl.text,
                         'selling_price': priceCtrl.text,
-                        'stock': stockCtrl.text.isEmpty ? '0' : stockCtrl.text,
+                        'stock': isJasa ? '0' : (stockCtrl.text.isEmpty ? '0' : stockCtrl.text),
                         'category_id': selectedCategoryId, 
+                        'product_type': selectedType, // <-- KIRIM TIPE YANG DIPILIH KE DATABASE
                       };
 
                       Navigator.pop(context); 
@@ -162,11 +190,11 @@ class _HalamanProdukState extends State<HalamanProduk> {
 
                       try {
                         if (isEdit) {
-                          await _productService.updateProduct(produk.id, data);
-                          _showNotif('Produk diperbarui', AppColors.greenAccent);
+                          await _productService.updateProduct(produk!.id, data);
+                          _showNotif('Item diperbarui', AppColors.greenAccent);
                         } else {
                           await _productService.createProduct(data);
-                          _showNotif('Produk ditambahkan', AppColors.greenAccent);
+                          _showNotif('Item ditambahkan', AppColors.greenAccent);
                         }
                         _fetchInitialData(); 
                       } catch (e) {
@@ -193,24 +221,15 @@ class _HalamanProdukState extends State<HalamanProduk> {
   String _formatCurrency(double amount) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   void _showNotif(String pesan, Color warna) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
 
-  // --- WIDGET TOMBOL SUBMENU STOK ---
   Widget _buildStockMenuButton(IconData icon, String label, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          border: Border.all(color: color.withOpacity(0.5)),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), border: Border.all(color: color.withOpacity(0.5)), borderRadius: BorderRadius.circular(8)),
         child: Row(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
-          ],
+          children: [Icon(icon, size: 16, color: color), const SizedBox(width: 6), Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color))],
         ),
       ),
     );
@@ -230,16 +249,13 @@ class _HalamanProdukState extends State<HalamanProduk> {
         onPressed: () => _tampilFormProduk(),
         backgroundColor: AppColors.primaryEmerald,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('Item Baru', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: AppColors.border)),
-            ),
+            decoration: const BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: AppColors.border))),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -256,14 +272,12 @@ class _HalamanProdukState extends State<HalamanProduk> {
                   onSubmitted: (_) => _fetchInitialData(),
                 ),
                 
-                // --- SUBMENU STOK ---
                 const SizedBox(height: 12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
                       _buildStockMenuButton(Icons.add_box, 'Stok Masuk', Colors.blue, () {
-                        // Refresh data saat kembali untuk update jumlah stok di UI
                         Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanStokMasuk())).then((_) => _fetchInitialData());
                       }),
                       const SizedBox(width: 8),
@@ -285,13 +299,15 @@ class _HalamanProdukState extends State<HalamanProduk> {
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
               : _products.isEmpty
-                ? const Center(child: Text('Tidak ada data produk.', style: TextStyle(color: AppColors.textSecondary)))
+                ? const Center(child: Text('Tidak ada data item.', style: TextStyle(color: AppColors.textSecondary)))
                 : ListView.builder(
                     padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 80), 
                     itemCount: _products.length,
                     itemBuilder: (context, index) {
                       final p = _products[index];
-                      final bool stokMenipis = p.stock <= 5;
+                      // PERBAIKAN: Identifikasi UI berdasarkan tipe produk
+                      final bool isJasa = p.productType == 'SERVICE';
+                      final bool stokMenipis = !isJasa && p.stock <= 5;
 
                       return Card(
                         elevation: 0,
@@ -301,8 +317,8 @@ class _HalamanProdukState extends State<HalamanProduk> {
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           leading: Container(
                             width: 50, height: 50,
-                            decoration: BoxDecoration(color: const Color(0xFFF7E7CE).withOpacity(0.5), borderRadius: BorderRadius.circular(10)),
-                            child: const Icon(Icons.inventory_2, color: Color(0xFFB8860B)), 
+                            decoration: BoxDecoration(color: isJasa ? const Color(0xFFF7E7CE).withOpacity(0.5) : AppColors.lightGray, borderRadius: BorderRadius.circular(10)),
+                            child: Icon(isJasa ? Icons.design_services : Icons.inventory_2, color: isJasa ? const Color(0xFFB8860B) : AppColors.textSecondary), 
                           ),
                           title: Row(
                             children: [
@@ -310,8 +326,15 @@ class _HalamanProdukState extends State<HalamanProduk> {
                               if (p.categoryName != null) 
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  margin: const EdgeInsets.only(right: 8),
                                   decoration: BoxDecoration(color: AppColors.primaryEmerald.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                                  child: Text(p.categoryName, style: const TextStyle(fontSize: 10, color: AppColors.primaryEmerald, fontWeight: FontWeight.bold)),
+                                  child: Text(p.categoryName!, style: const TextStyle(fontSize: 10, color: AppColors.primaryEmerald, fontWeight: FontWeight.bold)),
+                                ),
+                              if (isJasa)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(color: const Color(0xFFB8860B).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                  child: const Text('JASA', style: TextStyle(fontSize: 10, color: Color(0xFFB8860B), fontWeight: FontWeight.bold)),
                                 )
                             ],
                           ),
@@ -319,17 +342,18 @@ class _HalamanProdukState extends State<HalamanProduk> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: 4),
-                              Text(p.sku.isNotEmpty ? p.sku : 'Tanpa SKU', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                              Text(p.sku.isNotEmpty ? p.sku : 'Tanpa SKU/Kode', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                               const SizedBox(height: 4),
                               Row(
                                 children: [
                                   Text(_formatCurrency(p.sellingPrice), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
                                   const SizedBox(width: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(color: stokMenipis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(4)),
-                                    child: Text('Stok: ${p.stock}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: stokMenipis ? AppColors.error : AppColors.textSecondary)),
-                                  ),
+                                  if (!isJasa)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: stokMenipis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(4)),
+                                      child: Text('Stok: ${p.stock}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: stokMenipis ? AppColors.error : AppColors.textSecondary)),
+                                    ),
                                 ],
                               ),
                             ],

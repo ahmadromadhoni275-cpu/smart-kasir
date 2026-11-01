@@ -367,7 +367,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     }).toList()
                   };
 
-                  final res = await ApiService.post('cashier/transactions', payload);
+                  final res = await ApiService.post('transactions', payload);
                   if (res.statusCode == 201) {
                     final dataTransaksi = json.decode(res.body)['data'];
                     Navigator.pop(ctx);

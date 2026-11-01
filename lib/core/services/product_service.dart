@@ -11,6 +11,7 @@ class Product {
   final double sellingPrice;
   final int stock;
   final String? image;
+  final String productType; // <-- TAMBAHAN: Untuk mengenali Barang Fisik atau Jasa
 
   Product({
     required this.id,
@@ -21,6 +22,7 @@ class Product {
     required this.sellingPrice,
     required this.stock,
     this.image,
+    required this.productType, // <-- WAJIB DIISI DARI JSON
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -37,11 +39,14 @@ class Product {
       
       name: json['name'] ?? '',
       
-      // PERBAIKAN: Mengubah 'price:' menjadi 'sellingPrice:' agar sesuai dengan deklarasi class
+      // Mengambil 'selling_price' sesuai tabel CI4 Anda
       sellingPrice: double.tryParse(json['selling_price']?.toString() ?? json['price']?.toString() ?? '') ?? 0.0,
       
       stock: int.tryParse(json['stock']?.toString() ?? '') ?? 0,
       image: json['image']?.toString(),
+      
+      // Membaca product_type dari database (PRODUCT / SERVICE)
+      productType: json['product_type']?.toString() ?? 'PRODUCT',
     );
   }
 }
