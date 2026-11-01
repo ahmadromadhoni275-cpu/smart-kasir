@@ -17,6 +17,7 @@ import 'halaman_riwayat_stok.dart';
 import 'halaman_profil_akun.dart';
 import 'halaman_keamanan.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'halaman_pilih_cabang.dart';
 
 // 1. Handler Notifikasi Background
 @pragma('vm:entry-point')
@@ -139,6 +140,7 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
         '/referral': (context) => const HalamanReferral(),
         '/profil': (context) => const HalamanProfilAkun(),
         '/keamanan': (context) => const HalamanKeamanan(),
+        '/pilih_cabang': (context) => const HalamanPilihCabang(),
       },
     );
   }
