@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
 import 'core/services/store_service.dart';
 import 'halaman_tambah_cabang.dart';
-// import 'halaman_profil_toko.dart'; // Aktifkan jika HalamanProfilToko sudah bisa menerima parameter ID Toko spesifik
+import 'halaman_profil_toko.dart';
 
 class HalamanDaftarCabang extends StatefulWidget {
   const HalamanDaftarCabang({super.key});
@@ -26,15 +26,14 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
   Future<void> _fetchStores() async {
     setState(() => _isLoading = true);
     try {
-      // Ambil ID Cabang yang sedang aktif digunakan di sesi ini
       final prefs = await SharedPreferences.getInstance();
       _currentStoreId = prefs.getInt('store_id') ?? 0;
       
-      // Ambil daftar seluruh cabang dari API
       final data = await StoreService.getStores();
-      setState(() => _stores = data);
+      if (mounted) setState(() => _stores = data);
     } catch (e) {
-      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
+      // PERBAIKAN: Gunakan if (mounted) sebelum memanggil UI (SnackBar) setelah await
+      if (mounted) _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -47,8 +46,6 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
   }
 
   void _ubahStatusCabang(int storeId, String currentStatus) {
-    // TODO: Implementasi pemanggilan API untuk mengubah status cabang (PATCH /api/stores/{id}/status)
-    // Karena endpoint ini belum kita buat detail di StoreService, kita tampilkan notifikasi sementara
     final newStatus = currentStatus == 'ACTIVE' ? 'Nonaktif' : 'Aktif';
     _showNotif('Fitur ubah status ke $newStatus akan segera tersedia.', Colors.orange);
   }
@@ -68,7 +65,6 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
         icon: const Icon(Icons.add_business, color: Colors.white),
         label: const Text('Tambah Cabang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () {
-          // Navigasi ke halaman Tambah Cabang, lalu refresh data jika berhasil
           Navigator.push(
             context, 
             MaterialPageRoute(builder: (_) => const HalamanTambahCabang())
@@ -82,12 +78,17 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
         : _stores.isEmpty
           ? const Center(child: Text('Belum ada cabang yang terdaftar.', style: TextStyle(color: AppColors.textSecondary)))
           : ListView.builder(
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 80), // Bottom 80 agar tidak tertutup FAB
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 80), 
               itemCount: _stores.length,
               itemBuilder: (context, index) {
                 final store = _stores[index];
-                final bool isCurrent = int.parse(store['store_id'].toString()) == _currentStoreId;
+                
+                // PERBAIKAN: Gunakan tryParse agar tidak crash jika ID ternyata kosong atau string non-angka
+                final int storeId = int.tryParse(store['store_id']?.toString() ?? '0') ?? 0;
+                final bool isCurrent = storeId == _currentStoreId;
+                
                 final bool isActive = store['store_status'] == 'ACTIVE';
+                final String storeName = store['name'] ?? 'Cabang Tanpa Nama';
                 
                 return Card(
                   elevation: 0,
@@ -109,7 +110,7 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
                     title: Row(
                       children: [
                         Expanded(
-                          child: Text(store['name'], style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 16)),
+                          child: Text(storeName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 16)),
                         ),
                         if (isCurrent)
                           Container(
@@ -127,7 +128,7 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
                           children: [
                             const Icon(Icons.location_on, size: 14, color: AppColors.textSecondary),
                             const SizedBox(width: 4),
-                            Expanded(child: Text(store['address'] ?? 'Alamat belum diatur', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+                            Expanded(child: Text(store['address']?.toString().isNotEmpty == true ? store['address'] : 'Alamat belum diatur', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -135,13 +136,12 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
                           children: [
                             const Icon(Icons.phone, size: 14, color: AppColors.textSecondary),
                             const SizedBox(width: 4),
-                            Text(store['phone'] ?? '-', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                            Text(store['phone']?.toString().isNotEmpty == true ? store['phone'] : '-', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                           ],
                         ),
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            // Badge Status Operasional Cabang
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -154,7 +154,6 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            // Badge Role Pengguna di Cabang Tersebut
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(6)),
@@ -169,10 +168,8 @@ class _HalamanDaftarCabangState extends State<HalamanDaftarCabang> {
                       onSelected: (value) {
                         if (value == 'edit') {
                            _showNotif('Fitur edit spesifik cabang segera hadir.', Colors.blue);
-                           // Nantinya Anda bisa arahkan ke: 
-                           // Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanProfilToko(storeId: store['store_id'])));
                         } else if (value == 'status') {
-                          _ubahStatusCabang(int.parse(store['store_id'].toString()), store['store_status']);
+                          _ubahStatusCabang(storeId, store['store_status'] ?? 'INACTIVE');
                         }
                       },
                       itemBuilder: (context) => [

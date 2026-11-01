@@ -152,21 +152,25 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
 class AuthChecker extends StatelessWidget {
   const AuthChecker({super.key});
 
-  Future<bool> _checkLoginStatus() async {
+  // PERBAIKAN: Kembalikan Map agar bisa mengecek status login DAN status cabang
+  Future> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
+    
     final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
     final String? token = prefs.getString('jwt_token');
+    final int storeId = prefs.getInt('store_id') ?? 0;
 
-    // Wajib bernilai true DAN token JWT tidak boleh kosong
-    return isLoggedIn && token != null && token.isNotEmpty;
+    return {
+      'is_logged_in': isLoggedIn && token != null && token.isNotEmpty,
+      'has_store_selected': storeId > 0, // Pastikan ID Cabang valid
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
+    return FutureBuilder>(
       future: _checkLoginStatus(),
       builder: (context, snapshot) {
-        // Tampilan loading melayang saat memeriksa session
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: AppColors.background,
@@ -176,8 +180,17 @@ class AuthChecker extends StatelessWidget {
           );
         }
 
-        // Jika terverifikasi sudah login, buka KerangkaNavigasi
-        if (snapshot.hasData && snapshot.data == true) {
+        final data = snapshot.data;
+        final bool isLoggedIn = data?['is_logged_in'] ?? false;
+        final bool hasStoreSelected = data?['has_store_selected'] ?? false;
+
+        // Jika sudah login
+        if (isLoggedIn) {
+          // Jika pengguna belum memilih/membuat cabang, tahan di Halaman Pilih Cabang
+          if (!hasStoreSelected) {
+            return const HalamanPilihCabang();
+          }
+          // Jika sudah punya cabang yang aktif, langsung izinkan masuk ke Dashboard
           return const KerangkaNavigasi();
         }
 
