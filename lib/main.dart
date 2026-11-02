@@ -70,7 +70,7 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
                   Text(message.notification!.body ?? ''),
                 ],
               ),
-              backgroundColor: AppColors.primaryEmerald,
+              backgroundColor: AppColors.smartBlue, // PERUBAHAN: Emerald -> smartBlue
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 4),
               action: message.data['action_route'] != null &&
@@ -121,8 +121,8 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
       theme: ThemeData(
         fontFamily: 'Inter',
         scaffoldBackgroundColor: AppColors.background,
-        primaryColor: AppColors.primaryEmerald,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primaryEmerald),
+        primaryColor: AppColors.smartBlue, // PERUBAHAN: Menyesuaikan tema utama
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.smartBlue), // PERUBAHAN: Menyesuaikan seed
       ),
 
       // CEK OTENTIKASI SECARA DINAMIS SAAT APLIKASI DIBUKA
@@ -152,7 +152,6 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
 class AuthChecker extends StatelessWidget {
   const AuthChecker({super.key});
 
-  // Menggunakan dynamic agar aman dari karakter yang terpotong saat copy-paste
   Future<dynamic> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -175,7 +174,8 @@ class AuthChecker extends StatelessWidget {
           return const Scaffold(
             backgroundColor: AppColors.background,
             body: Center(
-              child: CircularProgressIndicator(color: AppColors.primaryEmerald),
+              // PERUBAHAN: Menyesuaikan indikator loading dengan tema Crystal
+              child: CircularProgressIndicator(color: AppColors.smartBlue), 
             ),
           );
         }
