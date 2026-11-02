@@ -1,14 +1,13 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart'; // Menggunakan Dio
+import 'package:dio/dio.dart'; 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tema.dart';
 import 'halaman_registrasi.dart';
 import 'kerangka_navigasi.dart'; 
-// TODO: Sesuaikan path import ApiClient ini dengan lokasi folder Anda
 import 'core/network/api_client.dart'; 
-// <-- TAMBAHKAN IMPORT FCM SERVICE DI SINI -->
 import 'core/services/fcm_service.dart';
 
 class HalamanLogin extends StatefulWidget {
@@ -33,7 +32,6 @@ class _HalamanLoginState extends State<HalamanLogin> {
     setState(() => _isLoading = true);
 
     try {
-      // Menggunakan ApiClient Dio (BaseURL otomatis ditambahkan dari interceptor)
       final response = await ApiClient().dio.post(
         '/login',
         data: {
@@ -42,7 +40,6 @@ class _HalamanLoginState extends State<HalamanLogin> {
         },
       );
 
-      // Dio secara otomatis me-return body sebagai Map/JSON jika response adalah JSON
       final resData = response.data;
 
       if (response.statusCode == 200 && resData['status'] == 'success') {
@@ -58,42 +55,34 @@ class _HalamanLoginState extends State<HalamanLogin> {
 
         final prefs = await SharedPreferences.getInstance();
         
-        // 1. SIMPAN IDENTITAS UNIVERSAL & JWT TOKEN
         await prefs.setString('jwt_token', token);
         await prefs.setInt('user_id', int.parse(data['user_id'].toString()));
         await prefs.setString('username', data['name']);
 
-        // <-- TAMBAHAN: DAFTARKAN FCM TOKEN KE SERVER SETELAH JWT TERSIMPAN -->
         await FcmService.registerDeviceToken();
-        // <--------------------------------------------------------------------
 
-        // 2. CEK JUMLAH CABANG UNTUK ROUTING
         if (stores.length == 1) {
-          // ALUR AUTO (Hanya punya 1 cabang)
           final store = stores[0];
           await prefs.setInt('store_id', int.parse(store['store_id'].toString()));
           await prefs.setInt('business_id', int.parse(store['business_id'].toString()));
           await prefs.setString('nama_toko', store['store_name']);
-          await prefs.setString('role', store['role']); // OWNER, MANAGER, KASIR
+          await prefs.setString('role', store['role']); 
           await prefs.setBool('is_logged_in', true);
 
-                    if (mounted) {
+          if (mounted) {
             Navigator.pushReplacement(
                 context, MaterialPageRoute(builder: (context) => const KerangkaNavigasi()));
           }
         } else {
-          // ALUR PILIH CABANG (> 1 Cabang)
           await prefs.setString('daftar_cabang', json.encode(stores));
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/pilih_cabang');
           }
         }
       } else {
-        // Fallback jika API merespons 200 tapi statusnya bukan success
         _showNotif(resData['message'] ?? 'Login Gagal', AppColors.error);
       }
     } on DioException catch (e) {
-      // Tangkap pesan error dari CI4 (HTTP 400, 401, 404, 500)
       final responseData = e.response?.data;
       String errorMsg = 'Login Gagal';
       
@@ -125,147 +114,205 @@ class _HalamanLoginState extends State<HalamanLogin> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 450), // Maksimal lebar untuk Web/Tablet
-              child: Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.border),
-                  boxShadow: [
-                    BoxShadow(color: AppColors.navyActive.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Logo & Header
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                            color: AppColors.primaryEmerald.withOpacity(0.1), 
-                            borderRadius: BorderRadius.circular(16)),
-                        child: const Icon(Icons.point_of_sale, size: 40, color: AppColors.primaryEmerald),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Center(
-                        child: Text('Masuk ke Smart Kasir',
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary))),
-                    const SizedBox(height: 8),
-                    const Center(
-                        child: Text('Kelola bisnis Anda dengan mudah dan cerdas',
-                            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-                            textAlign: TextAlign.center)),
-                    const SizedBox(height: 32),
+      body: Stack(
+        children: [
+          // 1. Background Gradient Crystal UI
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
+              ),
+            ),
+          ),
+          
+          // 2. Ornamen Blob Cahaya (Agar efek kaca terlihat menonjol)
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300, height: 300,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.skyBlue),
+            ).blurred(sigma: 80),
+          ),
+          Positioned(
+            bottom: -50,
+            left: -100,
+            child: Container(
+              width: 300, height: 300,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.smartBlue),
+            ).blurred(sigma: 100),
+          ),
 
-                    // Form Email
-                    const Text('Email',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: 'nama@email.com',
-                        hintStyle: const TextStyle(color: AppColors.textSecondary),
-                        prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary),
-                        filled: true,
-                        fillColor: AppColors.background,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppColors.primaryEmerald, width: 1.5)),
-                      ),
+          // 3. Form Glassmorphism
+          Center(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 450), 
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: const [BoxShadow(color: AppColors.shadowBlue, blurRadius: 24, offset: Offset(0, 8))],
                     ),
-                    const SizedBox(height: 20),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: AppColors.glassBorder, width: 1.2),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Logo & Header
+                              Center(
+                                child: Image.asset(
+                                  'assets/images/logo_smart_kasir.png',
+                                  height: 100, // Silakan ubah angka ini untuk memperbesar/memperkecil logo
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
 
-                    // Form Password
-                    const Text('Password',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _passwordCtrl,
-                      obscureText: _obscureText,
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: 'Masukkan password',
-                        hintStyle: const TextStyle(color: AppColors.textSecondary),
-                        prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureText ? Icons.visibility_off : Icons.visibility,
-                              color: AppColors.textSecondary),
-                          onPressed: () => setState(() => _obscureText = !_obscureText),
+                              const SizedBox(height: 24),
+                              const Center(
+                                  child: Text('Smart Kasir',
+                                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary))),
+                              const SizedBox(height: 8),
+                              const Center(
+                                  child: Text('Masuk ke akun Anda untuk melanjutkan',
+                                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                                      textAlign: TextAlign.center)),
+                              const SizedBox(height: 32),
+
+                              // Form Email
+                              TextField(
+                                controller: _emailCtrl,
+                                keyboardType: TextInputType.emailAddress,
+                                style: const TextStyle(color: AppColors.textPrimary),
+                                decoration: InputDecoration(
+                                  hintText: 'Email atau Username',
+                                  hintStyle: const TextStyle(color: AppColors.textSecondary),
+                                  prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary),
+                                  filled: true,
+                                  fillColor: AppColors.cardSolid, // Solid agar mudah dibaca di atas kaca
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                                  focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: AppColors.menuActiveStart, width: 1.5)),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Form Password
+                              TextField(
+                                controller: _passwordCtrl,
+                                obscureText: _obscureText,
+                                style: const TextStyle(color: AppColors.textPrimary),
+                                decoration: InputDecoration(
+                                  hintText: 'Password',
+                                  hintStyle: const TextStyle(color: AppColors.textSecondary),
+                                  prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(_obscureText ? Icons.visibility_off : Icons.visibility,
+                                        color: AppColors.textSecondary),
+                                    onPressed: () => setState(() => _obscureText = !_obscureText),
+                                  ),
+                                  filled: true,
+                                  fillColor: AppColors.cardSolid,
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                                  focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: AppColors.menuActiveStart, width: 1.5)),
+                                ),
+                              ),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  onPressed: () => _showNotif('Fitur Reset Password segera hadir', AppColors.goldPremium),
+                                  child: const Text('Lupa Password?',
+                                      style: TextStyle(color: AppColors.smartBlue, fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Tombol Login (Crystal Blue)
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(colors: [AppColors.menuActiveStart, AppColors.menuActiveEnd]),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: const [BoxShadow(color: AppColors.shadowBlue, blurRadius: 12, offset: Offset(0, 5))],
+                                ),
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    foregroundColor: AppColors.textOnPrimary,
+                                    minimumSize: const Size(double.infinity, 50),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                  onPressed: _isLoading ? null : _prosesLogin,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Text('Masuk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Navigasi ke Register
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text('Belum punya akun? ', style: TextStyle(color: AppColors.textSecondary)),
+                                  InkWell(
+                                    onTap: () => Navigator.push(
+                                        context, MaterialPageRoute(builder: (context) => const HalamanRegistrasi())),
+                                    child: const Text('Daftar sekarang',
+                                        style: TextStyle(color: AppColors.smartBlue, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              )
+                            ],
+                          ),
                         ),
-                        filled: true,
-                        fillColor: AppColors.background,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppColors.primaryEmerald, width: 1.5)),
                       ),
                     ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {
-                          _showNotif('Fitur Reset Password segera hadir', AppColors.goldPremium);
-                        },
-                        child: const Text('Lupa Password?',
-                            style: TextStyle(color: AppColors.primaryEmerald, fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Tombol Login
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryEmerald,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: _isLoading ? null : _prosesLogin,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text('Masuk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Navigasi ke Register
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('Belum punya akun? ', style: TextStyle(color: AppColors.textSecondary)),
-                        InkWell(
-                          onTap: () => Navigator.push(
-                              context, MaterialPageRoute(builder: (context) => const HalamanRegistrasi())),
-                          child: const Text('Daftar Sekarang',
-                              style: TextStyle(color: AppColors.primaryEmerald, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    )
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+}
+
+// Extension pembantu untuk membuat blur efek dekoratif di latar belakang
+extension BlurExtension on Widget {
+  Widget blurred({double sigma = 10}) {
+    return ImageFilterWidget(sigma: sigma, child: this);
+  }
+}
+
+class ImageFilterWidget extends StatelessWidget {
+  final double sigma;
+  final Widget child;
+  const ImageFilterWidget({super.key, required this.sigma, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      child: child,
     );
   }
 }
