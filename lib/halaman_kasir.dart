@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; 
 
 import 'tema.dart';
-import 'core/services/api_service.dart';
-import 'core/services/payment_method_service.dart'; 
-import 'halaman_shift.dart'; 
+import 'core/services/product_service.dart';
+import 'core/services/payment_service.dart';
+import 'core/services/shift_service.dart';
+import 'core/services/transaction_service.dart';
 import 'core/services/printer_service.dart';
+
+import 'models/product_model.dart';
+import 'models/transaction_item_model.dart';
+import 'models/payment_method_model.dart';
+import 'halaman_shift.dart'; 
 
 class HalamanKasir extends StatefulWidget {
   const HalamanKasir({super.key});
@@ -18,26 +23,28 @@ class HalamanKasir extends StatefulWidget {
 
 class _HalamanKasirState extends State<HalamanKasir> {
   bool _isCheckingShift = true; 
-  bool _hasActiveShift = false; 
-  bool _hasAutoRedirected = false; 
+  int? _activeShiftId; 
 
   bool _isLoading = true;
-  List<dynamic> _products = [];
+  List<ProductModel> _products = [];
   String _searchQuery = '';
   
-  // PERBAIKAN: Menggunakan var agar tidak terpotong saat di-copy
-  var _cart = [];
+  final List<TransactionItemModel> _cart = [];
   final TextEditingController _noMejaCtrl = TextEditingController(); 
-  double _discount = 0;
+  final TextEditingController _searchCtrl = TextEditingController();
   
+  double _discount = 0;
   bool _enableTableNumber = false;
   bool _enableServices = false;
 
-  var _activePaymentMethods = [
-    {'type': 'CASH', 'name': 'Tunai (Cash)'} 
+  List<PaymentMethodModel> _paymentMethods = [
+    PaymentMethodModel(type: 'CASH', name: 'Tunai (Cash)')
   ];
   
-  final TextEditingController _searchCtrl = TextEditingController();
+  final ProductService _productService = ProductService();
+  final ShiftService _shiftService = ShiftService();
+  final PaymentService _paymentService = PaymentService();
+  final TransactionService _transactionService = TransactionService();
 
   @override
   void initState() {
@@ -48,64 +55,38 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   Future<void> _loadStoreSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    
     setState(() {
+      // Setting ini mestinya disinkronisasi saat login, kita ambil dari prefs
       _enableTableNumber = prefs.getBool('enable_table_number') ?? false;
       _enableServices = prefs.getBool('enable_services') ?? false;
     });
-
-    try {
-      final res = await ApiService.get('profile/store'); 
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body)['data'];
-        setState(() {
-          _enableTableNumber = data['enable_table_number'] == 1 || data['enable_table_number'] == true;
-          _enableServices = data['enable_services'] == 1 || data['enable_services'] == true;
-        });
-        
-        await prefs.setBool('enable_table_number', _enableTableNumber);
-        await prefs.setBool('enable_services', _enableServices);
-      }
-    } catch (e) {
-      debugPrint("Gagal sinkronisasi pengaturan toko: $e");
-    }
   }
 
   Future<void> _cekShiftAktif() async {
     setState(() => _isCheckingShift = true);
     try {
-      final response = await ApiService.get('shifts/current');
-      if (response.statusCode == 200) {
-        final resData = json.decode(response.body);
-        if (resData['data'] != null) {
-          _hasActiveShift = true;
-          _muatProduk(); 
-          _fetchMetodePembayaran(); 
-        } else {
-          _hasActiveShift = false;
-          if (!_hasAutoRedirected && mounted) {
-            _hasAutoRedirected = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanShift())).then((_) => _cekShiftAktif());
-            });
-          }
-        }
+      final shiftData = await _shiftService.getCurrentShift();
+      if (shiftData != null && shiftData['status'] == 'OPEN') {
+        _activeShiftId = int.tryParse(shiftData['shift_id'].toString());
+        _muatProduk(); 
+        _fetchMetodePembayaran(); 
+      } else {
+        _activeShiftId = null;
+        if (mounted) _tampilNotifShiftTutup();
       }
     } catch (e) {
-      _hasActiveShift = false;
+      _activeShiftId = null;
     }
-    
     if (mounted) setState(() => _isCheckingShift = false);
   }
 
   Future<void> _fetchMetodePembayaran() async {
     try {
-      final methods = await PaymentMethodService.getPaymentMethods();
-      final activeMethods = methods.where((m) => m['status'] == 'ACTIVE').toList();
+      final methods = await _paymentService.getActiveMethods();
       setState(() {
-        _activePaymentMethods = [
-          {'type': 'CASH', 'name': 'Tunai (Cash)'},
-          ...activeMethods.map((m) => {'type': m['type'], 'name': m['name']})
+        _paymentMethods = [
+          PaymentMethodModel(type: 'CASH', name: 'Tunai (Cash)'),
+          ...methods
         ];
       });
     } catch (e) {
@@ -116,12 +97,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Future<void> _muatProduk() async {
     setState(() => _isLoading = true);
     try {
-      final response = await ApiService.get('products?search=$_searchQuery'); 
-      if (response.statusCode == 200) {
-        setState(() {
-          _products = json.decode(response.body)['data'];
-        });
-      }
+      final res = await _productService.getProducts(search: _searchQuery);
+      if (mounted) setState(() => _products = res);
     } catch (e) {
       debugPrint('Gagal memuat produk: $e');
     }
@@ -130,45 +107,49 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
-  void _addToCart(dynamic product) {
-    double hargaJual = double.tryParse((product['selling_price'] ?? product['price'] ?? 0).toString()) ?? 0;
-    int maxStok = int.tryParse(product['stock'].toString()) ?? 0;
-
-    if (product['product_type'] == 'PRODUCT' && maxStok <= 0) {
-      _showNotif('Stok habis!', Colors.red);
+  // --- LOGIKA KERANJANG ---
+  void _addToCart(ProductModel product) {
+    if (product.productType == 'PRODUCT' && product.stock <= 0) {
+      _tampilPopupCantik('Stok Habis!', 'Produk ini tidak dapat ditambahkan karena stok kosong.', Icons.remove_shopping_cart, AppColors.error);
       return;
     }
 
     setState(() {
-      int index = _cart.indexWhere((item) => item['product_id'] == product['product_id'] && item['order_type'] == 'DINE_IN' && item['note'] == null);
+      int index = _cart.indexWhere((item) => 
+        item.productId == product.productId && 
+        item.orderType == 'DINE_IN' && 
+        item.note == null
+      );
+      
       if (index != -1) {
-        if (product['product_type'] == 'PRODUCT' && _cart[index]['quantity'] >= maxStok) {
-          _showNotif('Melebihi batas stok', Colors.orange);
+        if (product.productType == 'PRODUCT' && _cart[index].quantity >= product.stock) {
+           _tampilPopupCantik('Batas Stok!', 'Maksimal stok yang tersedia hanya ${product.stock}.', Icons.warning_amber_rounded, AppColors.warning);
           return;
         }
-        _cart[index]['quantity']++;
+        _cart[index].quantity++;
       } else {
-        _cart.add({
-          'product_id': product['product_id'],
-          'name': product['name'],
-          'price': hargaJual,
-          'quantity': 1,
-          'order_type': 'DINE_IN', 
-          'note': null,
-          'type': product['product_type'],
-          'max_stock': maxStok
-        });
+        _cart.add(TransactionItemModel(
+          productId: product.productId,
+          itemType: product.productType,
+          name: product.name,
+          price: product.sellingPrice,
+          purchasePrice: product.purchasePrice,
+          quantity: 1,
+          maxStock: product.stock,
+        ));
       }
     });
   }
 
   double get _subtotal {
     double total = 0;
-    for (var item in _cart) { total += (item['price'] * item['quantity']); }
+    for (var item in _cart) { total += (item.price * item.quantity); }
     return total;
   }
+  
   double get _grandTotal => _subtotal - _discount;
 
+  // --- DIALOG JASA MANUAL ---
   void _tampilkanFormJasaManual() {
     TextEditingController namaCtrl = TextEditingController();
     TextEditingController hargaCtrl = TextEditingController();
@@ -179,9 +160,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Tambah Jasa Manual', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Tambah Jasa Manual', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
         content: SizedBox(
-          width: 300,
+          width: 350,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -193,7 +174,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 children: [
                   Expanded(child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', isDense: true, border: OutlineInputBorder()))),
                   const SizedBox(width: 12),
-                  Expanded(flex: 2, child: TextField(controller: catatanCtrl, decoration: const InputDecoration(labelText: 'Catatan Opsional', isDense: true, border: OutlineInputBorder()))),
+                  Expanded(flex: 2, child: TextField(controller: catatanCtrl, decoration: const InputDecoration(labelText: 'Catatan (Opsional)', isDense: true, border: OutlineInputBorder()))),
                 ],
               ),
             ],
@@ -206,16 +187,16 @@ class _HalamanKasirState extends State<HalamanKasir> {
             onPressed: () {
               if (namaCtrl.text.isEmpty || hargaCtrl.text.isEmpty) return;
               setState(() {
-                _cart.add({
-                  'product_id': null, 
-                  'name': namaCtrl.text,
-                  'price': double.tryParse(hargaCtrl.text) ?? 0,
-                  'quantity': int.tryParse(qtyCtrl.text) ?? 1,
-                  'order_type': 'DINE_IN',
-                  'note': catatanCtrl.text.isEmpty ? null : catatanCtrl.text,
-                  'type': 'SERVICE',
-                  'max_stock': 9999 
-                });
+                _cart.add(TransactionItemModel(
+                  productId: null, 
+                  name: namaCtrl.text,
+                  price: double.tryParse(hargaCtrl.text) ?? 0,
+                  purchasePrice: 0,
+                  quantity: int.tryParse(qtyCtrl.text) ?? 1,
+                  itemType: 'SERVICE',
+                  note: catatanCtrl.text.isEmpty ? null : catatanCtrl.text,
+                  maxStock: 9999, 
+                ));
               });
               Navigator.pop(ctx);
             },
@@ -226,10 +207,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-    void _tampilkanModalPembayaran() {
+  // --- DIALOG PEMBAYARAN (SPLIT PAYMENT) ---
+  void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
     
-    var appliedPayments = [
+    List> appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
     bool isProcessing = false;
@@ -242,28 +224,29 @@ class _HalamanKasirState extends State<HalamanKasir> {
           
           double totalBayarInput = 0;
           for (var p in appliedPayments) {
-            // PERBAIKAN: Cast p['ctrl'] ke TextEditingController
             totalBayarInput += double.tryParse((p['ctrl'] as TextEditingController).text) ?? 0;
           }
           double kurang = _grandTotal - totalBayarInput;
           if (kurang < 0) kurang = 0; 
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('Pembayaran Tagihan', style: TextStyle(fontWeight: FontWeight.bold)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
             content: SizedBox(
-              width: 450,
+              width: 500,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(12)),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(16)),
                       child: Column(
                         children: [
-                          const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
+                          const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text(_formatRupiah(_grandTotal), style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                         ],
                       ),
                     ),
@@ -271,7 +254,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     
                     ...appliedPayments.asMap().entries.map((entry) {
                       int idx = entry.key;
-                      dynamic payItem = entry.value;
+                      var payItem = entry.value;
                       
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -281,8 +264,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               flex: 2,
                               child: DropdownButtonFormField<String>(
                                 value: payItem['method'].toString(),
-                                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
-                                items: _activePaymentMethods.map((m) => DropdownMenuItem<String>(value: m['type'].toString(), child: Text(m['name'].toString(), style: const TextStyle(fontSize: 13)))).toList(),
+                                decoration: InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
+                                items: _paymentMethods.map((m) => DropdownMenuItem<String>(value: m.type, child: Text(m.name, style: const TextStyle(fontSize: 13)))).toList(),
                                 onChanged: (val) => setModalState(() => payItem['method'] = val!),
                               ),
                             ),
@@ -292,15 +275,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               child: TextField(
                                 controller: payItem['ctrl'] as TextEditingController,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(prefixText: 'Rp ', isDense: true, border: OutlineInputBorder()),
+                                decoration: InputDecoration(prefixText: 'Rp ', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                                 onChanged: (_) => setModalState((){}), 
                               ),
                             ),
                             if (appliedPayments.length > 1)
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle, color: Colors.red),
-                                onPressed: () => setModalState(() => appliedPayments.removeAt(idx)),
-                              )
+                              IconButton(icon: const Icon(Icons.remove_circle, color: AppColors.error), onPressed: () => setModalState(() => appliedPayments.removeAt(idx)))
                           ],
                         ),
                       );
@@ -311,15 +291,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       child: TextButton.icon(
                         onPressed: () {
                           setModalState(() {
-                            // PERBAIKAN: Menggunakan Map bertipe eksplisit agar aman dari error Object
                             appliedPayments.add({
-                              'method': _activePaymentMethods.first['type'].toString(), 
+                              'method': _paymentMethods.first.type, 
                               'ctrl': TextEditingController(text: kurang.toInt().toString())
                             });
                           });
                         }, 
-                        icon: const Icon(Icons.add, size: 16), 
-                        label: const Text('Tambah Pembayaran Gabungan (Split)')
+                        icon: const Icon(Icons.add, size: 16, color: AppColors.smartBlue), 
+                        label: const Text('Split Pembayaran', style: TextStyle(color: AppColors.smartBlue))
                       ),
                     ),
                     
@@ -327,8 +306,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Sisa Kurang:', style: TextStyle(color: Colors.red)),
-                        Text(_formatRupiah(kurang), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        const Text('Sisa Kurang:', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+                        Text(_formatRupiah(kurang), style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold, fontSize: 18)),
                       ],
                     )
                   ],
@@ -338,60 +317,48 @@ class _HalamanKasirState extends State<HalamanKasir> {
             actions: [
               TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)),
                 onPressed: isProcessing ? null : () async {
                   if (totalBayarInput < _grandTotal) {
-                    _showNotif('Uang pembayaran masih kurang!', Colors.red);
+                    _tampilPopupCantik('Pembayaran Kurang!', 'Uang yang diinput belum menutupi total tagihan.', Icons.error_outline, AppColors.error);
                     return;
                   }
 
                   setModalState(() => isProcessing = true);
                   
-                  var paymentsPayload = appliedPayments.map((p) => {
-                    "method": p['method'].toString(),
-                    "amount": double.tryParse((p['ctrl'] as TextEditingController).text) ?? 0
-                  }).toList();
-                  
                   final payload = {
-                    "table_number": _enableTableNumber ? _noMejaCtrl.text : null,
+                    "shift_id": _activeShiftId,
+                    "table_number": _enableTableNumber && _noMejaCtrl.text.isNotEmpty ? _noMejaCtrl.text : null,
                     "discount": _discount,
                     "tax": 0,
-                    "payments": paymentsPayload, 
-                    "items": _cart.map((c) => {
-                      "product_id": c['product_id'],
-                      "name": c['name'], 
-                      "price": c['price'], 
-                      "quantity": c['quantity'],
-                      "order_type": c['order_type'],
-                      "note": c['note']
-                    }).toList()
+                    "payments": appliedPayments.map((p) => {
+                      "method": p['method'].toString(),
+                      "amount": double.tryParse((p['ctrl'] as TextEditingController).text) ?? 0
+                    }).toList(), 
+                    "items": _cart.map((c) => c.toJson()).toList()
                   };
 
-                  final res = await ApiService.post('transactions', payload);
-                  if (res.statusCode == 201) {
-                    final dataTransaksi = json.decode(res.body)['data'];
+                  try {
+                    // Panggil Service POST Checkout
+                    await _transactionService.createTransaction(payload);
+                    
                     Navigator.pop(ctx);
                     
+                    // Reset Keranjang
                     setState(() { _cart.clear(); _noMejaCtrl.clear(); });
 
-                    final prefs = await SharedPreferences.getInstance();
-                    final storeId = prefs.getString('store_id') ?? '';
-                    final printerService = PrinterService();
-                    final printerConfig = await printerService.loadSettings(storeId);
+                    // Logika Cetak Struk (Disimulasikan)
+                    _tampilPopupCantik('Transaksi Sukses', 'Pembayaran berhasil disimpan.', Icons.check_circle, AppColors.primaryEmerald);
+                    _muatProduk(); // Refresh stok
                     
-                    if (printerConfig.autoPrint) {
-                      _showNotif('Mencetak struk otomatis...', AppColors.smartBlue);
-                      try { await printerService.cetakStruk(dataTransaksi); } catch (_) {}
-                    }
-                    
-                    _tampilkanSukses(dataTransaksi);
-                    _muatProduk(); 
-                  } else {
-                    _showNotif('Gagal: ${json.decode(res.body)['message']}', Colors.red);
-                    setModalState(() => isProcessing = false);
+                  } catch (e) {
+                    Navigator.pop(ctx);
+                    _tampilPopupCantik('Gagal Membayar', e.toString().replaceAll('Exception: ', ''), Icons.warning, AppColors.error);
                   }
                 },
-                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('SELESAIKAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: isProcessing 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                    : const Text('PROSES BAYAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               )
             ],
           );
@@ -400,102 +367,111 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  void _tampilkanSukses(dynamic dataTransaksi) {
-    String invoice = dataTransaksi['invoice'] ?? dataTransaksi['invoice_number'] ?? '-';
-    dynamic kembalian = dataTransaksi['kembalian'] ?? 0;
-
+  // --- POPUP NOTIFIKASI CANTIK ---
+  void _tampilPopupCantik(String judul, String pesan, IconData ikon, Color warna) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: AppColors.primaryEmerald, size: 80),
-            const SizedBox(height: 16),
-            const Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-            Text(invoice, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            if (kembalian > 0) ...[
-              const Text('Kembalian:', style: TextStyle(color: Colors.grey)),
-              Text(_formatRupiah(kembalian), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: warna.withOpacity(0.1), shape: BoxShape.circle), child: Icon(ikon, color: warna, size: 48)),
+              const SizedBox(height: 20),
+              Text(judul, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+              const SizedBox(height: 12),
+              Text(pesan, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: warna, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              )
             ],
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: const BorderSide(color: Color(0xFF1E293B)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                    ),
-                    onPressed: () async {
-                      try {
-                        _showNotif('Mencetak struk...', AppColors.smartBlue);
-                        await PrinterService().cetakStruk(dataTransaksi);
-                      } catch (e) {
-                        _showNotif(e.toString().replaceAll('Exception: ', ''), Colors.red);
-                      }
-                    }, 
-                    icon: const Icon(Icons.print, color: const Color(0xFF1E293B)), 
-                    label: const Text('Cetak', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold))
-                  )
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryEmerald,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                    ), 
-                    onPressed: () => Navigator.pop(ctx), 
-                    child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-                  )
-                ),
-              ],
-            )
-          ],
+          ),
         ),
+      ),
+    );
+  }
+  
+  void _tampilKonfirmasiKosongkan() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kosongkan Keranjang?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Semua item di keranjang akan dihapus.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () { setState(() => _cart.clear()); Navigator.pop(ctx); },
+            child: const Text('Kosongkan', style: TextStyle(color: Colors.white)),
+          )
+        ],
       )
     );
   }
 
-  void _showNotif(String pesan, Color warna) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: warna, behavior: SnackBarBehavior.floating));
+  void _tampilNotifShiftTutup() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle), child: Icon(Icons.lock_clock, size: 60, color: Colors.red.shade400)),
+              const SizedBox(height: 24),
+              const Text('SHIFT BELUM DIBUKA', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+              const SizedBox(height: 12),
+              const Text('Anda harus membuka shift kasir terlebih dahulu sebelum melayani pelanggan.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanShift())).then((_) => _cekShiftAktif());
+                  },
+                  icon: const Icon(Icons.lock_open, color: Colors.white),
+                  label: const Text('Buka Shift', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
   }
+
 
   Widget _buildProductGrid() {
     return _isLoading 
       ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
       : GridView.builder(
           padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 200,
-            childAspectRatio: 0.80,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 180, childAspectRatio: 0.8, crossAxisSpacing: 16, mainAxisSpacing: 16),
           itemCount: _products.length,
           itemBuilder: (ctx, i) {
-            var p = _products[i];
-            bool isJasa = p['product_type'] == 'SERVICE';
-            int stok = int.tryParse(p['stock'].toString()) ?? 0;
-            bool habis = !isJasa && stok <= 0;
-            double hargaJual = double.tryParse((p['selling_price'] ?? p['price'] ?? 0).toString()) ?? 0;
+            ProductModel p = _products[i];
+            bool isJasa = p.productType == 'SERVICE';
+            bool habis = !isJasa && p.stock <= 0;
 
             return InkWell(
               onTap: habis ? null : () => _addToCart(p),
               borderRadius: BorderRadius.circular(16),
               child: Card(
                 elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: habis ? Colors.red.shade200 : Colors.grey.shade200),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: habis ? Colors.red.shade200 : AppColors.border)),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -503,19 +479,19 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     children: [
                       Expanded(
                         child: Container(
-                          decoration: BoxDecoration(color: isJasa ? const Color(0xFFF7E7CE).withOpacity(0.5) : AppColors.lightGray, shape: BoxShape.circle),
-                          child: Center(child: Icon(isJasa ? Icons.design_services : Icons.inventory_2, size: 40, color: habis ? Colors.grey : isJasa ? const Color(0xFFB8860B) : AppColors.primaryEmerald)),
+                          decoration: BoxDecoration(color: isJasa ? AppColors.goldPremium.withOpacity(0.1) : AppColors.smartBlue.withOpacity(0.1), shape: BoxShape.circle),
+                          child: Center(child: Icon(isJasa ? Icons.design_services : Icons.inventory_2, size: 40, color: habis ? Colors.grey : isJasa ? AppColors.goldPremium : AppColors.smartBlue)),
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text(p['name'], textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, color: habis ? Colors.grey : const Color(0xFF1E293B))),
+                      Text(p.name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: habis ? Colors.grey : AppColors.navyActive)),
                       const SizedBox(height: 4),
-                      Text(_formatRupiah(hargaJual), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
+                      Text(_formatRupiah(p.sellingPrice), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
                       if (isJasa)
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFF7E7CE), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: Color(0xFFB8860B), fontWeight: FontWeight.bold)))
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: AppColors.goldPremium.withOpacity(0.2), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: AppColors.goldPremium, fontWeight: FontWeight.bold)))
                       else
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: habis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(12)), child: Text(habis ? 'HABIS' : 'Stok: $stok', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? Colors.red : Colors.grey.shade700))),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: habis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(12)), child: Text(habis ? 'HABIS' : 'Stok: ${p.stock}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? Colors.red : Colors.grey.shade700))),
                     ],
                   ),
                 ),
@@ -527,19 +503,19 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   Widget _buildCartPanel() {
     return Container(
-      width: 380, 
+      width: 400, 
       decoration: BoxDecoration(color: Colors.white, border: Border(left: BorderSide(color: Colors.grey.shade200))),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
-            color: const Color(0xFF1E293B),
+            padding: const EdgeInsets.all(20),
+            color: AppColors.navyActive,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('KERANJANG (${_cart.length})', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 if (_cart.isNotEmpty)
-                  InkWell(onTap: () => setState(() => _cart.clear()), child: const Text('Kosongkan', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)))
+                  InkWell(onTap: _tampilKonfirmasiKosongkan, child: const Text('Kosongkan', style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold)))
               ],
             ),
           ),
@@ -552,46 +528,46 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     var item = _cart[i];
                     return Container(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade100))),
+                      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(child: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: const Color(0xFF1E293B)))),
-                              Text(_formatRupiah(item['price'] * item['quantity']), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
+                              Expanded(child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.navyActive))),
+                              Text(_formatRupiah(item.price * item.quantity), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryEmerald)),
                             ],
                           ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              ChoiceChip(label: const Text('Dine In', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'DINE_IN', selectedColor: AppColors.primaryEmerald.withOpacity(0.2), onSelected: (v) => setState(() => item['order_type'] = 'DINE_IN')),
+                              ChoiceChip(label: const Text('Dine In', style: TextStyle(fontSize: 10)), selected: item.orderType == 'DINE_IN', selectedColor: AppColors.smartBlue.withOpacity(0.2), onSelected: (v) => setState(() => item.orderType = 'DINE_IN')),
                               const SizedBox(width: 8),
-                              ChoiceChip(label: const Text('Takeaway', style: TextStyle(fontSize: 10)), selected: item['order_type'] == 'TAKEAWAY', selectedColor: AppColors.primaryEmerald.withOpacity(0.2), onSelected: (v) => setState(() => item['order_type'] = 'TAKEAWAY')),
+                              ChoiceChip(label: const Text('Takeaway', style: TextStyle(fontSize: 10)), selected: item.orderType == 'TAKEAWAY', selectedColor: AppColors.smartBlue.withOpacity(0.2), onSelected: (v) => setState(() => item.orderType = 'TAKEAWAY')),
                             ],
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: TextFormField(
-                              initialValue: item['note'],
+                              initialValue: item.note,
                               style: const TextStyle(fontSize: 12),
                               decoration: InputDecoration(hintText: '+ Tambah catatan', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none), filled: true, fillColor: AppColors.lightGray, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                              onChanged: (val) => item['note'] = val.isEmpty ? null : val,
+                              onChanged: (val) => item.note = val.isEmpty ? null : val,
                             ),
                           ),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => setState(() { if (item['quantity'] > 1) item['quantity']--; else _cart.removeAt(i); })),
-                              Text('${item['quantity']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              IconButton(icon: const Icon(Icons.remove_circle_outline, color: AppColors.error), onPressed: () => setState(() { if (item.quantity > 1) item.quantity--; else _cart.removeAt(i); })),
+                              Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                               IconButton(
-                                icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryEmerald),
+                                icon: const Icon(Icons.add_circle_outline, color: AppColors.smartBlue),
                                 onPressed: () => setState(() {
-                                  if (item['type'] == 'PRODUCT' && item['quantity'] >= item['max_stock']) {
-                                    _showNotif('Maksimal stok tercapai', Colors.orange); return;
+                                  if (item.itemType == 'PRODUCT' && item.quantity >= item.maxStock) {
+                                    _tampilPopupCantik('Batas Stok', 'Maksimal stok tercapai.', Icons.warning, AppColors.warning); return;
                                   }
-                                  item['quantity']++;
+                                  item.quantity++;
                                 }),
                               ),
                             ],
@@ -604,21 +580,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
           ),
           
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
             child: Column(
               children: [
                 if (_enableTableNumber) ...[
                   TextField(
                     controller: _noMejaCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Input No/Nama Meja', 
-                      hintText: 'Cth: Meja 12 / VIP',
-                      filled: true, 
-                      fillColor: AppColors.lightGray, 
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), 
-                      prefixIcon: const Icon(Icons.table_restaurant)
-                    ),
+                    decoration: InputDecoration(labelText: 'No / Nama Meja (Opsional)', hintText: 'Cth: Meja 12', filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), prefixIcon: const Icon(Icons.table_restaurant, color: AppColors.textSecondary)),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -627,14 +596,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 const SizedBox(height: 4),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon', style: TextStyle(color: Colors.grey)), Text('- ${_formatRupiah(_discount)}', style: const TextStyle(color: Colors.red))]),
                 const Divider(height: 24),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: const Color(0xFF1E293B))), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: AppColors.primaryEmerald))]),
-                const SizedBox(height: 20),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL BAYAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.navyActive)), Text(_formatRupiah(_grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: AppColors.primaryEmerald))]),
+                const SizedBox(height: 24),
                 SizedBox(
-                  width: double.infinity, height: 54,
+                  width: double.infinity, height: 56,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
                     onPressed: _cart.isEmpty ? null : _tampilkanModalPembayaran,
-                    child: const Text('BAYAR SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    child: const Text('BAYAR SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
                   ),
                 )
               ],
@@ -648,41 +617,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
   @override
   Widget build(BuildContext context) {
     if (_isCheckingShift) return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
-
-    if (!_hasActiveShift) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle), child: Icon(Icons.lock_clock, size: 80, color: Colors.red.shade400)),
-              const SizedBox(height: 24),
-              const Text('SHIFT BELUM DIBUKA', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-              const SizedBox(height: 8),
-              const Text('Anda harus membuka shift kasir terlebih dahulu\nsebelum dapat melayani pelanggan.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, height: 1.5)),
-              const SizedBox(height: 32),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryEmerald,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanShift())).then((_) => _cekShiftAktif());
-                },
-                icon: const Icon(Icons.lock_open, color: Colors.white),
-                label: const Text('Buka Shift Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              )
-            ],
-          ),
-        ),
-      );
-    }
+    if (_activeShiftId == null) return const Scaffold(backgroundColor: Colors.white, body: Center()); // UI diambil alih oleh Popup
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        bool isDesktop = constraints.maxWidth > 600;
+        bool isDesktop = constraints.maxWidth > 800;
 
         Widget mainContent = Column(
           children: [
@@ -694,21 +633,18 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   Expanded(
                     child: TextField(
                       controller: _searchCtrl,
-                      onSubmitted: (val) {
-                        setState(() => _searchQuery = val);
-                        _muatProduk(); 
-                      },
-                      decoration: InputDecoration(hintText: 'Cari nama produk / scan barcode...', prefixIcon: const Icon(Icons.search), filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(vertical: 0)),
+                      onSubmitted: (val) { setState(() => _searchQuery = val); _muatProduk(); },
+                      decoration: InputDecoration(hintText: 'Cari nama produk / barcode...', prefixIcon: const Icon(Icons.search), filled: true, fillColor: AppColors.lightGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(vertical: 0)),
                     ),
                   ),
                   
                   if (_enableServices) ...[
                     const SizedBox(width: 12),
                     ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFB8860B), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.goldPremium, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
                       onPressed: _tampilkanFormJasaManual,
                       icon: const Icon(Icons.design_services, color: Colors.white, size: 20),
-                      label: const Text('Jasa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      label: const Text('Jasa Manual', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     )
                   ]
                 ],
@@ -721,14 +657,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
         if (isDesktop) {
           return Scaffold(
             backgroundColor: AppColors.background,
-            appBar: AppBar(title: const Text('Kasir Pintar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: const Color(0xFF1E293B), iconTheme: const IconThemeData(color: Colors.white), elevation: 0),
+            appBar: AppBar(title: const Text('Kasir Pintar', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)), backgroundColor: Colors.white, iconTheme: const IconThemeData(color: AppColors.navyActive), elevation: 1),
             body: Row(children: [Expanded(child: mainContent), _buildCartPanel()]),
           );
         }
 
         return Scaffold(
           backgroundColor: AppColors.background,
-          appBar: AppBar(title: const Text('Kasir Pintar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: const Color(0xFF1E293B), iconTheme: const IconThemeData(color: Colors.white), elevation: 0),
+          appBar: AppBar(title: const Text('Kasir Pintar', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)), backgroundColor: Colors.white, iconTheme: const IconThemeData(color: AppColors.navyActive), elevation: 1),
           body: mainContent,
           floatingActionButton: _cart.isNotEmpty
               ? FloatingActionButton.extended(
