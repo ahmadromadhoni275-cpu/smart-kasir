@@ -21,6 +21,9 @@ import 'halaman_pusat_bantuan.dart';
 import 'halaman_notifikasi.dart';
 import 'halaman_login.dart'; 
 
+// IMPORT WIDGET BADGE NOTIFIKASI
+import 'widgets/notification_badge.dart';
+
 class KerangkaNavigasi extends StatefulWidget {
   const KerangkaNavigasi({super.key});
 
@@ -32,7 +35,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   int _currentIndex = 0;
   String _tokoAktif = 'Toko Utama';
   String _namaPetugas = 'Ahmad Romadhoni';
-  String _role = 'KASIR'; // KASIR, MANAGER, OWNER
+  String _role = 'KASIR'; 
   bool _isLoading = true;
 
   late final List<Widget> _halaman = [
@@ -77,7 +80,6 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
 
   Future<void> _pilihCabangDanMuatUlang() async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPilihCabang()));
-    // Jika pergantian cabang sukses (mengembalikan true), muat ulang sesi dan reset navigasi ke Home
     if (result == true) {
       _currentIndex = 0; 
       _muatDataSesi();
@@ -198,8 +200,11 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
             icon: const Icon(Icons.headset_mic_outlined, color: AppColors.navyActive),
             onPressed: () => _gantiHalaman(13), // Ke Pusat Bantuan
           ),
-          IconButton(icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive), onPressed: () {}),
-          const SizedBox(width: 4),
+          
+          // IMPLEMENTASI NOTIFICATION BADGE UNTUK MOBILE
+          const NotificationBadge(),
+          
+          const SizedBox(width: 8),
         ],
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : _halaman[_currentIndex],
@@ -297,7 +302,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                           ),
                         ),
                         
-                        // MENU UTAMA (Menyesuaikan dengan gambar desain)
+                        // MENU UTAMA 
                         Expanded(
                           child: ListView(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -306,7 +311,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                               if (_role == 'OWNER' || _role == 'MANAGER' || _role == 'KASIR') 
                                 _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
                               if (_role == 'OWNER' || _role == 'MANAGER') 
-                                _buildSidebarItem(Icons.view_list_rounded, 'Stok', 2), // Index Halaman Produk
+                                _buildSidebarItem(Icons.view_list_rounded, 'Stok', 2),
                               if (_role == 'OWNER' || _role == 'MANAGER') 
                                 _buildSidebarItem(Icons.insert_chart_rounded, 'Laporan', 3), 
                               if (_role == 'OWNER' || _role == 'MANAGER') 
@@ -320,7 +325,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                           ),
                         ),
 
-                        // PREMIUM CARD & PROFIL CARD (Menyesuaikan dengan gambar desain)
+                        // PREMIUM CARD & PROFIL CARD
                         Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Column(
@@ -363,7 +368,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                                 child: Column(
                                   children: [
                                     InkWell(
-                                      onTap: () => _gantiHalaman(12), // Ke Profil Akun
+                                      onTap: () => _gantiHalaman(12),
                                       child: Row(
                                         children: [
                                           const CircleAvatar(
@@ -430,12 +435,10 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                           ),
                           Row(
                             children: [
-                              Stack(
-                                children: [
-                                  IconButton(icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive), onPressed: () {}),
-                                  Positioned(top: 8, right: 8, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)))
-                                ],
-                              ),
+                              
+                              // IMPLEMENTASI NOTIFICATION BADGE UNTUK DESKTOP
+                              const NotificationBadge(),
+                              
                               const SizedBox(width: 16),
                               _buildStoreSelector(isDesktop: true),
                             ],
@@ -494,7 +497,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
 
   Widget _buildStoreSelector({bool isDesktop = false}) {
     return InkWell(
-      onTap: _pilihCabangDanMuatUlang, // Muat ulang sesi setelah memilih cabang baru
+      onTap: _pilihCabangDanMuatUlang, 
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(color: isDesktop ? AppColors.cardSolid : Colors.transparent, borderRadius: BorderRadius.circular(20)),
