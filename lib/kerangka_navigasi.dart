@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
@@ -18,7 +19,8 @@ import 'halaman_pilih_cabang.dart';
 import 'halaman_langganan_saas.dart';
 import 'halaman_referral.dart'; 
 import 'halaman_pusat_bantuan.dart';
-import 'halaman_notifikasi.dart'; 
+import 'halaman_notifikasi.dart';
+import 'halaman_login.dart'; 
 
 class KerangkaNavigasi extends StatefulWidget {
   const KerangkaNavigasi({super.key});
@@ -33,9 +35,6 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   String _namaPetugas = 'User';
   String _role = 'KASIR'; // Default Role
 
-  // =========================================================
-  // RUMAH / INDEKS HALAMAN UNIVERSAL (Total 13 Halaman)
-  // =========================================================
   late final List<Widget> _halaman = [
     const HalamanBeranda(), 
     const HalamanKasir(),                                 
@@ -61,9 +60,9 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   Future<void> _muatDataSesi() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _namaPetugas = prefs.getString('username') ?? 'User';
-      _tokoAktif = prefs.getString('nama_toko') ?? 'Toko Utama';
-      _role = (prefs.getString('role') ?? 'KASIR').toUpperCase(); 
+      _namaPetugas = prefs.getString('username') ?? 'Ahmad Romadhoni';
+      _tokoAktif = prefs.getString('nama_toko') ?? 'Toko Maju Jaya';
+      _role = (prefs.getString('role') ?? 'Admin').toUpperCase(); 
     });
   }
 
@@ -71,6 +70,18 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     setState(() {
       _currentIndex = index;
     });
+  }
+
+  Future<void> _prosesLogout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); // Bersihkan semua sesi
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HalamanLogin()),
+        (route) => false,
+      );
+    }
   }
 
   // =========================================================
@@ -82,45 +93,52 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: const BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(10))),
-              const SizedBox(height: 16),
-              const Text('Menu Lainnya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-              const SizedBox(height: 8),
-              
-              if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                _buildMobileMenuItem(Icons.receipt_long, 'Transaksi', 4),
-                _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
-                _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
-              ],
-              
-              if (_role == 'OWNER')
-                _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
-                
-              if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                _buildMobileMenuItem(Icons.people_outline, 'Karyawan & Akses', 6),
-                _buildMobileMenuItem(Icons.payment, 'Metode Pembayaran', 9),
-              ],
-              
-              if (_role == 'OWNER') ...[
-                _buildMobileMenuItem(Icons.card_giftcard, 'Referral', 10),
-                _buildMobileMenuItem(Icons.diamond_outlined, 'Langganan', 11),
-              ],
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: const BoxDecoration(
+                color: AppColors.cardSolid, 
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 16),
+                  const Text('Menu Lainnya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  
+                  if (_role == 'OWNER' || _role == 'MANAGER') ...[
+                    _buildMobileMenuItem(Icons.receipt_long, 'Transaksi', 4),
+                    _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
+                    _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
+                  ],
+                  
+                  if (_role == 'OWNER')
+                    _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
+                    
+                  if (_role == 'OWNER' || _role == 'MANAGER') ...[
+                    _buildMobileMenuItem(Icons.people_outline, 'Karyawan & Akses', 6),
+                    _buildMobileMenuItem(Icons.payment, 'Metode Pembayaran', 9),
+                  ],
+                  
+                  if (_role == 'OWNER') ...[
+                    _buildMobileMenuItem(Icons.card_giftcard, 'Referral', 10),
+                    _buildMobileMenuItem(Icons.diamond_outlined, 'Langganan', 11),
+                  ],
 
-              if (_role == 'KASIR') ...[
-                _buildMobileMenuItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
-                _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
-              ],
-              
-              _buildMobileMenuItem(Icons.person_outline, 'Profil Akun', 12),
-              _buildMobileMenuItem(Icons.settings_outlined, 'Pengaturan Lain', 7),
-              const SizedBox(height: 24),
-            ],
+                  if (_role == 'KASIR') ...[
+                    _buildMobileMenuItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
+                    _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
+                  ],
+                  
+                  _buildMobileMenuItem(Icons.person_outline, 'Profil Akun', 12),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -159,18 +177,22 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.card,
+        backgroundColor: Colors.transparent, // Transparan untuk efek Crystal
         elevation: 0,
         titleSpacing: 16,
-        bottom: PreferredSize(preferredSize: const Size.fromHeight(1), child: Container(color: AppColors.border, height: 1)),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(color: AppColors.card.withOpacity(0.8)),
+          ),
+        ),
         title: Row(
           children: [
-            const Icon(Icons.point_of_sale, color: AppColors.primaryEmerald, size: 28),
+            Image.asset('assets/images/logo_smart_kasir.png', height: 32),
             const SizedBox(width: 12),
             Expanded(child: _buildStoreSelector(isDesktop: false)),
           ],
         ),
-        // <-- TAMBAHAN MENU HEADER MOBILE (BANTUAN & NOTIFIKASI) -->
         actions: [
           IconButton(
             icon: const Icon(Icons.headset_mic_outlined, color: AppColors.navyActive),
@@ -180,22 +202,22 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
           ),
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
-            onPressed: () {
-              // TODO: Arahkan ke halaman notifikasi
-              // Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanNotifikasi()));
-            },
+            onPressed: () {},
           ),
           const SizedBox(width: 4),
         ],
       ),
       body: _halaman[_currentIndex],
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border, width: 1))),
+        decoration: BoxDecoration(
+          color: AppColors.cardSolid,
+          boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
+        ),
         child: BottomNavigationBar(
           currentIndex: bottomNavIndex,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: AppColors.card,
-          selectedItemColor: AppColors.primaryEmerald,
+          backgroundColor: Colors.transparent,
+          selectedItemColor: AppColors.smartBlue, // Ganti ke biru Crystal
           unselectedItemColor: AppColors.textSecondary,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
@@ -238,133 +260,285 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   }
 
   // =========================================================
-  // 2. LAYOUT DESKTOP
+  // 2. LAYOUT DESKTOP (CRYSTAL UI)
   // =========================================================
   Widget _buildDesktopLayout() {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Row(
+      body: Stack(
         children: [
+          // Background Utama
           Container(
-            width: 250,
             decoration: const BoxDecoration(
-              color: AppColors.card,
-              border: Border(right: BorderSide(color: AppColors.border, width: 1)),
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Row(
-                    children: [
-                      Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primaryEmerald, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.point_of_sale, color: Colors.white, size: 20)),
-                      const SizedBox(width: 12),
-                      const Text('SMART KASIR', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.navyActive, letterSpacing: 1)),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
-                      const Padding(padding: EdgeInsets.only(left: 12, bottom: 8, top: 8), child: Text('MENU UTAMA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1))),
-                      _buildSidebarItem(Icons.dashboard, 'Dashboard', 0),
-                      _buildSidebarItem(Icons.shopping_cart, 'Kasir', 1),
-                      if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                        _buildSidebarItem(Icons.inventory_2, 'Produk', 2),
-                        _buildSidebarItem(Icons.category_outlined, 'Kategori', 7),
-                      ],
-                      if (_role == 'KASIR') _buildSidebarItem(Icons.inventory_2, 'Lihat Produk', 2),
-                      _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
-                      if (_role == 'OWNER' || _role == 'MANAGER') _buildSidebarItem(Icons.analytics, 'Laporan Bisnis', 3), 
-                      _buildSidebarItem(Icons.swap_horiz, 'Shift Kasir', 8),
-
-                      const Padding(padding: EdgeInsets.only(left: 12, bottom: 8, top: 24), child: Text('MANAJEMEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1))),
-                      
-                      if (_role == 'OWNER') _buildSidebarItem(Icons.storefront, 'Pengaturan Toko', 5), 
-                      if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                        _buildSidebarItem(Icons.people_outline, 'Karyawan & Akses', 6),
-                        _buildSidebarItem(Icons.payment, 'Metode Pembayaran', 9),
-                      ],
-                      if (_role == 'OWNER') ...[
-                        _buildSidebarItem(Icons.card_giftcard, 'Referral', 10),
-                        _buildSidebarItem(Icons.diamond_outlined, 'Langganan', 11),
-                      ],
-                      
-                      _buildSidebarItem(Icons.person, 'Profil Akun', 12),
-                      _buildSidebarItem(Icons.settings_outlined, 'Pengaturan Lain', 7),
-                    ],
-                  ),
-                ),
-              ],
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
+              ),
             ),
           ),
-          Expanded(
-            child: Column(
-              children: [
-                Container(
-                  height: 70,
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  decoration: const BoxDecoration(color: AppColors.card, border: Border(bottom: BorderSide(color: AppColors.border, width: 1))),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStoreSelector(isDesktop: true),
-                      Row(
-                        children: [
-                          // <-- TAMBAHAN MENU HEADER DESKTOP (BANTUAN & NOTIFIKASI) -->
-                          IconButton(
-                            icon: const Icon(Icons.headset_mic_outlined, color: AppColors.navyActive),
-                            tooltip: 'Pusat Bantuan AI',
-                            onPressed: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPusatBantuan()));
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
-                            tooltip: 'Notifikasi',
-                            onPressed: () {
-                              // TODO: Arahkan ke halaman notifikasi
-                              // Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanNotifikasi()));
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          Container(height: 32, width: 1, color: AppColors.border), // Garis pembatas
-                          const SizedBox(width: 16),
-                          
-                          // Profil Pengguna
-                          CircleAvatar(radius: 18, backgroundColor: AppColors.primaryEmerald.withOpacity(0.1), child: const Icon(Icons.person, size: 20, color: AppColors.primaryEmerald)),
-                          const SizedBox(width: 12),
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
+          
+          Row(
+            children: [
+              // ===============================================
+              // SIDEBAR KIRI (GLASSMORPHISM)
+              // ===============================================
+              Container(
+                width: 260,
+                margin: const EdgeInsets.only(left: 16, top: 16, bottom: 16, right: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.glassBorder, width: 1.2),
+                  boxShadow: const [BoxShadow(color: AppColors.shadowBlue, blurRadius: 24, offset: Offset(0, 8))],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Column(
+                      children: [
+                        // BAGIAN ATAS: LOGO
+                        Padding(
+                          padding: const EdgeInsets.only(top: 32, bottom: 24),
+                          child: Column(
                             children: [
-                              Text(_namaPetugas, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                              Text(_role, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                              Image.asset('assets/images/logo_smart_kasir.png', height: 60),
+                              const SizedBox(height: 12),
+                              const Text('Smart Kasir', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                              const Text('Mudah • Cepat • Aman', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                             ],
                           ),
-                        ],
-                      )
-                    ],
+                        ),
+                        
+                        // BAGIAN TENGAH: MENU
+                        Expanded(
+                          child: ListView(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            children: [
+                              _buildSidebarItem(Icons.home_filled, 'Dashboard', 0),
+                              _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
+                              if (_role == 'OWNER' || _role == 'MANAGER') ...[
+                                _buildSidebarItem(Icons.inventory_2, 'Produk', 2),
+                                _buildSidebarItem(Icons.inventory, 'Stok', 8), // Sesuaikan index jika ada halaman khusus stok
+                              ],
+                              if (_role == 'OWNER' || _role == 'MANAGER') _buildSidebarItem(Icons.analytics, 'Laporan', 3), 
+                              _buildSidebarItem(Icons.person_outline, 'Pengguna', 6),
+                              if (_role == 'OWNER') _buildSidebarItem(Icons.settings, 'Pengaturan Toko', 5), 
+                              if (_role == 'OWNER') _buildSidebarItem(Icons.diamond_outlined, 'Langganan', 11),
+                              _buildSidebarItem(Icons.help_outline, 'Bantuan', 7), // Arahkan ke pusat bantuan
+                            ],
+                          ),
+                        ),
+
+                        // BAGIAN BAWAH: PREMIUM CARD & PROFIL CARD
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              // Kartu Premium
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardSolid,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.workspace_premium, color: AppColors.goldPremium, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('Premium Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text('Masa Aktif\n30 Sep 2026', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                                    const SizedBox(height: 12),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(colors: [AppColors.menuActiveStart, AppColors.menuActiveEnd]),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
+                                          minimumSize: const Size(double.infinity, 32), padding: EdgeInsets.zero
+                                        ),
+                                        onPressed: () {},
+                                        child: const Text('Perpanjang →', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Kartu Profil Logout
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardSolid,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const CircleAvatar(
+                                          radius: 16,
+                                          backgroundImage: NetworkImage('https://i.pravatar.cc/100'), // Ganti dengan foto profil asli jika ada
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(_namaPetugas, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.navyActive), overflow: TextOverflow.ellipsis),
+                                              Text(_role, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    InkWell(
+                                      onTap: _prosesLogout,
+                                      child: const Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text('→ Logout', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                                        ],
+                                      ),
+                                    )
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
                   ),
                 ),
-                Expanded(child: _halaman[_currentIndex])
-              ],
-            ),
-          )
+              ),
+              
+              // ===============================================
+              // KONTEN KANAN (HEADER & BODY)
+              // ===============================================
+              Expanded(
+                child: Column(
+                  children: [
+                    // HEADER DESKTOP
+                    Container(
+                      height: 80,
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Search Bar (Hanya Dummy UI)
+                          Container(
+                            width: 300,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardSolid,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+                                SizedBox(width: 8),
+                                Text('Cari produk, transaksi... Ctrl+K', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          
+                          Row(
+                            children: [
+                              // Icon Notif
+                              Stack(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
+                                    onPressed: () {},
+                                  ),
+                                  Positioned(
+                                    top: 8, right: 8,
+                                    child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+                                  )
+                                ],
+                              ),
+                              const SizedBox(width: 16),
+                              // Selector Toko Header
+                              _buildStoreSelector(isDesktop: true),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                    
+                    // BODY KONTEN
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(24)),
+                        child: Container(
+                          // Agar halaman yang dipanggil memiliki latar yang sesuai dengan gradient di belakangnya
+                          color: Colors.transparent, 
+                          child: _halaman[_currentIndex],
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              )
+            ],
+          ),
         ],
       ),
     );
   }
 
+  // Desain Item Sidebar Kapsul
+  Widget _buildSidebarItem(IconData icon, String title, int indexTarget) {
+    bool isSelected = _currentIndex == indexTarget;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _gantiHalaman(indexTarget),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: isSelected ? const LinearGradient(colors: [AppColors.menuActiveStart, AppColors.menuActiveEnd]) : null,
+            color: isSelected ? null : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected ? [const BoxShadow(color: AppColors.shadowBlue, blurRadius: 10, offset: Offset(0, 4))] : [],
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: isSelected ? Colors.white : AppColors.textSecondary),
+              const SizedBox(width: 16),
+              Text(title, style: TextStyle(fontSize: 13, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, color: isSelected ? Colors.white : AppColors.textPrimary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Desain Selector Toko di Kanan Atas
   Widget _buildStoreSelector({bool isDesktop = false}) {
     return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPilihCabang())),
       child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: isDesktop ? AppColors.background : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDesktop ? AppColors.cardSolid : Colors.transparent, 
+          borderRadius: BorderRadius.circular(20)
+        ),
         child: Row(
-          mainAxisSize: MainAxisSize.min, // Agar fleksibel di mobile
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.storefront, size: 18, color: AppColors.textPrimary),
             const SizedBox(width: 8),
@@ -375,30 +549,9 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                 style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)
               ),
             ),
-            const Icon(Icons.arrow_drop_down, color: AppColors.textSecondary)
+            const SizedBox(width: 4),
+            const Icon(Icons.keyboard_arrow_down, color: AppColors.textSecondary, size: 18)
         ]),
-      ),
-    );
-  }
-
-  Widget _buildSidebarItem(IconData icon, String title, int indexTarget) {
-    bool isSelected = _currentIndex == indexTarget;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => _gantiHalaman(indexTarget),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: isSelected ? AppColors.navyActive : Colors.transparent, borderRadius: BorderRadius.circular(10)),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: isSelected ? Colors.white : AppColors.textSecondary),
-              const SizedBox(width: 12),
-              Text(title, style: TextStyle(fontSize: 14, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? Colors.white : AppColors.textSecondary)),
-            ],
-          ),
-        ),
       ),
     );
   }
