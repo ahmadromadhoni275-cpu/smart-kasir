@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import 'tema.dart'; // Import tema eksklusif
+import 'tema.dart'; 
 import 'halaman_pengaturan.dart';
 import 'halaman_printer.dart';
 import 'halaman_pelanggan.dart';
-import 'halaman_produk.dart'; // <-- TAMBAHAN: Import halaman produk
+import 'halaman_produk.dart';
 import 'halaman_login.dart';
 
 class HalamanMenu extends StatefulWidget {
@@ -19,6 +18,7 @@ class _HalamanMenuState extends State<HalamanMenu> {
   String _namaToko = 'Memuat...';
   String _username = 'Admin';
   String _role = 'kasir';
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -30,8 +30,9 @@ class _HalamanMenuState extends State<HalamanMenu> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
-      _username = prefs.getString('username') ?? 'Admin';
-      _role = prefs.getString('role') ?? 'kasir';
+      _username = prefs.getString('username') ?? 'Ahmad Romadhoni';
+      _role = (prefs.getString('role') ?? 'KASIR').toUpperCase();
+      _isLoading = false;
     });
   }
 
@@ -40,24 +41,20 @@ class _HalamanMenuState extends State<HalamanMenu> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Konfirmasi Keluar', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
+        title: const Text('Konfirmasi Keluar', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.slateGray))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.clear(); // Hapus semua sesi
+              await prefs.clear(); 
               if (mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const HalamanLogin()),
-                  (route) => false,
-                );
+                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const HalamanLogin()), (route) => false);
               }
             },
-            child: const Text('Keluar', style: TextStyle(color: AppColors.white)),
+            child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -66,38 +63,40 @@ class _HalamanMenuState extends State<HalamanMenu> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     return Scaffold(
-      backgroundColor: AppColors.lightGray,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // --- HEADER PROFIL ---
+              // --- HEADER PROFIL (Crystal UI Style) ---
               Container(
-                padding: const EdgeInsets.all(25),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: AppColors.cardSolid,
+                  boxShadow: [BoxShadow(color: AppColors.shadowBlue, blurRadius: 20, offset: Offset(0, 5))],
                 ),
                 child: Row(
                   children: [
                     Container(
                       width: 60, height: 60,
-                      decoration: BoxDecoration(color: AppColors.teal.withOpacity(0.1), shape: BoxShape.circle),
-                      child: const Icon(Icons.storefront, color: AppColors.teal, size: 30),
+                      decoration: BoxDecoration(color: AppColors.smartBlue.withOpacity(0.1), shape: BoxShape.circle),
+                      child: const Icon(Icons.storefront, color: AppColors.smartBlue, size: 30),
                     ),
-                    const SizedBox(width: 15),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(_namaToko, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                          const SizedBox(height: 4),
+                          Text(_namaToko, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                          const SizedBox(height: 6),
                           Row(
                             children: [
-                              const Icon(Icons.person, size: 12, color: AppColors.slateGray),
-                              const SizedBox(width: 4),
-                              Text('$_username ($_role)', style: const TextStyle(fontSize: 13, color: AppColors.slateGray)),
+                              const Icon(Icons.person_outline, size: 14, color: AppColors.textSecondary),
+                              const SizedBox(width: 6),
+                              Text('$_username ($_role)', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ],
@@ -106,7 +105,7 @@ class _HalamanMenuState extends State<HalamanMenu> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
               // --- DAFTAR MENU ---
               Padding(
@@ -114,31 +113,33 @@ class _HalamanMenuState extends State<HalamanMenu> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Manajemen Toko', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.slateGray, fontSize: 13)),
-                    const SizedBox(height: 10),
+                    const Text('Manajemen Toko', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 13)),
+                    const SizedBox(height: 12),
                     
-                    _buildMenuItem(Icons.store, 'Pengaturan Toko & Pembayaran', AppColors.premiumGold, () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPengaturan()));
-                    }),
-                    _buildMenuItem(Icons.people, 'Data Pelanggan', AppColors.smartBlue, () {
+                    if (_role == 'OWNER' || _role == 'MANAGER')
+                      _buildMenuItem(Icons.storefront, 'Pengaturan Toko & Pembayaran', AppColors.goldPremium, () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPengaturan()));
+                      }),
+                    
+                    _buildMenuItem(Icons.people_outline, 'Data Pelanggan', AppColors.smartBlue, () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPelanggan()));
                     }),
                     
-                    // <-- TAMBAHAN: Menu Manajemen Produk -->
-                    _buildMenuItem(Icons.inventory_2_outlined, 'Manajemen Produk', AppColors.emerald, () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanProduk()));
-                    }),
+                    if (_role == 'OWNER' || _role == 'MANAGER')
+                      _buildMenuItem(Icons.inventory_2_outlined, 'Manajemen Produk', AppColors.primaryEmerald, () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanProduk()));
+                      }),
                     
-                    const SizedBox(height: 20),
-                    const Text('Perangkat & Sistem', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.slateGray, fontSize: 13)),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 24),
+                    const Text('Perangkat & Sistem', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 13)),
+                    const SizedBox(height: 12),
                     
-                    _buildMenuItem(Icons.print, 'Pengaturan Printer', AppColors.teal, () {
+                    _buildMenuItem(Icons.print_outlined, 'Pengaturan Printer', AppColors.skyBlue, () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPrinter()));
                     }),
 
-                    const SizedBox(height: 20),
-                    _buildMenuItem(Icons.logout, 'Keluar (Logout)', AppColors.red, _logout, isLogout: true),
+                    const SizedBox(height: 24),
+                    _buildMenuItem(Icons.logout, 'Keluar (Logout)', AppColors.error, _logout, isLogout: true),
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -154,9 +155,9 @@ class _HalamanMenuState extends State<HalamanMenu> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: AppColors.cardSolid,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: const [BoxShadow(color: AppColors.shadowBlue, blurRadius: 10, offset: Offset(0, 4))],
       ),
       child: Material(
         color: Colors.transparent, 
@@ -164,19 +165,19 @@ class _HalamanMenuState extends State<HalamanMenu> {
           onTap: onTap,
           borderRadius: BorderRadius.circular(16), 
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                   child: Icon(icon, color: color, size: 20),
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isLogout ? AppColors.red : AppColors.darkText)),
+                  child: Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isLogout ? AppColors.error : AppColors.textPrimary)),
                 ),
-                if (!isLogout) const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.slateGray),
+                if (!isLogout) const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textSecondary),
               ],
             ),
           ),

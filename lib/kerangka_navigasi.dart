@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tema.dart';
 
-// --- IMPORT SEMUA HALAMAN YANG SUDAH DIBUAT ---
 import 'halaman_beranda.dart';
 import 'halaman_kasir.dart';
 import 'halaman_produk.dart';
@@ -32,23 +31,25 @@ class KerangkaNavigasi extends StatefulWidget {
 class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   int _currentIndex = 0;
   String _tokoAktif = 'Toko Utama';
-  String _namaPetugas = 'User';
-  String _role = 'KASIR'; // Default Role
+  String _namaPetugas = 'Ahmad Romadhoni';
+  String _role = 'KASIR'; // KASIR, MANAGER, OWNER
+  bool _isLoading = true;
 
   late final List<Widget> _halaman = [
-    const HalamanBeranda(), 
-    const HalamanKasir(),                                 
-    const HalamanProduk(),                                
-    const HalamanLaporan(),                               
-    const HalamanRiwayatTransaksi(),                      
-    const HalamanPengaturanToko(),                        
-    const HalamanPengguna(),                              
-    const HalamanKategori(),                              
-    const HalamanShift(),                                 
-    const HalamanMetodePembayaran(),                      
-    const HalamanReferral(),                              
-    const HalamanLanggananSaas(),                         
-    const HalamanProfilAkun(),                            
+    const HalamanBeranda(),             // 0
+    const HalamanKasir(),               // 1
+    const HalamanProduk(),              // 2
+    const HalamanLaporan(),             // 3
+    const HalamanRiwayatTransaksi(),    // 4
+    const HalamanPengaturanToko(),      // 5
+    const HalamanPengguna(),            // 6
+    const HalamanKategori(),            // 7
+    const HalamanShift(),               // 8
+    const HalamanMetodePembayaran(),    // 9
+    const HalamanReferral(),            // 10
+    const HalamanLanggananSaas(),       // 11
+    const HalamanProfilAkun(),          // 12
+    const HalamanPusatBantuan(),        // 13
   ];
 
   @override
@@ -58,11 +59,13 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   }
 
   Future<void> _muatDataSesi() async {
+    setState(() => _isLoading = true);
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _namaPetugas = prefs.getString('username') ?? 'Ahmad Romadhoni';
-      _tokoAktif = prefs.getString('nama_toko') ?? 'Toko Maju Jaya';
-      _role = (prefs.getString('role') ?? 'Admin').toUpperCase(); 
+      _tokoAktif = prefs.getString('nama_toko') ?? 'Smart Kasir';
+      _role = (prefs.getString('role') ?? 'KASIR').toUpperCase(); 
+      _isLoading = false;
     });
   }
 
@@ -72,15 +75,20 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     });
   }
 
+  Future<void> _pilihCabangDanMuatUlang() async {
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPilihCabang()));
+    // Jika pergantian cabang sukses (mengembalikan true), muat ulang sesi dan reset navigasi ke Home
+    if (result == true) {
+      _currentIndex = 0; 
+      _muatDataSesi();
+    }
+  }
+
   Future<void> _prosesLogout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Bersihkan semua sesi
+    await prefs.clear(); 
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const HalamanLogin()),
-        (route) => false,
-      );
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const HalamanLogin()), (route) => false);
     }
   }
 
@@ -99,9 +107,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: const BoxDecoration(
-                color: AppColors.cardSolid, 
-              ),
+              decoration: const BoxDecoration(color: AppColors.cardSolid),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -115,25 +121,19 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                     _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
                     _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
                   ],
-                  
-                  if (_role == 'OWNER')
-                    _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
-                    
+                  if (_role == 'OWNER') _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
                   if (_role == 'OWNER' || _role == 'MANAGER') ...[
                     _buildMobileMenuItem(Icons.people_outline, 'Karyawan & Akses', 6),
                     _buildMobileMenuItem(Icons.payment, 'Metode Pembayaran', 9),
                   ],
-                  
                   if (_role == 'OWNER') ...[
                     _buildMobileMenuItem(Icons.card_giftcard, 'Referral', 10),
                     _buildMobileMenuItem(Icons.diamond_outlined, 'Langganan', 11),
                   ],
-
                   if (_role == 'KASIR') ...[
                     _buildMobileMenuItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
                     _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
                   ],
-                  
                   _buildMobileMenuItem(Icons.person_outline, 'Profil Akun', 12),
                   const SizedBox(height: 24),
                 ],
@@ -177,7 +177,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent, // Transparan untuk efek Crystal
+        backgroundColor: Colors.transparent,
         elevation: 0,
         titleSpacing: 16,
         flexibleSpace: ClipRRect(
@@ -196,18 +196,13 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
         actions: [
           IconButton(
             icon: const Icon(Icons.headset_mic_outlined, color: AppColors.navyActive),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPusatBantuan()));
-            },
+            onPressed: () => _gantiHalaman(13), // Ke Pusat Bantuan
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
-            onPressed: () {},
-          ),
+          IconButton(icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive), onPressed: () {}),
           const SizedBox(width: 4),
         ],
       ),
-      body: _halaman[_currentIndex],
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : _halaman[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.cardSolid,
@@ -217,7 +212,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
           currentIndex: bottomNavIndex,
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.transparent,
-          selectedItemColor: AppColors.smartBlue, // Ganti ke biru Crystal
+          selectedItemColor: AppColors.smartBlue,
           unselectedItemColor: AppColors.textSecondary,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
@@ -260,28 +255,20 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   }
 
   // =========================================================
-  // 2. LAYOUT DESKTOP (CRYSTAL UI)
+  // 2. LAYOUT DESKTOP (CRYSTAL UI) Sesuai Referensi Visual
   // =========================================================
   Widget _buildDesktopLayout() {
     return Scaffold(
       body: Stack(
         children: [
-          // Background Utama
           Container(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
-              ),
+              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd]),
             ),
           ),
-          
           Row(
             children: [
-              // ===============================================
-              // SIDEBAR KIRI (GLASSMORPHISM)
-              // ===============================================
+              // SIDEBAR KIRI
               Container(
                 width: 260,
                 margin: const EdgeInsets.only(left: 16, top: 16, bottom: 16, right: 8),
@@ -297,7 +284,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Column(
                       children: [
-                        // BAGIAN ATAS: LOGO
+                        // LOGO
                         Padding(
                           padding: const EdgeInsets.only(top: 32, bottom: 24),
                           child: Column(
@@ -310,96 +297,91 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                           ),
                         ),
                         
-                        // BAGIAN TENGAH: MENU
+                        // MENU UTAMA (Menyesuaikan dengan gambar desain)
                         Expanded(
                           child: ListView(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             children: [
                               _buildSidebarItem(Icons.home_filled, 'Dashboard', 0),
-                              _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
-                              if (_role == 'OWNER' || _role == 'MANAGER') ...[
-                                _buildSidebarItem(Icons.inventory_2, 'Produk', 2),
-                                _buildSidebarItem(Icons.inventory, 'Stok', 8), // Sesuaikan index jika ada halaman khusus stok
-                              ],
-                              if (_role == 'OWNER' || _role == 'MANAGER') _buildSidebarItem(Icons.analytics, 'Laporan', 3), 
-                              _buildSidebarItem(Icons.person_outline, 'Pengguna', 6),
-                              if (_role == 'OWNER') _buildSidebarItem(Icons.settings, 'Pengaturan Toko', 5), 
-                              if (_role == 'OWNER') _buildSidebarItem(Icons.diamond_outlined, 'Langganan', 11),
-                              _buildSidebarItem(Icons.help_outline, 'Bantuan', 7), // Arahkan ke pusat bantuan
+                              if (_role == 'OWNER' || _role == 'MANAGER' || _role == 'KASIR') 
+                                _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
+                              if (_role == 'OWNER' || _role == 'MANAGER') 
+                                _buildSidebarItem(Icons.view_list_rounded, 'Stok', 2), // Index Halaman Produk
+                              if (_role == 'OWNER' || _role == 'MANAGER') 
+                                _buildSidebarItem(Icons.insert_chart_rounded, 'Laporan', 3), 
+                              if (_role == 'OWNER' || _role == 'MANAGER') 
+                                _buildSidebarItem(Icons.person_outline, 'Pengguna', 6),
+                              if (_role == 'OWNER') 
+                                _buildSidebarItem(Icons.settings_outlined, 'Pengaturan Toko', 5), 
+                              if (_role == 'OWNER') 
+                                _buildSidebarItem(Icons.workspace_premium_outlined, 'Langganan', 11),
+                              _buildSidebarItem(Icons.help_outline, 'Bantuan', 13), 
                             ],
                           ),
                         ),
 
-                        // BAGIAN BAWAH: PREMIUM CARD & PROFIL CARD
+                        // PREMIUM CARD & PROFIL CARD (Menyesuaikan dengan gambar desain)
                         Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Column(
                             children: [
-                              // Kartu Premium
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.cardSolid,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Row(
-                                      children: [
-                                        Icon(Icons.workspace_premium, color: AppColors.goldPremium, size: 18),
-                                        SizedBox(width: 8),
-                                        Text('Premium Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    const Text('Masa Aktif\n30 Sep 2026', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                                    const SizedBox(height: 12),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        gradient: const LinearGradient(colors: [AppColors.menuActiveStart, AppColors.menuActiveEnd]),
-                                        borderRadius: BorderRadius.circular(8),
+                              if (_role == 'OWNER') 
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(color: AppColors.cardSolid, borderRadius: BorderRadius.circular(16)),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Row(
+                                        children: [
+                                          Icon(Icons.workspace_premium, color: AppColors.goldPremium, size: 18),
+                                          SizedBox(width: 8),
+                                          Text('Premium Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                                        ],
                                       ),
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
-                                          minimumSize: const Size(double.infinity, 32), padding: EdgeInsets.zero
+                                      const SizedBox(height: 8),
+                                      const Text('Masa Aktif\n30 Sep 2026', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        decoration: BoxDecoration(gradient: const LinearGradient(colors: [AppColors.smartBlue, AppColors.skyBlue]), borderRadius: BorderRadius.circular(8)),
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, minimumSize: const Size(double.infinity, 32), padding: EdgeInsets.zero),
+                                          onPressed: () => _gantiHalaman(11),
+                                          child: const Text('Perpanjang →', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
                                         ),
-                                        onPressed: () {},
-                                        child: const Text('Perpanjang →', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
                               const SizedBox(height: 12),
-                              // Kartu Profil Logout
+                              
+                              // Kartu Profil & Logout
                               Container(
                                 padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.cardSolid,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
+                                decoration: BoxDecoration(color: AppColors.cardSolid, borderRadius: BorderRadius.circular(16)),
                                 child: Column(
                                   children: [
-                                    Row(
-                                      children: [
-                                        const CircleAvatar(
-                                          radius: 16,
-                                          backgroundImage: NetworkImage('https://i.pravatar.cc/100'), // Ganti dengan foto profil asli jika ada
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(_namaPetugas, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.navyActive), overflow: TextOverflow.ellipsis),
-                                              Text(_role, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                                            ],
+                                    InkWell(
+                                      onTap: () => _gantiHalaman(12), // Ke Profil Akun
+                                      child: Row(
+                                        children: [
+                                          const CircleAvatar(
+                                            radius: 16,
+                                            backgroundImage: NetworkImage('https://i.pravatar.cc/100'), 
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(_namaPetugas, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.navyActive), overflow: TextOverflow.ellipsis),
+                                                Text(_role == 'OWNER' ? 'Admin ▾' : 'Kasir ▾', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                     const SizedBox(height: 12),
                                     InkWell(
@@ -423,9 +405,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                 ),
               ),
               
-              // ===============================================
-              // KONTEN KANAN (HEADER & BODY)
-              // ===============================================
+              // KONTEN KANAN
               Expanded(
                 child: Column(
                   children: [
@@ -436,14 +416,10 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Search Bar (Hanya Dummy UI)
                           Container(
                             width: 300,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: AppColors.cardSolid,
-                              borderRadius: BorderRadius.circular(30),
-                            ),
+                            decoration: BoxDecoration(color: AppColors.cardSolid, borderRadius: BorderRadius.circular(30)),
                             child: const Row(
                               children: [
                                 Icon(Icons.search, color: AppColors.textSecondary, size: 20),
@@ -452,24 +428,15 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                               ],
                             ),
                           ),
-                          
                           Row(
                             children: [
-                              // Icon Notif
                               Stack(
                                 children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive),
-                                    onPressed: () {},
-                                  ),
-                                  Positioned(
-                                    top: 8, right: 8,
-                                    child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-                                  )
+                                  IconButton(icon: const Icon(Icons.notifications_outlined, color: AppColors.navyActive), onPressed: () {}),
+                                  Positioned(top: 8, right: 8, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)))
                                 ],
                               ),
                               const SizedBox(width: 16),
-                              // Selector Toko Header
                               _buildStoreSelector(isDesktop: true),
                             ],
                           )
@@ -477,14 +444,13 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                       ),
                     ),
                     
-                    // BODY KONTEN
+                    // BODY
                     Expanded(
                       child: ClipRRect(
                         borderRadius: const BorderRadius.only(topLeft: Radius.circular(24)),
                         child: Container(
-                          // Agar halaman yang dipanggil memiliki latar yang sesuai dengan gradient di belakangnya
                           color: Colors.transparent, 
-                          child: _halaman[_currentIndex],
+                          child: _isLoading ? const Center(child: CircularProgressIndicator()) : _halaman[_currentIndex],
                         ),
                       ),
                     )
@@ -498,7 +464,6 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     );
   }
 
-  // Desain Item Sidebar Kapsul
   Widget _buildSidebarItem(IconData icon, String title, int indexTarget) {
     bool isSelected = _currentIndex == indexTarget;
     return Container(
@@ -527,28 +492,18 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     );
   }
 
-  // Desain Selector Toko di Kanan Atas
   Widget _buildStoreSelector({bool isDesktop = false}) {
     return InkWell(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanPilihCabang())),
+      onTap: _pilihCabangDanMuatUlang, // Muat ulang sesi setelah memilih cabang baru
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isDesktop ? AppColors.cardSolid : Colors.transparent, 
-          borderRadius: BorderRadius.circular(20)
-        ),
+        decoration: BoxDecoration(color: isDesktop ? AppColors.cardSolid : Colors.transparent, borderRadius: BorderRadius.circular(20)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.storefront, size: 18, color: AppColors.textPrimary),
             const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                _tokoAktif, 
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)
-              ),
-            ),
+            Flexible(child: Text(_tokoAktif, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary))),
             const SizedBox(width: 4),
             const Icon(Icons.keyboard_arrow_down, color: AppColors.textSecondary, size: 18)
         ]),
