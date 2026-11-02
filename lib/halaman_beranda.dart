@@ -5,11 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async'; 
 
 import 'tema.dart';
-// Import services yang Anda sebutkan
-import 'core/services/report_service.dart';
-import 'core/services/transaction_service.dart';
-import 'core/services/product_service.dart';
-import 'core/services/profile_service.dart';
+import 'core/services/dashboard_service.dart';
+import 'models/dashboard_model.dart';
 
 class HalamanBeranda extends StatefulWidget {
   const HalamanBeranda({super.key});
@@ -23,12 +20,8 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   String _role = 'KASIR';
   String _namaPetugas = 'User';
   
-  // State untuk menampung data dari berbagai Service
-  Map<String, dynamic> _summaryData = {};
-  List<dynamic> _recentTransactions = [];
-  List<dynamic> _bestProducts = [];
-  Map<String, dynamic> _activeShift = {}; 
-  List<dynamic> _banners = []; 
+  // Menggunakan Master Model untuk menampung seluruh data
+  DashboardModel? _dashboardData;
 
   // Variabel untuk Jam Real-Time
   late Stream<DateTime> _timeStream;
@@ -38,23 +31,15 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   int _currentCarouselIndex = 0;
   Timer? _carouselTimer;
 
-  // Instansiasi Services
-  final ReportService _reportService = ReportService();
-  final TransactionService _transactionService = TransactionService();
-  final ProductService _productService = ProductService();
+  // Instansiasi Service Baru
+  final DashboardService _dashboardService = DashboardService();
 
   @override
   void initState() {
     super.initState();
     _timeStream = Stream<DateTime>.periodic(const Duration(seconds: 1), (_) => DateTime.now());
     
-    _muatDataSemua();
-    // Default fallback banners agar carousel tidak kosong jika backend belum siap kirim banner
-    _banners = [
-      {'title': 'Sistem Kasir Pintar', 'description': 'Fitur baru mempercepat transaksi.', 'color_theme': 'blue', 'icon_name': 'update'},
-      {'title': 'Promo Langganan', 'description': 'Dapatkan diskon 20% untuk paket Premium tahunan.', 'color_theme': 'gold', 'icon_name': 'workspace_premium'}
-    ];
-    _mulaiCarousel();
+    _muatDataDashboard();
   }
 
   @override
@@ -65,10 +50,12 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   }
 
   void _mulaiCarousel() {
+    _carouselTimer?.cancel(); // Pastikan timer sebelumnya dibersihkan
     _carouselTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (_pageController.hasClients) {
-        if (_banners.length > 1) {
-          int nextPage = (_currentCarouselIndex + 1) % _banners.length;
+      if (_pageController.hasClients && _dashboardData != null) {
+        int bannerCount = _dashboardData!.banners.length;
+        if (bannerCount > 1) {
+          int nextPage = (_currentCarouselIndex + 1) % bannerCount;
           _pageController.animateToPage(
             nextPage,
             duration: const Duration(milliseconds: 600),
@@ -79,49 +66,35 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     });
   }
 
-  // Memuat data dari berbagai Service secara paralel
-  Future<void> _muatDataSemua() async {
+  Future<void> _muatDataDashboard() async {
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       _role = (prefs.getString('role') ?? 'KASIR').toUpperCase();
       _namaPetugas = prefs.getString('username') ?? 'User';
       
-      // Ambil tanggal hari ini untuk filter laporan dasar
-      String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-      // Future.wait agar request API berjalan bersamaan
-      final results = await Future.wait([
-        _reportService.getSummary(today, today),
-        _transactionService.getTransactions(dateFrom: today, dateTo: today, page: 1, perPage: 5),
-        _reportService.getProductSales(today, today), 
-        // Jika ada getActiveShift API, panggil di sini
-      ]);
+      // Ambil data utuh menggunakan Service baru
+      final DashboardModel data = await _dashboardService.getDashboardData();
 
       if (mounted) {
         setState(() {
-          // Response getSummary
-          _summaryData = results[0] as Map<String, dynamic>; 
-          
-          // Response getTransactions
-          final txData = results[1] as Map<String, dynamic>;
-          // Konversi dari model TransactionReport kembali ke dynamic list untuk UI atau render modelnya
-          _recentTransactions = txData['transactions'] ?? []; 
-          
-          // Response getProductSales
-          final prodData = results[2] as Map<String, dynamic>;
-          // Ambil dari key 'products', default ke list kosong. Lalu urutkan berdasar 'qty' jika belum di API.
-          List allProds = prodData['products'] ?? [];
-          if (allProds.isNotEmpty) {
-             _bestProducts = allProds.take(5).toList(); 
-          }
-          
+          _dashboardData = data;
         });
+        
+        // Memulai ulang carousel jika ada data banner
+        if (data.banners.isNotEmpty) {
+          _mulaiCarousel();
+        }
       }
     } catch (e) {
       debugPrint("Gagal memuat data dashboard: $e");
       if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memuat data: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: AppColors.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memuat data: ${e.toString().replaceAll('Exception: ', '')}'), 
+            backgroundColor: AppColors.error
+          )
+        );
       }
     } finally {
       if(mounted) setState(() => _isLoading = false);
@@ -278,16 +251,14 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   // GRID CARDS 
   // =================================================================
   Widget _buildSummarySection() {
-    // Ambil data net_sales dan transaction_count dari respon getSummary() API
-    num sales = _summaryData['net_sales'] ?? 0;
-    num trxCount = _summaryData['transaction_count'] ?? 0;
-    
-    // Total produk terjual bisa dijumlah manual dari _bestProducts (jika API terpisah) 
-    // atau gunakan API laporan spesifik jika disediakan. Untuk sementara kita jumlahkan:
-    int totalItems = 0;
-    for(var p in _bestProducts) {
-       totalItems += int.tryParse(p['qty']?.toString() ?? '0') ?? 0;
-    }
+    if (_dashboardData == null) return const SizedBox.shrink();
+
+    // Data aman karena sudah melalui safe-parsing di DashboardStatisticsModel
+    double sales = _dashboardData!.summary.sales;
+    int trxCount = _dashboardData!.summary.transactions;
+    int productsCount = _dashboardData!.summary.products;
+    int lowStock = _dashboardData!.summary.lowStock;
+    double profit = _dashboardData!.summary.profit;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -304,12 +275,12 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
           children: [
             _buildSummaryCard('Total Penjualan', _formatRupiah(sales), '+0.0%', Icons.shopping_cart_outlined, Colors.white, AppColors.salesBlue),
             _buildSummaryCard('Total Transaksi', '$trxCount Trx', '+0.0%', Icons.loop, Colors.white, AppColors.transactionGreen), 
-            _buildSummaryCard('Produk Terjual', '$totalItems Item', '+0.0%', Icons.inventory_2_outlined, Colors.white, AppColors.productPurple),
+            _buildSummaryCard('Produk Tersedia', '$productsCount Item', '+0.0%', Icons.inventory_2_outlined, Colors.white, AppColors.productPurple),
             
             if (_role != 'KASIR') 
-              _buildSummaryCard('Keuntungan', _formatRupiah(0), '+0.0%', Icons.account_balance_wallet_outlined, Colors.white, AppColors.profitOrange) // (TODO: Tarik getProfitLoss dari API)
+              _buildSummaryCard('Keuntungan', _formatRupiah(profit), '+0.0%', Icons.account_balance_wallet_outlined, Colors.white, AppColors.profitOrange)
             else
-              _buildSummaryCard('Stok Menipis', '0 Item', '-0.0%', Icons.warning_amber_rounded, Colors.white, AppColors.error),
+              _buildSummaryCard('Stok Menipis', '$lowStock Item', '-0.0%', Icons.warning_amber_rounded, Colors.white, AppColors.error),
           ],
         );
       },
@@ -320,6 +291,8 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   // WIDGET PRODUK TERLARIS & TRANSAKSI TERBARU 
   // =================================================================
   Widget _buildBottomSection(bool isDesktop) {
+    if (_dashboardData == null) return const SizedBox.shrink();
+
     Widget txWidget = Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(color: AppColors.cardSolid, borderRadius: BorderRadius.circular(20), boxShadow: const [BoxShadow(color: AppColors.shadowBlue, blurRadius: 20, offset: Offset(0, 5))]),
@@ -340,12 +313,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_recentTransactions.isEmpty) const Text('Belum ada transaksi hari ini.', style: TextStyle(color: AppColors.textSecondary)),
-          ..._recentTransactions.map((tx) {
-            // Mapping properti yang direturn oleh model TransactionReport / API
-            String invoice = tx.invoiceNumber ?? '-'; 
-            double total = tx.grandTotal ?? 0.0;
-            String time = tx.createdAt != null ? DateFormat('HH:mm').format(tx.createdAt!) : '-';
+          if (_dashboardData!.recentTransactions.isEmpty) const Text('Belum ada transaksi hari ini.', style: TextStyle(color: AppColors.textSecondary)),
+          ..._dashboardData!.recentTransactions.map((tx) {
+            String time = tx.createdAt.isNotEmpty ? tx.createdAt.substring(11, 16) : '-';
             
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -359,12 +329,12 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(invoice, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.navyActive)),
+                        Text(tx.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.navyActive)),
                         Text('Hari ini, $time', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
-                  Text(_formatRupiah(total), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 14)),
+                  Text(_formatRupiah(tx.grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 14)),
                 ],
               ),
             );
@@ -393,17 +363,15 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_bestProducts.isEmpty) const Text('Belum ada data', style: TextStyle(color: AppColors.textSecondary)),
+          if (_dashboardData!.bestProducts.isEmpty) const Text('Belum ada data', style: TextStyle(color: AppColors.textSecondary)),
           
           SizedBox(
             height: 120,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _bestProducts.length,
+              itemCount: _dashboardData!.bestProducts.length,
               itemBuilder: (context, index) {
-                var prod = _bestProducts[index];
-                String prodName = prod['product_name'] ?? prod['name'] ?? '-';
-                String qty = prod['qty']?.toString() ?? '0';
+                var prod = _dashboardData!.bestProducts[index];
 
                 return Container(
                   width: 110,
@@ -422,9 +390,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                         child: Text('${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(height: 8),
-                      Text(prodName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 4),
-                      Text('$qty Terjual', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                      Text('${prod.soldQuantity} Terjual', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
                     ],
                   ),
                 );
@@ -475,9 +443,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
   }
 
   Widget _buildCarousel() {
-    if (_banners.isEmpty) return const SizedBox.shrink();
+    if (_dashboardData == null || _dashboardData!.banners.isEmpty) return const SizedBox.shrink();
 
-    List<Widget> slides = _banners.map((b) {
+    List<Widget> slides = _dashboardData!.banners.map((b) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.all(20),
@@ -534,7 +502,6 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -547,27 +514,19 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                 
                 return RefreshIndicator(
                   color: AppColors.smartBlue,
-                  onRefresh: _muatDataSemua,
+                  onRefresh: _muatDataDashboard,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 1. Header & Jam Real-Time
                         _buildHeader(isDesktop),
-
-                        // 2. Banner Informasi/Promo
                         _buildCarousel(),
                         const SizedBox(height: 24),
-
-                        // 3. Ringkasan Keuangan & Transaksi (Grid)
                         _buildSummarySection(),
                         const SizedBox(height: 24),
-
-                        // 4. Riwayat Transaksi & Produk Terlaris
                         _buildBottomSection(isDesktop),
-                        
                         const SizedBox(height: 60), 
                       ],
                     ),
