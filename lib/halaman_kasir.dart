@@ -56,7 +56,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Future<void> _loadStoreSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      // Setting ini mestinya disinkronisasi saat login, kita ambil dari prefs
       _enableTableNumber = prefs.getBool('enable_table_number') ?? false;
       _enableServices = prefs.getBool('enable_services') ?? false;
     });
@@ -211,7 +210,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
   void _tampilkanModalPembayaran() {
     if (_cart.isEmpty) return;
     
-    List> appliedPayments = [
+    // PERBAIKAN DYNAMIC: Menggunakan List<dynamic> untuk fleksibilitas tipe
+    List<dynamic> appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
     bool isProcessing = false;
@@ -339,17 +339,17 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   };
 
                   try {
-                    // Panggil Service POST Checkout
-                    await _transactionService.createTransaction(payload);
+                    // 1. Panggil Service dan simpan kembalian datanya
+                    final dataTransaksi = await _transactionService.createTransaction(payload);
                     
-                    Navigator.pop(ctx);
+                    Navigator.pop(ctx); // Tutup modal pembayaran
                     
-                    // Reset Keranjang
+                    // 2. Reset Keranjang & Refresh Stok
                     setState(() { _cart.clear(); _noMejaCtrl.clear(); });
+                    _muatProduk(); 
 
-                    // Logika Cetak Struk (Disimulasikan)
-                    _tampilPopupCantik('Transaksi Sukses', 'Pembayaran berhasil disimpan.', Icons.check_circle, AppColors.primaryEmerald);
-                    _muatProduk(); // Refresh stok
+                    // 3. Tampilkan Popup Sukses yang memiliki tombol Cetak Struk
+                    _tampilSuksesCetak(dataTransaksi);
                     
                   } catch (e) {
                     Navigator.pop(ctx);
@@ -451,6 +451,83 @@ class _HalamanKasirState extends State<HalamanKasir> {
         ),
       ),
     );
+  }
+  
+  void _tampilSuksesCetak(Map<String, dynamic> dataTransaksi) {
+    String invoice = dataTransaksi['invoice_number'] ?? '-';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16), 
+                decoration: BoxDecoration(color: AppColors.primaryEmerald.withOpacity(0.1), shape: BoxShape.circle), 
+                child: const Icon(Icons.check_circle, color: AppColors.primaryEmerald, size: 60)
+              ),
+              const SizedBox(height: 16),
+              const Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+              const SizedBox(height: 4),
+              Text(invoice, style: const TextStyle(color: AppColors.textSecondary)),
+              const SizedBox(height: 24),
+              
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: AppColors.smartBlue),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                      onPressed: () async {
+                        try {
+                          _showNotif('Mencetak struk...', AppColors.smartBlue);
+                          // PANGGIL SERVICE PRINTER DI SINI
+                          await PrinterService().cetakStruk(dataTransaksi);
+                        } catch (e) {
+                          _showNotif('Gagal mencetak: ${e.toString().replaceAll('Exception: ', '')}', AppColors.error);
+                        }
+                      }, 
+                      icon: const Icon(Icons.print, color: AppColors.smartBlue, size: 18), 
+                      label: const Text('Cetak Struk', style: TextStyle(color: AppColors.smartBlue, fontWeight: FontWeight.bold))
+                    )
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryEmerald,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ), 
+                      onPressed: () => Navigator.pop(ctx), 
+                      child: const Text('Selesai', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                    )
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      )
+    );
+  }
+
+  // Helper untuk notifikasi saat proses mencetak
+  void _showNotif(String pesan, Color warna) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), 
+      backgroundColor: warna, 
+      behavior: SnackBarBehavior.floating
+    ));
   }
 
 
