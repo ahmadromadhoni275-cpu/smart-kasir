@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../network/api_client.dart';
 import '../../models/transaction_model.dart';
+import '../../models/transaction_detail_model.dart';
 
 class TransactionService {
   final Dio _dio = ApiClient().dio;
@@ -44,12 +45,12 @@ class TransactionService {
     }
   }
   
-  Future<Map<String, dynamic>> getTransactionDetail(int transactionId) async {
+  Future<TransactionDetailModel> getTransactionDetail(int transactionId) async {
     try {
       final response = await _dio.get('/transactions/$transactionId');
       
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return response.data['data']; 
+        return TransactionDetailModel.fromJson(response.data['data']); 
       }
       throw Exception('Gagal memuat detail transaksi');
     } on DioException catch (e) {
@@ -57,7 +58,7 @@ class TransactionService {
     }
   }
   
-  Future> createTransaction(Map<String, dynamic> data) async {
+  Future<dynamic> createTransaction(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/transactions', data: data);
       if (response.statusCode == 200 || response.statusCode == 201) {

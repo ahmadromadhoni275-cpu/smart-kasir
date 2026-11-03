@@ -8,7 +8,7 @@ import 'package:printing/printing.dart';
 
 import 'core/services/transaction_service.dart';
 import 'core/services/printer_service.dart'; 
-import 'models/receipt_model.dart';
+import 'models/transaction_detail_model.dart'; // <-- Gunakan Detail Model
 import 'tema.dart';
 
 class HalamanDetailTransaksi extends StatefulWidget {
@@ -28,8 +28,9 @@ class HalamanDetailTransaksi extends StatefulWidget {
 class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   final TransactionService _service = TransactionService();
   bool _isLoading = true;
-  ReceiptModel? _receipt;
-  Map<String, dynamic>? _rawTransaksiData; // Untuk dikirim ke PrinterService
+  
+  // Hanya butuh satu state ini, sangat bersih!
+  TransactionDetailModel? _detailData; 
 
   @override
   void initState() {
@@ -39,20 +40,13 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
 
   Future<void> _fetchDetail() async {
     try {
-      final rawData = await _service.getTransactionDetail(widget.transactionId);
-      
-      // Ambil objek 'receipt' dari response backend
-      final receiptJson = rawData['receipt']; 
-      if (receiptJson == null) throw Exception("Format data transaksi tidak valid.");
-
+      final data = await _service.getTransactionDetail(widget.transactionId);
       setState(() {
-        _rawTransaksiData = rawData; 
-        _receipt = ReceiptModel.fromJson(receiptJson);
+        _detailData = data;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      // Panggil popup error jika gagal memuat
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tampilPopupCantik('Gagal Memuat', e.toString().replaceAll('Exception: ', ''), Icons.error_outline, AppColors.error);
       });
@@ -105,32 +99,32 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   // FITUR 1: CETAK ULANG STRUK BLUETOOTH
   // ==========================================
   Future<void> _cetakUlangStruk() async {
-    if (_rawTransaksiData == null || _receipt == null) return;
+    if (_detailData == null) return;
     
-    // Tampilkan loading dialog agar UI tidak freeze
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
 
     try {
-      // Backend harus mengirim format yang bisa dibaca PrinterService.cetakStruk
-      // Kita susun ulang map sementara jika diperlukan, atau passing raw data
+      final receipt = _detailData!.receipt;
+      
+      // Susun data untuk PrinterService agar tetap fleksibel
       final dataCetak = {
-        'store_name': _receipt!.store.name,
-        'store_address': _receipt!.store.address ?? '',
-        'store_phone': _receipt!.store.phone ?? '',
-        'invoice_number': _receipt!.invoiceNumber,
-        'created_at': _receipt!.createdAt,
-        'cashier_name': _receipt!.cashierName,
-        'items': _receipt!.items.map((i) => {
+        'store_name': receipt.store.name,
+        'store_address': receipt.store.address ?? '',
+        'store_phone': receipt.store.phone ?? '',
+        'invoice_number': receipt.invoiceNumber,
+        'created_at': receipt.createdAt,
+        'cashier_name': receipt.cashierName,
+        'items': receipt.items.map((i) => {
           'name': i.name,
           'order_type': i.orderType,
           'note': i.note,
           'price': i.price,
           'quantity': i.quantity,
         }).toList(),
-        'sub_total': _receipt!.subtotal,
-        'discount': _receipt!.discount,
-        'grand_total': _receipt!.grandTotal,
-        'payments': _receipt!.payments.map((p) => {
+        'sub_total': receipt.subtotal,
+        'discount': receipt.discount,
+        'grand_total': receipt.grandTotal,
+        'payments': receipt.payments.map((p) => {
           'method': p.method,
           'amount': p.amount,
         }).toList()
@@ -151,8 +145,9 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   // FITUR 2: SIMPAN PDF & BAGIKAN
   // ==========================================
   Future<void> _bagikanPDF() async {
-    if (_receipt == null) return;
-
+    if (_detailData == null) return;
+    
+    final receipt = _detailData!.receipt;
     final pdf = pw.Document();
     
     pdf.addPage(
@@ -162,17 +157,17 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              pw.Text(_receipt!.store.name.toUpperCase(), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-              if (_receipt!.store.address != null) pw.Text(_receipt!.store.address!, style: const pw.TextStyle(fontSize: 10)),
+              pw.Text(receipt.store.name.toUpperCase(), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+              if (receipt.store.address != null) pw.Text(receipt.store.address!, style: const pw.TextStyle(fontSize: 10)),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
               pw.Text('** SALINAN STRUK **', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
-              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('No:'), pw.Text(_receipt!.invoiceNumber)]),
-              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Tgl:'), pw.Text(_receipt!.createdAt)]),
-              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Ksr:'), pw.Text(_receipt!.cashierName)]),
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('No:'), pw.Text(receipt.invoiceNumber)]),
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Tgl:'), pw.Text(receipt.createdAt)]),
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Ksr:'), pw.Text(receipt.cashierName)]),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
               
-              ..._receipt!.items.map((item) {
+              ...receipt.items.map((item) {
                 String labelName = item.name;
                 if (item.orderType == 'TAKEAWAY') labelName += ' (Takeaway)';
 
@@ -196,22 +191,22 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
               
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
               
-              if (_receipt!.discount > 0)
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Subtotal'), pw.Text(_formatCurrency(_receipt!.subtotal))]),
-              if (_receipt!.discount > 0)
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Diskon'), pw.Text('- ${_formatCurrency(_receipt!.discount)}')]),
+              if (receipt.discount > 0)
+                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Subtotal'), pw.Text(_formatCurrency(receipt.subtotal))]),
+              if (receipt.discount > 0)
+                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Diskon'), pw.Text('- ${_formatCurrency(receipt.discount)}')]),
                 
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text('TOTAL TAGIHAN', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
-                  pw.Text(_formatCurrency(_receipt!.grandTotal), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                  pw.Text(_formatCurrency(receipt.grandTotal), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
                 ]
               ),
               
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
               
-              ..._receipt!.payments.map((p) => pw.Row(
+              ...receipt.payments.map((p) => pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [pw.Text('BAYAR (${p.method})'), pw.Text(_formatCurrency(p.amount))]
               )).toList(),
@@ -258,13 +253,12 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   Future<void> _prosesBatal() async {
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.error)));
     try {
-      // Panggil endpoint khusus /transactions/{id}/cancel
-      // Misal Anda tambahkan method cancelTransaction() di TransactionService
+      // Tunggu endpoint cancel backend Anda siap: 
       // await _service.cancelTransaction(widget.transactionId);
       
       Navigator.pop(context);
       _tampilPopupCantik('Berhasil Dibatalkan', 'Transaksi telah dibatalkan dan stok dikembalikan.', Icons.check_circle, AppColors.primaryEmerald);
-      _fetchDetail(); // Refresh halaman agar status berubah
+      _fetchDetail(); 
       
     } catch (e) {
       Navigator.pop(context);
@@ -284,16 +278,17 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-          : _receipt == null
+          : _detailData == null
               ? const Center(child: Text('Data tidak tersedia.', style: TextStyle(color: AppColors.textSecondary)))
               : _buildReceiptUI(),
       
-      bottomNavigationBar: _isLoading || _receipt == null ? null : _buildActionButtons(),
+      bottomNavigationBar: _isLoading || _detailData == null ? null : _buildActionButtons(),
     );
   }
 
   Widget _buildReceiptUI() {
-    bool isCompleted = _receipt!.transactionStatus == 'COMPLETED';
+    final receipt = _detailData!.receipt;
+    bool isCompleted = receipt.transactionStatus == 'COMPLETED';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -319,7 +314,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                       const SizedBox(height: 8),
                       Text(widget.invoiceNumber, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                       const SizedBox(height: 4),
-                      Text(_receipt!.createdAt, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      Text(receipt.createdAt, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -343,7 +338,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 const Text('Daftar Pembelian', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                 const SizedBox(height: 12),
                 
-                ..._receipt!.items.map((item) => Padding(
+                ...receipt.items.map((item) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,11 +367,11 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 
                 const Divider(height: 32, color: AppColors.border),
                 
-                if (_receipt!.discount > 0)
-                  _buildSummaryRow('Subtotal', _formatCurrency(_receipt!.subtotal)),
+                if (receipt.discount > 0)
+                  _buildSummaryRow('Subtotal', _formatCurrency(receipt.subtotal)),
                 
-                if (_receipt!.discount > 0)
-                  _buildSummaryRow('Diskon', '- ${_formatCurrency(_receipt!.discount)}', isDiscount: true),
+                if (receipt.discount > 0)
+                  _buildSummaryRow('Diskon', '- ${_formatCurrency(receipt.discount)}', isDiscount: true),
                   
                 const SizedBox(height: 12),
                 Container(
@@ -386,7 +381,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('TOTAL TAGIHAN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.navyActive)),
-                      Text(_formatCurrency(_receipt!.grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryEmerald)),
+                      Text(_formatCurrency(receipt.grandTotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryEmerald)),
                     ],
                   ),
                 ),
@@ -396,7 +391,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                 const Text('Riwayat Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
                 const SizedBox(height: 12),
                 
-                ..._receipt!.payments.map<Widget>((pay) => Padding(
+                ...receipt.payments.map<Widget>((pay) => Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
