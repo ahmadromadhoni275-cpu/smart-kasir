@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
 import 'core/services/printer_service.dart'; 
+import 'models/report_model.dart'; // Impor model yang menampung SalesReportItem
 import 'tema.dart';
 
 class HalamanLaporanPenjualan extends StatefulWidget {
@@ -22,7 +24,7 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
   late DateTime _dateFrom;
   late DateTime _dateTo;
 
-  List<dynamic> _transactions = [];
+  List<SalesReportItem> _transactions = [];
   
   // Variabel Rekap
   double _totalSales = 0;
@@ -101,28 +103,27 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
       final String strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final String strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
-      final data = await _service.getSales(strDateFrom, strDateTo);
+      // Pastikan ReportService getSales sudah mengembalikan List<SalesReportItem>
+      final List<SalesReportItem> data = await _service.getSales(strDateFrom, strDateTo);
       
       // Hitung Rekapitulasi
       double tempTotal = 0;
       Map<String, double> tempDaily = {};
       
       for (var tx in data) {
-        double total = double.tryParse(tx['grand_total']?.toString() ?? '0') ?? 0.0;
-        tempTotal += total;
-        
-        // Ambil string tanggal saja (YYYY-MM-DD)
-        String dateOnly = tx['created_at'].toString().length >= 10 
-            ? tx['created_at'].toString().substring(0, 10) 
-            : 'Unknown';
-            
-        tempDaily[dateOnly] = (tempDaily[dateOnly] ?? 0) + total;
+        // Hanya hitung jika status COMPLETED
+        if (tx.transactionStatus == 'COMPLETED') {
+          tempTotal += tx.grandTotal;
+          
+          String dateOnly = tx.createdAt.length >= 10 ? tx.createdAt.substring(0, 10) : 'Unknown';
+          tempDaily[dateOnly] = (tempDaily[dateOnly] ?? 0) + tx.grandTotal;
+        }
       }
 
       setState(() {
         _transactions = data;
         _totalSales = tempTotal;
-        _transactionCount = data.length;
+        _transactionCount = data.length; // Total semua record (termasuk batal)
         _dailyRecap = tempDaily;
       });
     } catch (e) {
@@ -132,9 +133,6 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
     }
   }
 
-  // ==========================================
-  // HELPER FORMATTER
-  // ==========================================
   String _formatCurrency(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   }
@@ -151,17 +149,25 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
     }
   }
 
+  void _showNotif(String pesan, Color warna) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   // ==========================================
   // LOGIKA CETAK LAPORAN PENJUALAN
   // ==========================================
   Future<void> _cetakLaporanPenjualan() async {
     if (_isLoading) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
-    );
+    _showNotif('Menyiapkan pencetakan...', AppColors.smartBlue);
 
-    // Menyusun data rekap penjualan
     Map<String, dynamic> dataLaporan = {
       'periode': _selectedFilter,
       'Total_Transaksi': '$_transactionCount Transaksi',
@@ -169,7 +175,6 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
       '-- REKAP HARIAN --': '',
     };
 
-    // Tambahkan rekap penjualan per hari ke dalam struk
     _dailyRecap.forEach((tanggal, total) {
       String tglBagus = _formatDateUI(tanggal);
       dataLaporan[tglBagus] = total;
@@ -177,103 +182,154 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
 
     try {
       await PrinterService().cetakLaporan(dataLaporan, "LAPORAN PENJUALAN");
-      
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Laporan Penjualan berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
-      );
+      _showNotif('Laporan Penjualan berhasil dicetak!', AppColors.primaryEmerald);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
-      );
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     }
   }
 
   // ==========================================
-  // WIDGET BUILDER
+  // WIDGET BUILDER DENGAN CRYSTAL UI
   // ==========================================
+  
+  Widget _buildGlassFilterChip(String label) {
+    bool isSelected = _selectedFilter == label;
+    return InkWell(
+      onTap: () => _setFilterDate(label),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.navyActive : Colors.white.withOpacity(0.5),
+          border: Border.all(color: isSelected ? AppColors.navyActive : Colors.white),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected ? [BoxShadow(color: AppColors.navyActive.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : AppColors.textPrimary,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Laporan Penjualan', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
+        elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
-        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
         actions: [
           IconButton(
-            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            icon: const Icon(Icons.print_outlined, color: AppColors.smartBlue),
             tooltip: 'Cetak Laporan',
             onPressed: _isLoading || _transactions.isEmpty ? null : _cetakLaporanPenjualan,
           ),
           const SizedBox(width: 8),
         ],
+        bottom: PreferredSize(preferredSize: const Size.fromHeight(1), child: Container(color: Colors.grey.withOpacity(0.2), height: 1)),
       ),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-          : _errorMessage.isNotEmpty
-              ? _buildErrorState()
-              : RefreshIndicator(
-                  color: AppColors.primaryEmerald,
-                  onRefresh: _fetchSales,
-                  child: CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(child: _buildFilterPanel()),
-                      SliverToBoxAdapter(child: _buildSummaryCards()),
-                      
-                      if (_dailyRecap.isNotEmpty) 
-                        SliverToBoxAdapter(child: _buildDailyRecap()),
-                        
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
-                          child: Text('Daftar Transaksi (${_transactions.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                        ),
+      body: Stack(
+        children: [
+          // Background Gradient (Crystal UI)
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
+              ),
+            ),
+          ),
+
+          Column(
+            children: [
+              SizedBox(height: MediaQuery.of(context).padding.top + kToolbarHeight),
+
+              // Filter Periode Bar (Glass)
+              ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.5)))),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          _buildGlassFilterChip('Hari Ini'),
+                          _buildGlassFilterChip('7 Hari'),
+                          _buildGlassFilterChip('Bulan Ini'),
+                          _buildGlassFilterChip('Kustom'),
+                        ],
                       ),
-                      
-                      _transactions.isEmpty
-                          ? SliverToBoxAdapter(child: _buildEmptyState())
-                          : SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) => _buildTransactionItem(_transactions[index]),
-                                childCount: _transactions.length,
-                              ),
-                            ),
-                            
-                      const SliverToBoxAdapter(child: SizedBox(height: 40)),
-                    ],
+                    ),
                   ),
                 ),
-    );
-  }
-
-  Widget _buildFilterPanel() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.white,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: ['Hari Ini', '7 Hari', 'Bulan Ini', 'Kustom'].map((filter) {
-            bool isSelected = _selectedFilter == filter;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(filter, style: TextStyle(color: isSelected ? Colors.white : AppColors.textSecondary, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                selected: isSelected,
-                selectedColor: AppColors.primaryEmerald,
-                backgroundColor: AppColors.lightGray,
-                showCheckmark: false,
-                onSelected: (val) {
-                  if (val) _setFilterDate(filter);
-                },
               ),
-            );
-          }).toList(),
-        ),
+
+              Expanded(
+                child: _isLoading 
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+                  : _errorMessage.isNotEmpty
+                      ? _buildErrorState()
+                      : RefreshIndicator(
+                          color: AppColors.primaryEmerald,
+                          backgroundColor: Colors.white,
+                          onRefresh: _fetchSales,
+                          child: CustomScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            slivers: [
+                              SliverToBoxAdapter(child: _buildSummaryCards()),
+                              
+                              if (_dailyRecap.isNotEmpty) 
+                                SliverToBoxAdapter(child: _buildDailyRecap()),
+                                
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12, top: 16),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('Daftar Transaksi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.6), borderRadius: BorderRadius.circular(10)),
+                                        child: Text('${_transactions.length} Data', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 12)),
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              
+                              _transactions.isEmpty
+                                  ? SliverToBoxAdapter(child: _buildEmptyState())
+                                  : SliverList(
+                                      delegate: SliverChildBuilderDelegate(
+                                        (context, index) => _buildTransactionItem(_transactions[index]),
+                                        childCount: _transactions.length,
+                                      ),
+                                    ),
+                                    
+                              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                            ],
+                          ),
+                        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -288,16 +344,22 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppColors.primaryEmerald,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: AppColors.primaryEmerald.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                gradient: const LinearGradient(colors: [AppColors.smartBlue, AppColors.primaryEmerald], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: AppColors.primaryEmerald.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Total Penjualan', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  const SizedBox(height: 8),
-                  Text(_formatCurrency(_totalSales), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_outlined, color: Colors.white70, size: 16),
+                      SizedBox(width: 6),
+                      Text('Total Penjualan', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(_formatCurrency(_totalSales), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
                 ],
               ),
             ),
@@ -308,16 +370,23 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                color: Colors.white.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+                boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Transaksi', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text('$_transactionCount', style: const TextStyle(color: AppColors.navyActive, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Row(
+                    children: [
+                      Icon(Icons.receipt_long_outlined, color: AppColors.textSecondary, size: 16),
+                      SizedBox(width: 6),
+                      Text('Transaksi', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('$_transactionCount', style: const TextStyle(color: AppColors.navyActive, fontSize: 22, fontWeight: FontWeight.w900)),
                 ],
               ),
             ),
@@ -336,9 +405,10 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
           child: Text('Rekap Harian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
         ),
         SizedBox(
-          height: 90,
+          height: 100,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: _dailyRecap.length,
             itemBuilder: (context, index) {
@@ -346,21 +416,21 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
               double dailyTotal = _dailyRecap[dateKey] ?? 0;
               
               return Container(
-                width: 140,
+                width: 150,
                 margin: const EdgeInsets.only(right: 12),
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
+                  color: Colors.white.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.8)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(_formatDateUI(dateKey), style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    Text(_formatDateUI(dateKey), style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    Text(_formatCurrency(dailyTotal), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 14)),
+                    Text(_formatCurrency(dailyTotal), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navyActive, fontSize: 15)),
                   ],
                 ),
               );
@@ -371,72 +441,81 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
     );
   }
 
-  Widget _buildTransactionItem(dynamic tx) {
-    String invoice = tx['invoice_number']?.toString() ?? '-';
-    String createdAt = tx['created_at']?.toString() ?? '';
-    double total = double.tryParse(tx['grand_total']?.toString() ?? '0') ?? 0.0;
-    
-    // Status
-    String txStatus = tx['transaction_status']?.toString() ?? 'UNKNOWN';
-    String payStatus = tx['payment_status']?.toString() ?? 'UNPAID';
-    
-    bool isCompleted = txStatus == 'COMPLETED';
+  Widget _buildTransactionItem(SalesReportItem tx) {
+    bool isCompleted = tx.transactionStatus == 'COMPLETED';
+    bool isPaid = tx.paymentStatus == 'PAID';
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(invoice, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: isCompleted ? Colors.green.shade50 : Colors.red.shade50, borderRadius: BorderRadius.circular(6)),
-                  child: Text(
-                    isCompleted ? 'BERHASIL' : txStatus,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isCompleted ? Colors.green.shade700 : Colors.red.shade700),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.access_time, size: 14, color: AppColors.textSecondary),
-                        const SizedBox(width: 4),
-                        Text(_formatDateUI(createdAt, fullTime: true), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.payment, size: 14, color: AppColors.textSecondary),
-                        const SizedBox(width: 4),
-                        Text(payStatus, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: payStatus == 'PAID' ? AppColors.smartBlue : Colors.orange)),
-                      ],
+                    Text(tx.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navyActive, fontSize: 14)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isCompleted ? AppColors.primaryEmerald.withOpacity(0.15) : AppColors.error.withOpacity(0.15), 
+                        borderRadius: BorderRadius.circular(8)
+                      ),
+                      child: Text(
+                        isCompleted ? 'BERHASIL' : tx.transactionStatus,
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: isCompleted ? AppColors.primaryEmerald : AppColors.error),
+                      ),
                     ),
                   ],
                 ),
-                Text(
-                  _formatCurrency(total),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primaryEmerald),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time, size: 14, color: AppColors.textSecondary),
+                            const SizedBox(width: 4),
+                            Text(_formatDateUI(tx.createdAt, fullTime: true), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(Icons.payment_outlined, size: 14, color: AppColors.textSecondary),
+                            const SizedBox(width: 4),
+                            Text(
+                              tx.paymentStatus, 
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isPaid ? AppColors.smartBlue : Colors.orange.shade700)
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Text(
+                      _formatCurrency(tx.grandTotal),
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: isCompleted ? AppColors.primaryEmerald : AppColors.textSecondary),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -444,13 +523,17 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
 
   Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.only(top: 60),
       child: Center(
         child: Column(
           children: [
-            Icon(Icons.receipt_long, size: 60, color: Colors.grey.shade300),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle),
+              child: Icon(Icons.receipt_long_outlined, size: 60, color: AppColors.textSecondary.withOpacity(0.5)),
+            ),
             const SizedBox(height: 16),
-            const Text('Tidak ada penjualan di periode ini', style: TextStyle(color: AppColors.textSecondary)),
+            const Text('Tidak ada penjualan di periode ini', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -466,12 +549,17 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
           children: [
             const Icon(Icons.error_outline, color: AppColors.error, size: 48),
             const SizedBox(height: 16),
-            Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
-            const SizedBox(height: 16),
-            ElevatedButton(
+            Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
               onPressed: _fetchSales,
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald),
-              child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryEmerald,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
+              ),
+              label: const Text('Coba Lagi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             )
           ],
         ),
