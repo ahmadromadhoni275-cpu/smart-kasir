@@ -145,7 +145,9 @@ class _HalamanBerandaState extends State<HalamanBeranda> {
                   ),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
-                    onPressed: () {},
+                    onPressed: () {
+                      // Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanKasir()));
+                    },
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
