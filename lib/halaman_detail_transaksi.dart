@@ -8,8 +8,11 @@ import 'package:printing/printing.dart';
 
 import 'core/services/transaction_service.dart';
 import 'core/services/printer_service.dart'; 
-import 'models/transaction_detail_model.dart'; // <-- Gunakan Detail Model
+import 'models/transaction_detail_model.dart';
 import 'tema.dart';
+
+// Import halaman form retur
+import 'halaman_form_retur.dart';
 
 class HalamanDetailTransaksi extends StatefulWidget {
   final int transactionId;
@@ -28,8 +31,6 @@ class HalamanDetailTransaksi extends StatefulWidget {
 class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   final TransactionService _service = TransactionService();
   bool _isLoading = true;
-  
-  // Hanya butuh satu state ini, sangat bersih!
   TransactionDetailModel? _detailData; 
 
   @override
@@ -58,7 +59,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(val);
   }
 
-  // --- POPUP NOTIFIKASI CANTIK ---
   void _tampilPopupCantik(String judul, String pesan, IconData ikon, Color warna) {
     if (!mounted) return;
     showDialog(
@@ -95,9 +95,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
     );
   }
 
-  // ==========================================
-  // FITUR 1: CETAK ULANG STRUK BLUETOOTH
-  // ==========================================
   Future<void> _cetakUlangStruk() async {
     if (_detailData == null) return;
     
@@ -106,7 +103,6 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
     try {
       final receipt = _detailData!.receipt;
       
-      // Susun data untuk PrinterService agar tetap fleksibel
       final dataCetak = {
         'store_name': receipt.store.name,
         'store_address': receipt.store.address ?? '',
@@ -132,18 +128,15 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
 
       await PrinterService().cetakStruk(dataCetak); 
       
-      Navigator.pop(context); // Tutup loading
+      Navigator.pop(context); 
       _tampilPopupCantik('Cetak Berhasil', 'Struk berhasil dikirim ke printer bluetooth Anda.', Icons.print, AppColors.primaryEmerald);
       
     } catch (e) {
-      Navigator.pop(context); // Tutup loading
+      Navigator.pop(context); 
       _tampilPopupCantik('Gagal Mencetak', e.toString().replaceAll('Exception: ', ''), Icons.print_disabled, AppColors.error);
     }
   }
 
-  // ==========================================
-  // FITUR 2: SIMPAN PDF & BAGIKAN
-  // ==========================================
   Future<void> _bagikanPDF() async {
     if (_detailData == null) return;
     
@@ -225,16 +218,13 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
     );
   }
 
-  // ==========================================
-  // FITUR 3: BATALKAN TRANSAKSI (RETUR)
-  // ==========================================
   void _konfirmasiBatal() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Batalkan Transaksi?', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error)),
-        content: const Text('Tindakan ini akan mengembalikan stok barang dan mencatat uang keluar (Refund). Anda yakin?'),
+        content: const Text('Tindakan ini akan membatalkan KESELURUHAN transaksi, mengembalikan semua stok barang dan mencatat uang keluar (Refund). Anda yakin?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -243,7 +233,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
               Navigator.pop(ctx);
               _prosesBatal();
             }, 
-            child: const Text('Ya, Batalkan', style: TextStyle(color: Colors.white))
+            child: const Text('Ya, Batalkan Semua', style: TextStyle(color: Colors.white))
           )
         ],
       )
@@ -253,16 +243,31 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   Future<void> _prosesBatal() async {
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.error)));
     try {
-      // Tunggu endpoint cancel backend Anda siap: 
-      // await _service.cancelTransaction(widget.transactionId);
-      
+      // await _service.cancelTransaction(widget.transactionId); // Pastikan fungsi ini ada di service
       Navigator.pop(context);
-      _tampilPopupCantik('Berhasil Dibatalkan', 'Transaksi telah dibatalkan dan stok dikembalikan.', Icons.check_circle, AppColors.primaryEmerald);
+      _tampilPopupCantik('Berhasil Dibatalkan', 'Seluruh transaksi telah dibatalkan dan stok dikembalikan.', Icons.check_circle, AppColors.primaryEmerald);
       _fetchDetail(); 
-      
     } catch (e) {
       Navigator.pop(context);
       _tampilPopupCantik('Gagal Membatalkan', 'Terjadi kesalahan sistem.', Icons.error, AppColors.error);
+    }
+  }
+
+  // FUNGSI BARU: Buka Form Retur (Sebagian barang)
+  void _navigasiKeFormRetur() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HalamanFormRetur(
+          transactionId: widget.transactionId,
+          invoiceNumber: widget.invoiceNumber,
+        ),
+      ),
+    );
+
+    // Jika retur berhasil, fetch ulang data detail
+    if (result == true) {
+      _fetchDetail();
     }
   }
 
@@ -408,13 +413,32 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
                   ),
                 )),
                 
+                // TOMBOL BATAL & RETUR MUNCUL JIKA STATUS COMPLETED
                 if (isCompleted) ...[
                   const Divider(height: 32, color: AppColors.border),
+                  
+                  // Tombol Retur Barang Sebagian
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _navigasiKeFormRetur, 
+                      icon: const Icon(Icons.assignment_return_outlined, color: AppColors.warning, size: 20), 
+                      label: const Text('Ajukan Retur Barang', style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: AppColors.warning),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Tombol Batal Seluruh Transaksi
                   Center(
                     child: TextButton.icon(
                       onPressed: _konfirmasiBatal, 
-                      icon: const Icon(Icons.refresh, color: AppColors.error, size: 18), 
-                      label: const Text('Batalkan Transaksi Ini', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold))
+                      icon: const Icon(Icons.cancel_outlined, color: AppColors.error, size: 18), 
+                      label: const Text('Batalkan Seluruh Transaksi', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold))
                     ),
                   )
                 ]
