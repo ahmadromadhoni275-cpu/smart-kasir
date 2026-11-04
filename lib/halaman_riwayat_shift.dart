@@ -24,14 +24,12 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
     _fetchRiwayat();
   }
 
-    Future<void> _fetchRiwayat() async {
+  Future<void> _fetchRiwayat() async {
     setState(() { _isLoading = true; _errorMessage = ''; });
     try {
       final response = await ApiService.get('shifts');
       if (response.statusCode == 200) {
         final resData = json.decode(response.body);
-        
-        // SUPPORT STRING 'success' ATAU BOOLEAN true
         if (resData['status'] == 'success' || resData['status'] == true) {
           setState(() {
             _riwayatShifts = resData['data'] ?? [];
@@ -50,15 +48,12 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
 
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
   
-  // PERLINDUNGAN NULL-SAFE UNTUK TANGGAL
   String _formatTanggal(dynamic dateStr) {
     if (dateStr == null || dateStr.toString().isEmpty) return '-';
     try {
       DateTime date = DateTime.parse(dateStr.toString()).toLocal();
       return DateFormat('dd MMM yyyy • HH:mm', 'id_ID').format(date);
-    } catch (e) {
-      return '-';
-    }
+    } catch (e) { return '-'; }
   }
 
   @override
@@ -74,9 +69,18 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
           : _errorMessage.isNotEmpty
-              ? Center(child: Text(_errorMessage, style: const TextStyle(color: AppColors.error)))
+              ? Center(child: Text(_errorMessage, style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)))
               : _riwayatShifts.isEmpty
-                  ? const Center(child: Text('Belum ada riwayat shift.', style: TextStyle(color: AppColors.textSecondary)))
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.history_toggle_off, size: 80, color: Colors.grey.shade300),
+                          const SizedBox(height: 16),
+                          const Text('Belum ada riwayat shift.', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
                   : RefreshIndicator(
                       onRefresh: _fetchRiwayat,
                       color: AppColors.primaryEmerald,
@@ -90,10 +94,14 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
                           double actual = double.tryParse(shift['actual_cash'].toString()) ?? 0;
                           double diff = double.tryParse(shift['difference'].toString()) ?? 0;
 
-                          return Card(
-                            elevation: 0,
+                          return Container(
                             margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: AppColors.border)),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.border),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+                            ),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(16),
                               onTap: () {
@@ -109,31 +117,31 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
                                       children: [
                                         Row(
                                           children: [
-                                            CircleAvatar(radius: 14, backgroundColor: AppColors.lightGray, child: const Icon(Icons.person, size: 16, color: AppColors.navyActive)),
-                                            const SizedBox(width: 8),
-                                            Text(shift['user_name'] ?? 'Kasir', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                                            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.person, size: 16, color: AppColors.navyActive)),
+                                            const SizedBox(width: 12),
+                                            Text(shift['kasir_name'] ?? shift['user_name'] ?? 'Kasir', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 15)),
                                           ],
                                         ),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                           decoration: BoxDecoration(color: isClosed ? AppColors.lightGray : AppColors.greenAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                                           child: Text(isClosed ? 'CLOSED' : 'OPEN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isClosed ? AppColors.textSecondary : AppColors.greenAccent)),
                                         )
                                       ],
                                     ),
-                                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+                                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppColors.border)),
                                     
                                     Row(
                                       children: [
-                                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Mulai', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)), Text(_formatTanggal(shift['opened_at']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold))])),
-                                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Selesai', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)), Text(isClosed ? _formatTanggal(shift['closed_at']) : 'Berjalan', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold))])),
+                                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Mulai', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)), const SizedBox(height: 2), Text(_formatTanggal(shift['opened_at']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.navyActive))])),
+                                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Selesai', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)), const SizedBox(height: 2), Text(isClosed ? _formatTanggal(shift['closed_at']) : 'Berjalan', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.navyActive))])),
                                       ],
                                     ),
                                     const SizedBox(height: 16),
                                     
                                     Container(
                                       padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
+                                      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
                                       child: Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
@@ -141,7 +149,8 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               const Text('Expected Cash', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                                              Text(_formatRupiah(expected), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                                              const SizedBox(height: 2),
+                                              Text(_formatRupiah(expected), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 14)),
                                             ],
                                           ),
                                           if (isClosed)
@@ -149,7 +158,8 @@ class _HalamanRiwayatShiftState extends State<HalamanRiwayatShift> {
                                               crossAxisAlignment: CrossAxisAlignment.end,
                                               children: [
                                                 const Text('Selisih', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                                                Text(_formatRupiah(diff), style: TextStyle(fontWeight: FontWeight.bold, color: diff < 0 ? AppColors.error : (diff > 0 ? AppColors.greenAccent : AppColors.navyActive))),
+                                                const SizedBox(height: 2),
+                                                Text(_formatRupiah(diff), style: TextStyle(fontWeight: FontWeight.w900, color: diff < 0 ? AppColors.error : (diff > 0 ? AppColors.greenAccent : AppColors.navyActive), fontSize: 14)),
                                               ],
                                             ),
                                         ],

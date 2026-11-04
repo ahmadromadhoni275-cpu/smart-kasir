@@ -1,24 +1,23 @@
 import 'package:dio/dio.dart';
 import '../network/api_client.dart';
+import '../../models/shift_model.dart';
 
 class ShiftService {
   final Dio _dio = ApiClient().dio;
 
-  // 1. Cek Shift Aktif
-  Future<Map<String, dynamic>?> getCurrentShift() async {
+  Future<ShiftModel?> getCurrentShift() async {
     try {
       final response = await _dio.get('/shifts/current');
       if (response.statusCode == 200 && response.data['data'] != null) {
-        return response.data['data']; // Mengembalikan data shift jika OPEN
+        return ShiftModel.fromJson(response.data['data']);
       }
       return null;
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return null; // 404 berarti belum ada shift buka
+      if (e.response?.statusCode == 404) return null; 
       throw Exception(e.response?.data['message'] ?? 'Gagal memuat status shift');
     }
   }
 
-  // 2. Buka Shift
   Future<void> openShift(double openingCash, String notes) async {
     try {
       await _dio.post('/shifts/open', data: {
@@ -30,7 +29,6 @@ class ShiftService {
     }
   }
 
-  // 3. Kas Masuk / Keluar
   Future<void> recordCashMovement(String type, double amount, String description) async {
     try {
       String endpoint = type == 'CASH_IN' ? '/shifts/cash-in' : '/shifts/cash-out';
@@ -39,11 +37,10 @@ class ShiftService {
         'description': description,
       });
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Gagal mencatat pergerakan kas');
+      throw Exception(e.response?.data['message'] ?? 'Gagal mencatat mutasi kas');
     }
   }
 
-  // 4. Tutup Shift
   Future<Map<String, dynamic>> closeShift(double actualCash, String notes) async {
     try {
       final response = await _dio.post('/shifts/close', data: {
