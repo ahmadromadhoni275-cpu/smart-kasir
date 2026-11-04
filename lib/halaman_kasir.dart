@@ -61,12 +61,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
   }
 
+  // --- 1. PROTEKSI SHIFT AKTIF ---
   Future<void> _cekShiftAktif() async {
     setState(() => _isCheckingShift = true);
     try {
       final shiftData = await _shiftService.getCurrentShift();
-      if (shiftData != null && shiftData['status'] == 'OPEN') {
-        _activeShiftId = int.tryParse(shiftData['shift_id'].toString());
+      if (shiftData != null && shiftData.status == 'OPEN') {
+        _activeShiftId = shiftData.shiftId;
         _muatProduk(); 
         _fetchMetodePembayaran(); 
       } else {
@@ -75,6 +76,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       }
     } catch (e) {
       _activeShiftId = null;
+      if (mounted) _tampilNotifShiftTutup();
     }
     if (mounted) setState(() => _isCheckingShift = false);
   }
@@ -108,6 +110,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   // --- LOGIKA KERANJANG ---
   void _addToCart(ProductModel product) {
+    if (_activeShiftId == null) {
+      _tampilNotifShiftTutup();
+      return;
+    }
+
     if (product.productType == 'PRODUCT' && product.stock <= 0) {
       _tampilPopupCantik('Stok Habis!', 'Produk ini tidak dapat ditambahkan karena stok kosong.', Icons.remove_shopping_cart, AppColors.error);
       return;
@@ -150,6 +157,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   // --- DIALOG JASA MANUAL ---
   void _tampilkanFormJasaManual() {
+    if (_activeShiftId == null) {
+      _tampilNotifShiftTutup();
+      return;
+    }
+
     TextEditingController namaCtrl = TextEditingController();
     TextEditingController hargaCtrl = TextEditingController();
     TextEditingController qtyCtrl = TextEditingController(text: '1');
@@ -208,9 +220,12 @@ class _HalamanKasirState extends State<HalamanKasir> {
 
   // --- DIALOG PEMBAYARAN (SPLIT PAYMENT) ---
   void _tampilkanModalPembayaran() {
+    if (_activeShiftId == null) {
+      _tampilNotifShiftTutup();
+      return;
+    }
     if (_cart.isEmpty) return;
     
-    // PERBAIKAN DYNAMIC: Menggunakan List<dynamic> untuk fleksibilitas tipe
     List<dynamic> appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
@@ -327,7 +342,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   setModalState(() => isProcessing = true);
                   
                   final payload = {
-                    "shift_id": _activeShiftId,
+                    "shift_id": _activeShiftId, // 2. KIRIM SHIFT_ID KE BACKEND
                     "table_number": _enableTableNumber && _noMejaCtrl.text.isNotEmpty ? _noMejaCtrl.text : null,
                     "discount": _discount,
                     "tax": 0,
@@ -339,18 +354,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   };
 
                   try {
-                    // 1. Panggil Service dan simpan kembalian datanya
                     final dataTransaksi = await _transactionService.createTransaction(payload);
                     
-                    Navigator.pop(ctx); // Tutup modal pembayaran
-                    
-                    // 2. Reset Keranjang & Refresh Stok
+                    Navigator.pop(ctx); 
                     setState(() { _cart.clear(); _noMejaCtrl.clear(); });
                     _muatProduk(); 
 
-                    // 3. Tampilkan Popup Sukses yang memiliki tombol Cetak Struk
                     _tampilSuksesCetak(dataTransaksi);
-                    
                   } catch (e) {
                     Navigator.pop(ctx);
                     _tampilPopupCantik('Gagal Membayar', e.toString().replaceAll('Exception: ', ''), Icons.warning, AppColors.error);
@@ -417,6 +427,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
+  // --- 3. MODAL PAKSAAN BUKA SHIFT ---
   void _tampilNotifShiftTutup() {
     showDialog(
       context: context,
@@ -489,7 +500,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       onPressed: () async {
                         try {
                           _showNotif('Mencetak struk...', AppColors.smartBlue);
-                          // PANGGIL SERVICE PRINTER DI SINI
                           await PrinterService().cetakStruk(dataTransaksi);
                         } catch (e) {
                           _showNotif('Gagal mencetak: ${e.toString().replaceAll('Exception: ', '')}', AppColors.error);
@@ -520,7 +530,6 @@ class _HalamanKasirState extends State<HalamanKasir> {
     );
   }
 
-  // Helper untuk notifikasi saat proses mencetak
   void _showNotif(String pesan, Color warna) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -694,7 +703,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   @override
   Widget build(BuildContext context) {
     if (_isCheckingShift) return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
-    if (_activeShiftId == null) return const Scaffold(backgroundColor: Colors.white, body: Center()); // UI diambil alih oleh Popup
+    if (_activeShiftId == null) return const Scaffold(backgroundColor: Colors.white, body: Center()); 
 
     return LayoutBuilder(
       builder: (context, constraints) {

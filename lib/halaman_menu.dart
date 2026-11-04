@@ -6,8 +6,8 @@ import 'halaman_printer.dart';
 import 'halaman_pelanggan.dart';
 import 'halaman_produk.dart';
 import 'halaman_login.dart';
-// IMPORT HALAMAN METODE PEMBAYARAN
 import 'halaman_metode_pembayaran.dart';
+import 'core/services/shift_service.dart';
 
 class HalamanMenu extends StatefulWidget {
   const HalamanMenu({super.key});
@@ -38,7 +38,37 @@ class _HalamanMenuState extends State<HalamanMenu> {
     });
   }
 
+  // --- 4. PROTEKSI LOGOUT KASIR JIKA SHIFT MASIH AKTIF ---
   void _logout() async {
+    showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
+
+    try {
+      final shiftData = await ShiftService().getCurrentShift();
+      
+      if (mounted) Navigator.pop(context); // Tutup loading
+
+      if (shiftData != null && shiftData.status == 'OPEN') {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Shift Masih Aktif!', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error)),
+            content: const Text('Anda tidak bisa keluar akun saat shift belum ditutup. Harap tutup shift Anda terlebih dahulu.', style: TextStyle(color: AppColors.textSecondary)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mengerti', style: TextStyle(color: Colors.grey))),
+            ],
+          ),
+        );
+        return; // Hentikan proses logout
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+    }
+
+    if (!mounted) return;
+    
+    // Jika tidak ada shift aktif, tampilkan konfirmasi logout reguler
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -73,7 +103,6 @@ class _HalamanMenuState extends State<HalamanMenu> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // --- HEADER PROFIL (Crystal UI Style) ---
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: const BoxDecoration(
@@ -109,7 +138,6 @@ class _HalamanMenuState extends State<HalamanMenu> {
               ),
               const SizedBox(height: 24),
 
-              // --- DAFTAR MENU ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
@@ -123,7 +151,6 @@ class _HalamanMenuState extends State<HalamanMenu> {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPengaturan()));
                       }),
 
-                    // MENU METODE PEMBAYARAN DITAMBAHKAN DI SINI
                     if (_role == 'OWNER' || _role == 'MANAGER')
                       _buildMenuItem(Icons.payment, 'Metode Pembayaran', AppColors.smartBlue, () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanMetodePembayaran()));

@@ -21,6 +21,8 @@ import 'halaman_pusat_bantuan.dart';
 import 'halaman_notifikasi.dart';
 import 'halaman_login.dart'; 
 
+import 'core/services/shift_service.dart'; // IMPORT SERVICE SHIFT
+
 // IMPORT WIDGET BADGE NOTIFIKASI
 import 'widgets/notification_badge.dart';
 
@@ -86,13 +88,52 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
     }
   }
 
+  // --- 4. PROTEKSI LOGOUT KASIR JIKA SHIFT MASIH AKTIF ---
   Future<void> _prosesLogout() async {
+    // Tampilkan loading dialog
+    showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald)));
+
+    try {
+      final shiftData = await ShiftService().getCurrentShift();
+      
+      // Tutup loading
+      if (mounted) Navigator.pop(context);
+
+      if (shiftData != null && shiftData.status == 'OPEN') {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Shift Masih Aktif!', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error)),
+            content: const Text('Anda tidak bisa keluar akun saat shift belum ditutup. Harap tutup shift Anda terlebih dahulu untuk mencocokkan kas.', style: TextStyle(color: AppColors.textSecondary)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _gantiHalaman(8); // Arahkan ke Halaman Shift (Index 8)
+                },
+                child: const Text('Tutup Shift Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        return; // Hentikan proses logout
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+    }
+
+    // Jika aman (tidak ada shift open), proses clear session
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
     if (mounted) {
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const HalamanLogin()), (route) => false);
     }
   }
+  // --------------------------------------------------------
 
   // =========================================================
   // BOTTOM SHEET "MENU LAINNYA" (UNTUK MOBILE)
@@ -201,7 +242,6 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
             onPressed: () => _gantiHalaman(13), // Ke Pusat Bantuan
           ),
           
-          // IMPLEMENTASI NOTIFICATION BADGE UNTUK MOBILE
           const NotificationBadge(),
           
           const SizedBox(width: 8),
@@ -438,7 +478,6 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                           Row(
                             children: [
                               
-                              // IMPLEMENTASI NOTIFICATION BADGE UNTUK DESKTOP
                               const NotificationBadge(),
                               
                               const SizedBox(width: 16),
