@@ -243,7 +243,7 @@ class _HalamanDetailTransaksiState extends State<HalamanDetailTransaksi> {
   Future<void> _prosesBatal() async {
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.error)));
     try {
-      // await _service.cancelTransaction(widget.transactionId); // Pastikan fungsi ini ada di service
+      await _service.cancelTransaction(widget.transactionId);
       Navigator.pop(context);
       _tampilPopupCantik('Berhasil Dibatalkan', 'Seluruh transaksi telah dibatalkan dan stok dikembalikan.', Icons.check_circle, AppColors.primaryEmerald);
       _fetchDetail(); 

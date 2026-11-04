@@ -70,6 +70,17 @@ class TransactionService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
+  
+  Future<void> cancelTransaction(int transactionId) async {
+    try {
+      final response = await _dio.post('/transactions/$transactionId/cancel');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(response.data['message'] ?? 'Gagal membatalkan transaksi');
+      }
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+    }
+  }
 
 }
   
