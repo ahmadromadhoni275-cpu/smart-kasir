@@ -6,7 +6,7 @@ import '../../models/transaction_detail_model.dart';
 class TransactionService {
   final Dio _dio = ApiClient().dio;
 
-  Future<Map<String, dynamic>> getTransactions({
+  Future> getTransactions({
     required String dateFrom,
     required String dateTo,
     int page = 1,
@@ -30,7 +30,8 @@ class TransactionService {
       final data = response.data;
       if (response.statusCode == 200) {
         final List records = data['data'] ?? [];
-        final pagination = data['pagination'] ?? {};
+        // Fallback aman jika backend tidak mengirim pagination
+        final pagination = data['pagination'] ?? {'total_pages': 1, 'current_page': 1};
         
         return {
           'transactions': records.map((e) => TransactionReport.fromJson(e)).toList(),
@@ -58,12 +59,30 @@ class TransactionService {
     }
   }
   
-  Future<dynamic> createTransaction(Map<String, dynamic> data) async {
+  Future> createTransaction(Map<String, dynamic> data) async {
     try {
+      // 1. Lakukan Checkout
       final response = await _dio.post('/transactions', data: data);
+      
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // KEMBALIKAN DATA TRANSAKSI UNTUK DICETAK
-        return response.data['data'] ?? {}; 
+        final responseData = response.data['data'] ?? {};
+        final int transactionId = int.tryParse(responseData['transaction_id'].toString()) ?? 0;
+        
+        // 2. AMBIL DATA STRUK LENGKAP UNTUK PRINTER
+        // Jika sukses, kita panggil GET detail agar data cetak struk super lengkap
+        if (transactionId > 0) {
+          try {
+            final detailResponse = await _dio.get('/transactions/$transactionId');
+            if (detailResponse.statusCode == 200 && detailResponse.data['status'] == 'success') {
+              // Mengembalikan objek 'receipt' dari backend yang sudah sangat rapi
+              return detailResponse.data['data']['receipt'] ?? responseData;
+            }
+          } catch (_) {
+            // Jika gagal ambil detail, kembalikan data seadanya (tidak merusak flow bayar)
+            return responseData;
+          }
+        }
+        return responseData;
       }
       throw Exception('Gagal memproses transaksi');
     } on DioException catch (e) {
@@ -81,6 +100,4 @@ class TransactionService {
       throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
     }
   }
-
 }
-  
