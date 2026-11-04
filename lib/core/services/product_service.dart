@@ -7,22 +7,30 @@ class Product {
   final int? categoryId;      
   final String? categoryName; 
   final String sku; 
+  final String? barcode;       // <-- TAMBAHAN
   final String name;
+  final double? purchasePrice; // <-- TAMBAHAN (Harga Modal/HPP)
   final double sellingPrice;
   final int stock;
+  final String? unit;          // <-- TAMBAHAN (Pcs, Kg, Layanan)
   final String? image;
-  final String productType; // <-- TAMBAHAN: Untuk mengenali Barang Fisik atau Jasa
+  final String? status;        // <-- TAMBAHAN (ACTIVE / INACTIVE)
+  final String productType; 
 
   Product({
     required this.id,
     this.categoryId,
     this.categoryName,
     required this.sku,
+    this.barcode,              
     required this.name,
+    this.purchasePrice,        
     required this.sellingPrice,
     required this.stock,
+    this.unit,                 
     this.image,
-    required this.productType, // <-- WAJIB DIISI DARI JSON
+    this.status,               
+    required this.productType, 
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -34,16 +42,23 @@ class Product {
       categoryId: json['category_id'] != null ? int.tryParse(json['category_id'].toString()) : null,
       categoryName: json['category_name']?.toString(),
       
-      // Mengambil 'sku' atau 'barcode'
-      sku: json['sku']?.toString() ?? json['barcode']?.toString() ?? '',
+      // Mengambil sku dan barcode secara terpisah
+      sku: json['sku']?.toString() ?? '',
+      barcode: json['barcode']?.toString(),
       
       name: json['name'] ?? '',
+      
+      // Mengambil HPP / Harga Modal
+      purchasePrice: double.tryParse(json['purchase_price']?.toString() ?? '0'),
       
       // Mengambil 'selling_price' sesuai tabel CI4 Anda
       sellingPrice: double.tryParse(json['selling_price']?.toString() ?? json['price']?.toString() ?? '') ?? 0.0,
       
       stock: int.tryParse(json['stock']?.toString() ?? '') ?? 0,
+      
+      unit: json['unit']?.toString(),
       image: json['image']?.toString(),
+      status: json['status']?.toString() ?? 'ACTIVE',
       
       // Membaca product_type dari database (PRODUCT / SERVICE)
       productType: json['product_type']?.toString() ?? 'PRODUCT',
