@@ -6,6 +6,8 @@ import 'halaman_printer.dart';
 import 'halaman_pelanggan.dart';
 import 'halaman_produk.dart';
 import 'halaman_login.dart';
+// IMPORT HALAMAN METODE PEMBAYARAN
+import 'halaman_metode_pembayaran.dart';
 
 class HalamanMenu extends StatefulWidget {
   const HalamanMenu({super.key});
@@ -30,7 +32,7 @@ class _HalamanMenuState extends State<HalamanMenu> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _namaToko = prefs.getString('nama_toko') ?? 'Smart Kasir';
-      _username = prefs.getString('username') ?? 'Ahmad Romadhoni';
+      _username = prefs.getString('username') ?? 'Owner';
       _role = (prefs.getString('role') ?? 'KASIR').toUpperCase();
       _isLoading = false;
     });
@@ -117,11 +119,17 @@ class _HalamanMenuState extends State<HalamanMenu> {
                     const SizedBox(height: 12),
                     
                     if (_role == 'OWNER' || _role == 'MANAGER')
-                      _buildMenuItem(Icons.storefront, 'Pengaturan Toko & Pembayaran', AppColors.goldPremium, () {
+                      _buildMenuItem(Icons.storefront, 'Pengaturan Toko', AppColors.goldPremium, () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPengaturan()));
                       }),
+
+                    // MENU METODE PEMBAYARAN DITAMBAHKAN DI SINI
+                    if (_role == 'OWNER' || _role == 'MANAGER')
+                      _buildMenuItem(Icons.payment, 'Metode Pembayaran', AppColors.smartBlue, () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanMetodePembayaran()));
+                      }),
                     
-                    _buildMenuItem(Icons.people_outline, 'Data Pelanggan', AppColors.smartBlue, () {
+                    _buildMenuItem(Icons.people_outline, 'Data Pelanggan', AppColors.skyBlue, () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPelanggan()));
                     }),
                     
@@ -134,7 +142,7 @@ class _HalamanMenuState extends State<HalamanMenu> {
                     const Text('Perangkat & Sistem', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 13)),
                     const SizedBox(height: 12),
                     
-                    _buildMenuItem(Icons.print_outlined, 'Pengaturan Printer', AppColors.skyBlue, () {
+                    _buildMenuItem(Icons.print_outlined, 'Pengaturan Printer', AppColors.navyActive, () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const HalamanPrinter()));
                     }),
 

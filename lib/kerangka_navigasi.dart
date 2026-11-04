@@ -318,6 +318,8 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                                 _buildSidebarItem(Icons.person_outline, 'Pengguna', 6),
                               if (_role == 'OWNER') 
                                 _buildSidebarItem(Icons.settings_outlined, 'Pengaturan Toko', 5), 
+                              if (_role == 'OWNER' || _role == 'MANAGER') 
+                                _buildSidebarItem(Icons.payment, 'Metode Pembayaran', 9),
                               if (_role == 'OWNER') 
                                 _buildSidebarItem(Icons.workspace_premium_outlined, 'Langganan', 11),
                               _buildSidebarItem(Icons.help_outline, 'Bantuan', 13), 

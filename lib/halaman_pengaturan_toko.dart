@@ -7,6 +7,8 @@ import 'halaman_pilih_cabang.dart';
 import 'halaman_profil_toko.dart';
 import 'halaman_daftar_cabang.dart';
 import 'halaman_pengaturan_printer.dart'; 
+// IMPORT HALAMAN METODE PEMBAYARAN
+import 'halaman_metode_pembayaran.dart';
 import 'core/services/api_service.dart';
 
 class HalamanPengaturanToko extends StatefulWidget {
@@ -108,6 +110,13 @@ class _HalamanPengaturanTokoState extends State<HalamanPengaturanToko> {
             context, Icons.storefront, 'Profil Toko', 'Ubah nama, alamat, & kontak', 
             () => Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanProfilToko()))
           ),
+          
+          // TOMBOL METODE PEMBAYARAN DITAMBAHKAN DI SINI
+          _buildMenuTile(
+            context, Icons.payment, 'Metode Pembayaran', 'Atur QRIS, Transfer, & E-Wallet', 
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanMetodePembayaran()))
+          ),
+          
           const SizedBox(height: 16),
 
           // --- FITUR KASIR DINAMIS (ON/OFF) ---
