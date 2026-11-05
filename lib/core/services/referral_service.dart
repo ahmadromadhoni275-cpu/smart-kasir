@@ -1,94 +1,60 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dio/dio.dart';
+import '../network/api_client.dart';
+import '../../models/referral_model.dart';
 
 class ReferralService {
-  final String baseUrl = 'https://smartkasir.shop/api/referral';
+  // Menggunakan ApiClient yang sudah mengatur Token JWT secara otomatis
+  final Dio _dio = ApiClient().dio;
 
-  // PERBAIKAN: Menggunakan dynamic
-  Future<dynamic> getSummary() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_token') ?? ''; 
-    final storeId = prefs.getInt('store_id')?.toString() ?? '';
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/summary'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'X-Store-Id': storeId,
-        'Accept': 'application/json',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final res = json.decode(response.body);
-      if (res['status'] == 'success' || res['status'] == true) {
-         return res['data'];
+  Future<ReferralSummaryModel> getSummary() async {
+    try {
+      final response = await _dio.get('/referral/summary');
+      
+      if (response.statusCode == 200 && response.data['status'] == 'success') {
+         // Data dari API langsung diubah menjadi Model (Bukan dynamic lagi)
+         return ReferralSummaryModel.fromJson(response.data['data']);
       }
-      throw Exception(res['message'] ?? 'Gagal memuat ringkasan referral');
-    } else {
-      throw Exception('Gagal memuat: Server mengembalikan status ${response.statusCode}');
+      throw Exception(response.data['message'] ?? 'Gagal memuat ringkasan referral');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Kesalahan jaringan saat memuat data');
     }
   }
 
   Future<List<dynamic>> getHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_token') ?? ''; 
-    final storeId = prefs.getInt('store_id')?.toString() ?? '';
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/history'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'X-Store-Id': storeId,
-        'Accept': 'application/json',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final res = json.decode(response.body);
-      if (res['status'] == 'success' || res['status'] == true) {
-         return res['data'] ?? [];
+    try {
+      final response = await _dio.get('/referral/history');
+      
+      if (response.statusCode == 200 && response.data['status'] == 'success') {
+         return response.data['data'] ?? [];
       }
-      throw Exception(res['message'] ?? 'Gagal memuat riwayat referral');
-    } else {
       throw Exception('Gagal memuat riwayat referral');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Kesalahan jaringan');
     }
   }
   
-  // PERBAIKAN: Menggunakan dynamic
-  Future<dynamic> getRewards() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_token') ?? '';
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/rewards'),
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    );
-
-    if (response.statusCode == 200) {
-      final res = json.decode(response.body);
-      if (res['status'] == 'success' || res['status'] == true) {
-         return res['data'];
+  Future> getRewards() async {
+    try {
+      final response = await _dio.get('/referral/rewards');
+      
+      if (response.statusCode == 200 && response.data['status'] == 'success') {
+         return response.data['data'];
       }
-      throw Exception(res['message'] ?? 'Gagal memuat hadiah referral');
-    } else {
       throw Exception('Gagal memuat hadiah referral');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Kesalahan jaringan');
     }
   }
 
   Future<void> claimReward(String rewardId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_token') ?? '';
-
-    final response = await http.post(
-      Uri.parse('$baseUrl/rewards/$rewardId/claim'),
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    );
-
-    if (response.statusCode != 201) {
-      final res = json.decode(response.body);
-      throw Exception(res['message'] ?? 'Gagal mengklaim hadiah');
+    try {
+      final response = await _dio.post('/referral/rewards/$rewardId/claim');
+      
+      if (response.statusCode != 201 && response.statusCode != 200) {
+        throw Exception(response.data['message'] ?? 'Gagal mengklaim hadiah');
+      }
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Kesalahan jaringan saat mengklaim');
     }
   }
 }
