@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
 import 'core/services/printer_service.dart';
+import 'models/profit_loss_report_model.dart'; // Import model
 import 'tema.dart';
 
 class HalamanLaporanLabaRugi extends StatefulWidget {
@@ -22,21 +24,15 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
   late DateTime _dateFrom;
   late DateTime _dateTo;
 
-  // Variabel Keuangan
-  double _grossSales = 0;
-  double _totalDiscount = 0;
-  double _totalReturns = 0;
-  double _netSales = 0;
-  double _totalCogs = 0;
-  double _grossProfit = 0;
-  double _totalExpenses = 0;
-  double _netProfit = 0;
-  int _transactionCount = 0;
+  ProfitLossData _plData = ProfitLossData(
+    grossSales: 0, totalDiscount: 0, totalReturns: 0, netSales: 0, 
+    totalCogs: 0, grossProfit: 0, totalExpenses: 0, netProfit: 0, transactionCount: 0
+  );
 
   @override
   void initState() {
     super.initState();
-    _setFilterDate('Bulan Ini'); // Default ke bulan ini (lebih relevan untuk laba rugi)
+    _setFilterDate('Bulan Ini');
   }
 
   void _setFilterDate(String filterType) {
@@ -44,17 +40,15 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
     setState(() {
       _selectedFilter = filterType;
       if (filterType == 'Hari Ini') {
-        _dateFrom = now;
-        _dateTo = now;
+        _dateFrom = now; _dateTo = now;
       } else if (filterType == '7 Hari') {
-        _dateFrom = now.subtract(const Duration(days: 6));
-        _dateTo = now;
+        _dateFrom = now.subtract(const Duration(days: 6)); _dateTo = now;
       } else if (filterType == 'Bulan Ini') {
         _dateFrom = DateTime(now.year, now.month, 1);
         _dateTo = DateTime(now.year, now.month + 1, 0);
       } else if (filterType == 'Kustom') {
         _pilihTanggalKustom();
-        return; // Jangan fetch dulu sebelum modal selesai
+        return; 
       }
     });
     _fetchProfitLoss();
@@ -79,27 +73,17 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
   }
 
   Future<void> _fetchProfitLoss() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+    setState(() { _isLoading = true; _errorMessage = ''; });
 
     try {
       final String strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final String strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
+      // Pastikan ReportService getProfitLoss mengembalikan ProfitLossData
       final data = await _service.getProfitLoss(strDateFrom, strDateTo);
       
       setState(() {
-        _grossSales = double.tryParse(data['gross_sales']?.toString() ?? '0') ?? 0;
-        _totalDiscount = double.tryParse(data['total_discount']?.toString() ?? '0') ?? 0;
-        _totalReturns = double.tryParse(data['total_returns']?.toString() ?? '0') ?? 0;
-        _netSales = double.tryParse(data['net_sales']?.toString() ?? '0') ?? 0;
-        _totalCogs = double.tryParse(data['total_cogs']?.toString() ?? '0') ?? 0;
-        _grossProfit = double.tryParse(data['gross_profit']?.toString() ?? '0') ?? 0;
-        _totalExpenses = double.tryParse(data['total_expenses']?.toString() ?? '0') ?? 0;
-        _netProfit = double.tryParse(data['net_profit']?.toString() ?? '0') ?? 0;
-        _transactionCount = int.tryParse(data['transaction_count']?.toString() ?? '0') ?? 0;
+        _plData = data;
       });
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
@@ -109,157 +93,173 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
   }
 
   String _formatCurrency(double amount) {
-    // Format agar bisa minus (contoh: -Rp50.000)
     final format = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0);
     return amount < 0 ? "-${format.format(amount.abs())}" : format.format(amount);
   }
 
+  void _showNotif(String pesan, Color warna) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   // ==========================================
-  // LOGIKA CETAK LAPORAN LABA RUGI
+  // CETAK LAPORAN LABA RUGI
   // ==========================================
   Future<void> _cetakLaporanLabaRugi() async {
     if (_isLoading) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
-    );
+    _showNotif('Menyiapkan pencetakan...', AppColors.smartBlue);
 
-    // Menyusun data keuangan untuk dicetak
-    // Note: PrinterService secara otomatis memformat data berjenis num/double menjadi rupiah
     Map<String, dynamic> dataLaporan = {
       'periode': _selectedFilter,
       '-- PENDAPATAN --': '',
-      'Penjualan_Kotor': _grossSales,
-      'Diskon_Penjualan': _totalDiscount > 0 ? -(_totalDiscount) : 0,
-      'Retur_Penjualan': _totalReturns > 0 ? -(_totalReturns) : 0,
-      'Penjualan_Bersih_(Net)': _netSales,
+      'Penjualan_Kotor': _plData.grossSales,
+      'Diskon_Penjualan': _plData.totalDiscount > 0 ? -(_plData.totalDiscount) : 0,
+      'Retur_Penjualan': _plData.totalReturns > 0 ? -(_plData.totalReturns) : 0,
+      'Penjualan_Bersih_(Net)': _plData.netSales,
       '-- HPP & BIAYA --': '',
-      'Harga_Pokok_(COGS)': _totalCogs > 0 ? -(_totalCogs) : 0,
-      'Laba_Kotor_(Gross)': _grossProfit,
-      'Biaya_Operasional': _totalExpenses > 0 ? -(_totalExpenses) : 0,
+      'Harga_Pokok_(COGS)': _plData.totalCogs > 0 ? -(_plData.totalCogs) : 0,
+      'Laba_Kotor_(Gross)': _plData.grossProfit,
+      'Biaya_Operasional': _plData.totalExpenses > 0 ? -(_plData.totalExpenses) : 0,
       '-- LABA BERSIH --': '',
-      'LABA_RUGI_BERSIH': _netProfit,
+      'LABA_RUGI_BERSIH': _plData.netProfit,
     };
 
     try {
       await PrinterService().cetakLaporan(dataLaporan, "LAPORAN LABA RUGI");
-      
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Laporan Laba Rugi berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
-      );
+      _showNotif('Laporan Laba Rugi berhasil dicetak!', AppColors.primaryEmerald);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
-      );
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     }
+  }
+
+  // ==========================================
+  // WIDGET BUILDER DENGAN CRYSTAL UI
+  // ==========================================
+  Widget _buildGlassFilterChip(String label) {
+    bool isSelected = _selectedFilter == label;
+    return InkWell(
+      onTap: () => _setFilterDate(label),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.navyActive : Colors.white.withOpacity(0.5),
+          border: Border.all(color: isSelected ? AppColors.navyActive : Colors.white),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected ? [BoxShadow(color: AppColors.navyActive.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(color: isSelected ? Colors.white : AppColors.textPrimary, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 13),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Laba & Rugi (P&L)', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
+        elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
-        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
         actions: [
           IconButton(
-            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            icon: const Icon(Icons.print_outlined, color: AppColors.smartBlue),
             tooltip: 'Cetak Laporan',
             onPressed: _isLoading ? null : _cetakLaporanLabaRugi,
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // 1. FILTER TANGGAL
+          // Background Gradient (Crystal UI)
           Container(
-            padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: ['Hari Ini', '7 Hari', 'Bulan Ini', 'Kustom'].map((filter) {
-                  bool isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(filter, style: TextStyle(color: isSelected ? Colors.white : AppColors.textSecondary, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                      selected: isSelected,
-                      selectedColor: AppColors.primaryEmerald,
-                      backgroundColor: AppColors.lightGray,
-                      showCheckmark: false,
-                      onSelected: (val) { if (val) _setFilterDate(filter); },
-                    ),
-                  );
-                }).toList(),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
               ),
             ),
           ),
-          
-          // 2. KONTEN LAPORAN
-          Expanded(
-            child: _isLoading 
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-                : _errorMessage.isNotEmpty
-                    ? _buildErrorState()
-                    : RefreshIndicator(
-                        color: AppColors.primaryEmerald,
-                        onRefresh: _fetchProfitLoss,
-                        child: ListView(
-                          padding: const EdgeInsets.all(16),
+
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: SizedBox(height: MediaQuery.of(context).padding.top + kToolbarHeight)),
+              
+              // Filter Panel Glass
+              SliverToBoxAdapter(
+                child: ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.5)))),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
                           children: [
-                            // KARTU LABA BERSIH
-                            _buildNetProfitCard(),
-                            const SizedBox(height: 24),
-
-                            // DOKUMEN LABA RUGI
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('PENDAPATAN (REVENUE)', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, letterSpacing: 1)),
-                                  const SizedBox(height: 12),
-                                  _buildFinanceRow('Penjualan Kotor', _grossSales),
-                                  _buildFinanceRow('Diskon Penjualan', _totalDiscount, isMinus: true),
-                                  _buildFinanceRow('Retur Penjualan', _totalReturns, isMinus: true),
-                                  const Divider(height: 24, thickness: 1),
-                                  _buildFinanceRow('Penjualan Bersih (Net Sales)', _netSales, isBold: true),
-                                  
-                                  const SizedBox(height: 32),
-                                  const Text('HARGA POKOK (COGS)', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, letterSpacing: 1)),
-                                  const SizedBox(height: 12),
-                                  _buildFinanceRow('Harga Pokok Penjualan', _totalCogs, isMinus: true),
-                                  const Divider(height: 24, thickness: 1),
-                                  _buildFinanceRow('Laba Kotor (Gross Profit)', _grossProfit, isBold: true, color: AppColors.smartBlue),
-
-                                  const SizedBox(height: 32),
-                                  const Text('PENGELUARAN (EXPENSES)', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, letterSpacing: 1)),
-                                  const SizedBox(height: 12),
-                                  _buildFinanceRow('Biaya Operasional', _totalExpenses, isMinus: true),
-                                  const Divider(height: 24, thickness: 1),
-                                  _buildFinanceRow('Laba Bersih Operasional', _netProfit, isBold: true, color: _netProfit >= 0 ? AppColors.primaryEmerald : Colors.red),
-                                ],
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 24),
-                            Text('*Dihitung dari $_transactionCount transaksi berstatus selesai (COMPLETED) pada periode yang dipilih.', 
-                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
-                            const SizedBox(height: 40),
+                            _buildGlassFilterChip('Hari Ini'),
+                            _buildGlassFilterChip('7 Hari'),
+                            _buildGlassFilterChip('Bulan Ini'),
+                            _buildGlassFilterChip('Kustom'),
                           ],
                         ),
                       ),
+                    ),
+                  ),
+                ),
+              ),
+
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _isLoading 
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+                    : _errorMessage.isNotEmpty
+                        ? _buildErrorState()
+                        : Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                _buildNetProfitCard(),
+                                const SizedBox(height: 24),
+                                _buildPLDocument(),
+                                
+                                const SizedBox(height: 24),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'Dihitung dari ${_plData.transactionCount} transaksi berstatus selesai (COMPLETED) pada periode yang dipilih.', 
+                                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic)
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 40),
+                              ],
+                            ),
+                          ),
+              ),
+            ],
           ),
         ],
       ),
@@ -267,46 +267,130 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
   }
 
   Widget _buildNetProfitCard() {
-    bool isRugi = _netProfit < 0;
+    bool isRugi = _plData.isLoss;
     
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isRugi ? [Colors.red.shade700, Colors.red.shade500] : [AppColors.primaryEmerald, const Color(0xFF107A4D)],
+          colors: isRugi ? [Colors.red.shade700, Colors.red.shade400] : [AppColors.primaryEmerald, AppColors.navyActive],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: (isRugi ? Colors.red : AppColors.primaryEmerald).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: (isRugi ? Colors.red : AppColors.navyActive).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.analytics, color: Colors.white, size: 24)),
-              const SizedBox(width: 12),
-              Text(isRugi ? 'Total Kerugian Bersih' : 'Total Laba Bersih', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)), 
+                child: Row(
+                  children: [
+                    Icon(isRugi ? Icons.trending_down : Icons.trending_up, color: Colors.white, size: 16),
+                    const SizedBox(width: 8),
+                    Text(isRugi ? 'Total Kerugian Bersih' : 'Total Laba Bersih', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                )
+              ),
+              Icon(Icons.account_balance_wallet_outlined, color: Colors.white.withOpacity(0.5), size: 32),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(_formatCurrency(_netProfit), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 24),
+          Text(_formatCurrency(_plData.netProfit), style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
         ],
       ),
     );
   }
 
+  Widget _buildPLDocument() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionHeader('PENDAPATAN (REVENUE)'),
+                const SizedBox(height: 16),
+                _buildFinanceRow('Penjualan Kotor', _plData.grossSales),
+                _buildFinanceRow('Diskon Penjualan', _plData.totalDiscount, isMinus: true),
+                _buildFinanceRow('Retur Penjualan', _plData.totalReturns, isMinus: true),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.border)),
+                _buildFinanceRow('Penjualan Bersih (Net Sales)', _plData.netSales, isBold: true),
+                
+                const SizedBox(height: 32),
+                _buildSectionHeader('HARGA POKOK (COGS)'),
+                const SizedBox(height: 16),
+                _buildFinanceRow('Harga Pokok Penjualan', _plData.totalCogs, isMinus: true),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.border)),
+                _buildFinanceRow('Laba Kotor (Gross Profit)', _plData.grossProfit, isBold: true, color: AppColors.smartBlue),
+
+                const SizedBox(height: 32),
+                _buildSectionHeader('PENGELUARAN (EXPENSES)'),
+                const SizedBox(height: 16),
+                _buildFinanceRow('Biaya Operasional', _plData.totalExpenses, isMinus: true),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 2, color: AppColors.navyActive)),
+                
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Laba Bersih Operasional', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.w900, fontSize: 15)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _plData.isLoss ? Colors.red.withOpacity(0.1) : AppColors.primaryEmerald.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8)
+                      ),
+                      child: Text(
+                        _formatCurrency(_plData.netProfit), 
+                        style: TextStyle(color: _plData.isLoss ? AppColors.error : AppColors.primaryEmerald, fontWeight: FontWeight.w900, fontSize: 16)
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Row(
+      children: [
+        Container(width: 4, height: 16, decoration: BoxDecoration(color: AppColors.navyActive, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 8),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navyActive, fontSize: 13, letterSpacing: 0.5)),
+      ],
+    );
+  }
+
   Widget _buildFinanceRow(String label, double value, {bool isMinus = false, bool isBold = false, Color? color}) {
     String valStr = _formatCurrency(value);
-    if (isMinus && value > 0) valStr = "-$valStr"; // Tambahkan visual minus jika ini item pengurang
+    if (isMinus && value > 0) valStr = "-$valStr";
     
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: isBold ? (color ?? AppColors.navyActive) : AppColors.textSecondary, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: isBold ? 14 : 13)),
-          Text(valStr, style: TextStyle(color: isMinus && value > 0 ? Colors.red : (color ?? AppColors.navyActive), fontWeight: isBold ? FontWeight.bold : FontWeight.w600, fontSize: isBold ? 14 : 13)),
+          Text(label, style: TextStyle(color: isBold ? (color ?? AppColors.navyActive) : AppColors.textSecondary, fontWeight: isBold ? FontWeight.bold : FontWeight.w500, fontSize: isBold ? 14 : 13)),
+          Text(valStr, style: TextStyle(color: isMinus && value > 0 ? AppColors.error : (color ?? AppColors.navyActive), fontWeight: isBold ? FontWeight.w900 : FontWeight.bold, fontSize: isBold ? 15 : 14)),
         ],
       ),
     );
@@ -314,15 +398,23 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
 
   Widget _buildErrorState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-          const SizedBox(height: 16),
-          Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
-          const SizedBox(height: 16),
-          ElevatedButton(onPressed: _fetchProfitLoss, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald), child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)))
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+            const SizedBox(height: 16),
+            Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _fetchProfitLoss, 
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+              label: const Text('Coba Lagi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            )
+          ],
+        ),
       ),
     );
   }

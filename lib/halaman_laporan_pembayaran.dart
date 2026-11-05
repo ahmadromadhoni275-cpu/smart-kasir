@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
 import 'core/services/printer_service.dart';
+import 'models/payment_report_model.dart'; // Import model
 import 'tema.dart';
 
 class HalamanLaporanPembayaran extends StatefulWidget {
@@ -22,9 +24,8 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
   late DateTime _dateFrom;
   late DateTime _dateTo;
 
-  List<dynamic> _payments = [];
+  List<PaymentReportItem> _payments = [];
   
-  // Variabel Rekap
   double _totalAmount = 0;
   int _totalCount = 0;
 
@@ -34,29 +35,23 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
     _setFilterDate('Hari Ini');
   }
 
-  // ==========================================
-  // LOGIKA FILTER TANGGAL
-  // ==========================================
   void _setFilterDate(String filterType) {
     DateTime now = DateTime.now();
     setState(() {
       _selectedFilter = filterType;
       if (filterType == 'Hari Ini') {
-        _dateFrom = now;
-        _dateTo = now;
-        _fetchPayments();
+        _dateFrom = now; _dateTo = now;
       } else if (filterType == '7 Hari') {
-        _dateFrom = now.subtract(const Duration(days: 6));
-        _dateTo = now;
-        _fetchPayments();
+        _dateFrom = now.subtract(const Duration(days: 6)); _dateTo = now;
       } else if (filterType == 'Bulan Ini') {
         _dateFrom = DateTime(now.year, now.month, 1);
         _dateTo = DateTime(now.year, now.month + 1, 0);
-        _fetchPayments();
       } else if (filterType == 'Kustom') {
         _pilihTanggalKustom();
+        return;
       }
     });
+    _fetchPayments();
   }
 
   Future<void> _pilihTanggalKustom() async {
@@ -65,19 +60,11 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       initialDateRange: DateTimeRange(start: _dateFrom, end: _dateTo),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: AppColors.primaryEmerald)),
-          child: child!,
-        );
-      },
+      builder: (context, child) => Theme(data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: AppColors.primaryEmerald)), child: child!),
     );
 
     if (picked != null) {
-      setState(() {
-        _dateFrom = picked.start;
-        _dateTo = picked.end;
-      });
+      setState(() { _dateFrom = picked.start; _dateTo = picked.end; });
       _fetchPayments();
     } else {
       setState(() => _selectedFilter = 'Hari Ini');
@@ -85,31 +72,30 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
     }
   }
 
-  // ==========================================
-  // FETCH DATA API
-  // ==========================================
   Future<void> _fetchPayments() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+    setState(() { _isLoading = true; _errorMessage = ''; });
 
     try {
       final String strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final String strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
+      // Gunakan casting/mapping List dari API ke Model
       final data = await _service.getPayments(strDateFrom, strDateTo);
+      final List<PaymentReportItem> parsedData = (data as List).map((e) {
+        if (e is PaymentReportItem) return e;
+        return PaymentReportItem.fromJson(e);
+      }).toList();
       
       double tempNominal = 0;
       int tempCount = 0;
       
-      for (var pay in data) {
-        tempNominal += double.tryParse(pay['total_amount']?.toString() ?? '0') ?? 0.0;
-        tempCount += int.tryParse(pay['payment_count']?.toString() ?? '0') ?? 0;
+      for (var pay in parsedData) {
+        tempNominal += pay.totalAmount;
+        tempCount += pay.paymentCount;
       }
 
       setState(() {
-        _payments = data;
+        _payments = parsedData;
         _totalAmount = tempNominal;
         _totalCount = tempCount;
       });
@@ -124,33 +110,40 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   }
 
-  // Mengambil Ikon dan Warna berdasarkan Grup Pembayaran
   Map<String, dynamic> _getPaymentStyle(String method) {
     switch (method.toUpperCase()) {
       case 'CASH':
-        return {'icon': Icons.money, 'color': Colors.green};
+        return {'icon': Icons.payments_outlined, 'color': const Color(0xFF107A4D)};
       case 'QRIS':
-        return {'icon': Icons.qr_code_2, 'color': Colors.blue};
+        return {'icon': Icons.qr_code_2_outlined, 'color': AppColors.smartBlue};
       case 'TRANSFER':
-        return {'icon': Icons.account_balance, 'color': Colors.orange};
+        return {'icon': Icons.account_balance_outlined, 'color': Colors.orange.shade700};
       case 'EWALLET':
-        return {'icon': Icons.account_balance_wallet, 'color': Colors.purple};
+        return {'icon': Icons.account_balance_wallet_outlined, 'color': Colors.purple.shade600};
       default:
-        return {'icon': Icons.payment, 'color': Colors.grey};
+        return {'icon': Icons.credit_card_outlined, 'color': AppColors.slateGray};
     }
   }
 
+  void _showNotif(String pesan, Color warna) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   // ==========================================
-  // LOGIKA CETAK LAPORAN PEMBAYARAN
+  // CETAK LAPORAN PEMBAYARAN
   // ==========================================
   Future<void> _cetakLaporanPembayaran() async {
-    if (_isLoading) return;
+    if (_isLoading || _payments.isEmpty) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
-    );
+    _showNotif('Menyiapkan pencetakan...', AppColors.smartBlue);
 
-    // Menyusun rekapitulasi data pembayaran
     Map<String, dynamic> dataLaporan = {
       'periode': _selectedFilter,
       'Total_Frekuensi': '$_totalCount Transaksi',
@@ -158,109 +151,137 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
       '-- RINCIAN METODE --': '',
     };
 
-    // Menyusun daftar metode pembayaran yang digunakan
     for (var pay in _payments) {
-      String method = pay['payment_group']?.toString() ?? 'LAINNYA';
-      double total = double.tryParse(pay['total_amount']?.toString() ?? '0') ?? 0.0;
-      int count = int.tryParse(pay['payment_count']?.toString() ?? '0') ?? 0;
-
-      // Key: "CASH (15x)", Value: Nominalnya
-      dataLaporan['$method (${count}x)'] = total;
+      dataLaporan['${pay.methodGroup} (${pay.paymentCount}x)'] = pay.totalAmount;
     }
 
     try {
-      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN PEMBAYARAN");
-      
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN METODE PEMBAYARAN");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Laporan Pembayaran berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
-      );
+      _showNotif('Laporan Pembayaran berhasil dicetak!', AppColors.primaryEmerald);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
-      );
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     }
+  }
+
+  // ==========================================
+  // WIDGET BUILDER DENGAN CRYSTAL UI
+  // ==========================================
+  Widget _buildGlassFilterChip(String label) {
+    bool isSelected = _selectedFilter == label;
+    return InkWell(
+      onTap: () => _setFilterDate(label),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.navyActive : Colors.white.withOpacity(0.5),
+          border: Border.all(color: isSelected ? AppColors.navyActive : Colors.white),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected ? [BoxShadow(color: AppColors.navyActive.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(color: isSelected ? Colors.white : AppColors.textPrimary, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 13),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Laporan Pembayaran', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
+        elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
-        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
         actions: [
           IconButton(
-            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            icon: const Icon(Icons.print_outlined, color: AppColors.smartBlue),
             tooltip: 'Cetak Laporan',
             onPressed: _isLoading || _payments.isEmpty ? null : _cetakLaporanPembayaran,
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-          : _errorMessage.isNotEmpty
-              ? _buildErrorState()
-              : RefreshIndicator(
-                  color: AppColors.primaryEmerald,
-                  onRefresh: _fetchPayments,
-                  child: CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(child: _buildFilterPanel()),
-                      SliverToBoxAdapter(child: _buildSummaryCards()),
-                      
-                      const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
-                          child: Text('Rincian Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                        ),
-                      ),
-                      
-                      _payments.isEmpty
-                          ? SliverToBoxAdapter(child: _buildEmptyState())
-                          : SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) => _buildPaymentItem(_payments[index]),
-                                childCount: _payments.length,
+      body: Stack(
+        children: [
+          // Background Gradient (Crystal UI)
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
+              ),
+            ),
+          ),
+
+          _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+            : _errorMessage.isNotEmpty
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    color: AppColors.primaryEmerald,
+                    backgroundColor: Colors.white,
+                    onRefresh: _fetchPayments,
+                    child: CustomScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      slivers: [
+                        SliverToBoxAdapter(child: SizedBox(height: MediaQuery.of(context).padding.top + kToolbarHeight)),
+                        
+                        // Filter Panel Glass
+                        SliverToBoxAdapter(
+                          child: ClipRRect(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.5)))),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  physics: const BouncingScrollPhysics(),
+                                  child: Row(
+                                    children: [
+                                      _buildGlassFilterChip('Hari Ini'),
+                                      _buildGlassFilterChip('7 Hari'),
+                                      _buildGlassFilterChip('Bulan Ini'),
+                                      _buildGlassFilterChip('Kustom'),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                            
-                      const SliverToBoxAdapter(child: SizedBox(height: 40)),
-                    ],
-                  ),
-                ),
-    );
-  }
+                          ),
+                        ),
 
-  Widget _buildFilterPanel() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.white,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: ['Hari Ini', '7 Hari', 'Bulan Ini', 'Kustom'].map((filter) {
-            bool isSelected = _selectedFilter == filter;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(filter, style: TextStyle(color: isSelected ? Colors.white : AppColors.textSecondary, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                selected: isSelected,
-                selectedColor: AppColors.primaryEmerald,
-                backgroundColor: AppColors.lightGray,
-                showCheckmark: false,
-                onSelected: (val) {
-                  if (val) _setFilterDate(filter);
-                },
-              ),
-            );
-          }).toList(),
-        ),
+                        SliverToBoxAdapter(child: _buildSummaryCards()),
+                        
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
+                            child: Text('Rincian Metode Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                          ),
+                        ),
+                        
+                        _payments.isEmpty
+                            ? SliverToBoxAdapter(child: _buildEmptyState())
+                            : SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) => _buildPaymentItem(_payments[index]),
+                                  childCount: _payments.length,
+                                ),
+                              ),
+                              
+                        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                      ],
+                    ),
+                  ),
+        ],
       ),
     );
   }
@@ -275,16 +296,16 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.orange.shade600, // Warna berbeda dari penjualan agar fresh
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                gradient: LinearGradient(colors: [Colors.orange.shade700, Colors.orange.shade500], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Total Pembayaran', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('Total Pembayaran Masuk', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text(_formatCurrency(_totalAmount), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text(_formatCurrency(_totalAmount), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
                 ],
               ),
             ),
@@ -295,17 +316,24 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                color: Colors.white.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+                boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Jumlah (x)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text('$_totalCount', style: const TextStyle(color: AppColors.navyActive, fontSize: 20, fontWeight: FontWeight.bold)),
-                ],
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Jumlah (x)', style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text('$_totalCount', style: const TextStyle(color: AppColors.navyActive, fontSize: 22, fontWeight: FontWeight.w900)),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -314,65 +342,75 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
     );
   }
 
-  Widget _buildPaymentItem(dynamic pay) {
-    String method = pay['payment_group']?.toString() ?? 'LAINNYA';
-    double total = double.tryParse(pay['total_amount']?.toString() ?? '0') ?? 0.0;
-    int count = int.tryParse(pay['payment_count']?.toString() ?? '0') ?? 0;
-    
-    // Hitung persentase
-    double percentage = _totalAmount > 0 ? (total / _totalAmount) : 0;
+  Widget _buildPaymentItem(PaymentReportItem pay) {
+    double percentage = _totalAmount > 0 ? (pay.totalAmount / _totalAmount) : 0;
     String strPercentage = (percentage * 100).toStringAsFixed(1);
     
-    final style = _getPaymentStyle(method);
+    final style = _getPaymentStyle(pay.methodGroup);
+    Color mainColor = style['color'];
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  backgroundColor: style['color'].withOpacity(0.1),
-                  child: Icon(style['icon'], color: style['color'], size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(method, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.navyActive)),
-                      const SizedBox(height: 4),
-                      Text('$count Transaksi', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Row(
                   children: [
-                    Text(_formatCurrency(total), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primaryEmerald)),
-                    const SizedBox(height: 4),
-                    Text('$strPercentage%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: style['color'])),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: mainColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      child: Icon(style['icon'], color: mainColor, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(pay.methodGroup, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppColors.navyActive)),
+                          const SizedBox(height: 4),
+                          Text('${pay.paymentCount} Transaksi', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(_formatCurrency(pay.totalAmount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppColors.navyActive)),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: mainColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                          child: Text('$strPercentage%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mainColor)),
+                        ),
+                      ],
+                    ),
                   ],
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: percentage,
+                    backgroundColor: AppColors.lightGray,
+                    color: mainColor,
+                    minHeight: 8,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            // Progress Bar Visualisasi Persentase
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: percentage,
-                backgroundColor: Colors.grey.shade200,
-                color: style['color'],
-                minHeight: 6,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -380,13 +418,17 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
 
   Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.only(top: 60),
       child: Center(
         child: Column(
           children: [
-            Icon(Icons.payment, size: 60, color: Colors.grey.shade300),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle),
+              child: Icon(Icons.account_balance_wallet_outlined, size: 60, color: AppColors.textSecondary.withOpacity(0.5)),
+            ),
             const SizedBox(height: 16),
-            const Text('Belum ada pembayaran sukses di periode ini', style: TextStyle(color: AppColors.textSecondary)),
+            const Text('Belum ada pembayaran sukses di periode ini', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -402,12 +444,13 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
           children: [
             const Icon(Icons.error_outline, color: AppColors.error, size: 48),
             const SizedBox(height: 16),
-            Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
-            const SizedBox(height: 16),
-            ElevatedButton(
+            Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
               onPressed: _fetchPayments,
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald),
-              child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              label: const Text('Coba Lagi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             )
           ],
         ),
