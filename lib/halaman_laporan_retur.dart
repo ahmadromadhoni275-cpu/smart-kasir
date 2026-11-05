@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'core/services/report_service.dart';
-import 'core/services/printer_service.dart'; // <-- Import Printer Service
+import 'core/services/printer_service.dart';
+import 'models/return_report_model.dart';
 import 'tema.dart';
 
 class HalamanLaporanRetur extends StatefulWidget {
@@ -18,11 +20,11 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
   bool _isLoading = true;
   String _errorMessage = '';
   
-  String _selectedFilter = 'Bulan Ini'; // Retur biasanya direkap bulanan
+  String _selectedFilter = 'Bulan Ini'; 
   late DateTime _dateFrom;
   late DateTime _dateTo;
 
-  List<dynamic> _returns = [];
+  List<ReturnReportItem> _returns = [];
   
   // Variabel Rekap
   int _totalTransactions = 0;
@@ -77,21 +79,32 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
       final strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
+      // ReportService mengembalikan List<ReturnReportItem> jika menggunakan mapping class
+      // Jika masih mengembalikan dynamic/map, konversi di sini
       final data = await _service.getReturns(strDateFrom, strDateTo);
+      
+      final List<ReturnReportItem> parsedData = (data as List).map((e) {
+        if (e isinstance ReturnReportItem) return e as ReturnReportItem;
+        return ReturnReportItem.fromJson(e);
+      }).toList();
       
       int tempUnits = 0;
       double tempValue = 0;
       double tempRefund = 0;
       
-      for (var r in data) {
-        tempUnits += int.tryParse(r['total_quantity']?.toString() ?? '0') ?? 0;
-        tempValue += double.tryParse(r['return_total']?.toString() ?? '0') ?? 0;
-        tempRefund += double.tryParse(r['refunded_amount']?.toString() ?? '0') ?? 0;
+      for (var r in parsedData) {
+        tempUnits += r.totalQuantity;
+        tempValue += r.returnTotal;
+        
+        // Asumsi jika status COMPLETED, refund sudah dikembalikan
+        if (r.returnStatus == 'COMPLETED') {
+           tempRefund += r.refundedAmount;
+        }
       }
 
       setState(() {
-        _returns = data;
-        _totalTransactions = data.length;
+        _returns = parsedData;
+        _totalTransactions = parsedData.length;
         _totalUnits = tempUnits;
         _totalReturnValue = tempValue;
         _totalRefunded = tempRefund;
@@ -119,30 +132,38 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
       case 'COMPLETED':
       case 'SELESAI':
       case 'APPROVED':
-        return Colors.green;
+        return AppColors.primaryEmerald;
       case 'PENDING':
       case 'MENUNGGU':
-        return Colors.orange;
+        return Colors.orange.shade700;
       case 'REJECTED':
       case 'DITOLAK':
       case 'CANCELED':
-        return Colors.red;
+        return AppColors.error;
       default:
-        return Colors.grey;
+        return AppColors.textSecondary;
     }
   }
 
+  void _showNotif(String pesan, Color warna) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   // ==========================================
-  // LOGIKA CETAK LAPORAN RETUR
+  // CETAK LAPORAN RETUR
   // ==========================================
   Future<void> _cetakLaporanRetur() async {
-    if (_isLoading) return;
+    if (_isLoading || _returns.isEmpty) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Menyiapkan pencetakan...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.blue)
-    );
+    _showNotif('Menyiapkan pencetakan...', AppColors.smartBlue);
 
-    // Menyusun rekapitulasi data retur
     Map<String, dynamic> dataLaporan = {
       'periode': _selectedFilter,
       'Total_Transaksi_Retur': '$_totalTransactions Transaksi',
@@ -152,107 +173,138 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
       '-- RINCIAN RETUR TERAKHIR --': '',
     };
 
-    // Menyusun beberapa daftar retur terakhir (Maksimal 10 agar pas di struk)
-    int batasCetak = _returns.length > 10 ? 10 : _returns.length;
+    int batasCetak = _returns.length > 15 ? 15 : _returns.length;
     for (int i = 0; i < batasCetak; i++) {
       var r = _returns[i];
-      String retNum = r['return_number']?.toString() ?? 'RET';
-      String status = r['return_status']?.toString().toUpperCase() ?? 'PENDING';
-      double refund = double.tryParse(r['refunded_amount']?.toString() ?? '0') ?? 0;
-
-      dataLaporan['$retNum ($status)'] = refund;
+      dataLaporan['${r.returnNumber} (${r.returnStatus})'] = r.refundedAmount;
     }
 
     try {
-      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN RETUR");
-      
+      await PrinterService().cetakLaporan(dataLaporan, "LAPORAN RETUR PENJUALAN");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Laporan Retur berhasil dicetak!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: AppColors.primaryEmerald)
-      );
+      _showNotif('Laporan Retur berhasil dicetak!', AppColors.primaryEmerald);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), backgroundColor: Colors.red)
-      );
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     }
+  }
+
+  // ==========================================
+  // WIDGET BUILDER DENGAN CRYSTAL UI
+  // ==========================================
+  Widget _buildGlassFilterChip(String label) {
+    bool isSelected = _selectedFilter == label;
+    return InkWell(
+      onTap: () => _setFilterDate(label),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.navyActive : Colors.white.withOpacity(0.5),
+          border: Border.all(color: isSelected ? AppColors.navyActive : Colors.white),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected ? [BoxShadow(color: AppColors.navyActive.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(color: isSelected ? Colors.white : AppColors.textPrimary, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 13),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Laporan Retur', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
+        elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.navyActive),
-        // --- TOMBOL CETAK DI SUDUT KANAN ATAS ---
         actions: [
           IconButton(
-            icon: const Icon(Icons.print, color: AppColors.primaryEmerald),
+            icon: const Icon(Icons.print_outlined, color: AppColors.smartBlue),
             tooltip: 'Cetak Laporan',
             onPressed: _isLoading || _returns.isEmpty ? null : _cetakLaporanRetur,
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-          : _errorMessage.isNotEmpty
-              ? _buildErrorState()
-              : RefreshIndicator(
-                  color: AppColors.primaryEmerald,
-                  onRefresh: _fetchReturns,
-                  child: CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(child: _buildFilterPanel()),
-                      SliverToBoxAdapter(child: _buildSummaryCards()),
-                      
-                      const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
-                          child: Text('Daftar Transaksi Retur', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
-                        ),
-                      ),
-                      
-                      _returns.isEmpty
-                          ? SliverToBoxAdapter(child: _buildEmptyState())
-                          : SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) => _buildReturnItem(_returns[index]),
-                                childCount: _returns.length,
+      body: Stack(
+        children: [
+          // Background Gradient (Crystal UI)
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
+              ),
+            ),
+          ),
+
+          _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+            : _errorMessage.isNotEmpty
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    color: AppColors.primaryEmerald,
+                    backgroundColor: Colors.white,
+                    onRefresh: _fetchReturns,
+                    child: CustomScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      slivers: [
+                        SliverToBoxAdapter(child: SizedBox(height: MediaQuery.of(context).padding.top + kToolbarHeight)),
+                        
+                        // Filter Panel Glass
+                        SliverToBoxAdapter(
+                          child: ClipRRect(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.5)))),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  physics: const BouncingScrollPhysics(),
+                                  child: Row(
+                                    children: [
+                                      _buildGlassFilterChip('Hari Ini'),
+                                      _buildGlassFilterChip('7 Hari'),
+                                      _buildGlassFilterChip('Bulan Ini'),
+                                      _buildGlassFilterChip('Kustom'),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 40)),
-                    ],
-                  ),
-                ),
-    );
-  }
+                          ),
+                        ),
 
-  Widget _buildFilterPanel() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.white,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: ['Hari Ini', '7 Hari', 'Bulan Ini', 'Kustom'].map((filter) {
-            bool isSelected = _selectedFilter == filter;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(filter, style: TextStyle(color: isSelected ? Colors.white : AppColors.textSecondary, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                selected: isSelected,
-                selectedColor: AppColors.primaryEmerald,
-                backgroundColor: AppColors.lightGray,
-                showCheckmark: false,
-                onSelected: (val) { if (val) filter == 'Kustom' ? _pilihTanggalKustom() : _setFilterDate(filter); },
-              ),
-            );
-          }).toList(),
-        ),
+                        SliverToBoxAdapter(child: _buildSummaryCards()),
+                        
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 16),
+                            child: Text('Daftar Transaksi Retur', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                          ),
+                        ),
+                        
+                        _returns.isEmpty
+                            ? SliverToBoxAdapter(child: _buildEmptyState())
+                            : SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) => _buildReturnItem(_returns[index]),
+                                  childCount: _returns.length,
+                                ),
+                              ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                      ],
+                    ),
+                  ),
+        ],
       ),
     );
   }
@@ -264,32 +316,54 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
         children: [
           Row(
             children: [
-              Expanded(child: _buildMetricBox('Total Retur', '$_totalTransactions', Icons.assignment_return, Colors.blue)),
+              Expanded(child: _buildMetricBox('Total Retur', '$_totalTransactions', Icons.assignment_return_outlined, AppColors.smartBlue)),
               const SizedBox(width: 12),
-              Expanded(child: _buildMetricBox('Total Unit', '$_totalUnits', Icons.inventory, Colors.orange)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _buildMetricBox('Nilai Barang Diretur', _formatCurrency(_totalReturnValue), Icons.shopping_cart_checkout, Colors.purple)),
+              Expanded(child: _buildMetricBox('Total Unit', '$_totalUnits', Icons.inventory_2_outlined, Colors.orange.shade700)),
             ],
           ),
           const SizedBox(height: 12),
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [Colors.red.shade600, Colors.red.shade400], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+              gradient: LinearGradient(colors: [Colors.red.shade700, Colors.red.shade400], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Total Dana Dikembalikan (Refund)', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                const SizedBox(height: 8),
-                Text(_formatCurrency(_totalRefunded), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Refund & Nilai Barang', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    Icon(Icons.currency_exchange_outlined, color: Colors.white.withOpacity(0.7), size: 20),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Refund', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                          Text(_formatCurrency(_totalRefunded), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Nilai Barang', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                          Text(_formatCurrency(_totalReturnValue), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           )
@@ -301,120 +375,168 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
   Widget _buildMetricBox(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 12),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.navyActive)),
-          const SizedBox(height: 4),
-          Text(title, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ],
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
-    );
-  }
-
-  Widget _buildReturnItem(dynamic r) {
-    String retNum = r['return_number']?.toString() ?? 'RET-???';
-    String invNum = r['invoice_number']?.toString() ?? '-';
-    String kasir = r['user_name']?.toString() ?? 'Kasir';
-    String status = r['return_status']?.toString().toUpperCase() ?? 'PENDING';
-    String reason = r['reason']?.toString() ?? 'Tidak ada keterangan';
-    
-    int qty = int.tryParse(r['total_quantity']?.toString() ?? '0') ?? 0;
-    double retValue = double.tryParse(r['return_total']?.toString() ?? '0') ?? 0;
-    double refund = double.tryParse(r['refunded_amount']?.toString() ?? '0') ?? 0;
-
-    Color statusColor = _getStatusColor(status);
-
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.assignment_return, size: 16, color: Colors.red),
-                    const SizedBox(width: 8),
-                    Text(retNum, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navyActive, fontSize: 14)),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                  child: Text(status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: _buildDetailRow('Asal Invoice', invNum)),
-                Expanded(child: _buildDetailRow('Tgl Retur', _formatDateUI(r['created_at']))),
-              ],
-            ),
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
-            Text('Oleh: $kasir • Alasan: $reason', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(8)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Nilai Barang ($qty unit)', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                      const SizedBox(height: 4),
-                      Text(_formatCurrency(retValue), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      const Text('Dana Dikembalikan', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                      const SizedBox(height: 4),
-                      Text(_formatCurrency(refund), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.red)),
-                    ],
-                  ),
-                ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: color, size: 20),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.navyActive)),
+              const SizedBox(height: 4),
+              Text(title, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Column(
+  Widget _buildReturnItem(ReturnReportItem r) {
+    Color statusColor = _getStatusColor(r.returnStatus);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.assignment_return_outlined, size: 16, color: Colors.red),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(r.returnNumber, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navyActive, fontSize: 14)),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: statusColor.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                      child: Text(r.returnStatus, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: statusColor)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: _buildDetailRow('Asal Invoice', r.invoiceNumber, Icons.receipt_long_outlined)),
+                    Expanded(child: _buildDetailRow('Tgl Retur', _formatDateUI(r.createdAt), Icons.access_time)),
+                  ],
+                ),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppColors.border)),
+                
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Kasir: ${r.userName}\nAlasan: ${r.reason}', 
+                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic, height: 1.4)
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.6), 
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white)
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Nilai Barang (${r.totalQuantity} unit)', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(_formatCurrency(r.returnTotal), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.navyActive)),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('Dana Dikembalikan', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(_formatCurrency(r.refundedAmount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.red)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, IconData icon) {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.navyActive)),
+        Icon(icon, size: 14, color: AppColors.textSecondary),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 2),
+            Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+          ],
+        ),
       ],
     );
   }
 
   Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.only(top: 60),
       child: Center(
         child: Column(
           children: [
-            Icon(Icons.assignment_turned_in, size: 60, color: Colors.grey.shade300),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle),
+              child: Icon(Icons.assignment_return_outlined, size: 60, color: AppColors.textSecondary.withOpacity(0.5)),
+            ),
             const SizedBox(height: 16),
-            const Text('Belum ada retur di periode ini', style: TextStyle(color: AppColors.textSecondary)),
+            const Text('Belum ada retur di periode ini', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -423,15 +545,23 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
 
   Widget _buildErrorState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-          const SizedBox(height: 16),
-          Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
-          const SizedBox(height: 16),
-          ElevatedButton(onPressed: _fetchReturns, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald), child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)))
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+            const SizedBox(height: 16),
+            Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _fetchReturns, 
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+              label: const Text('Coba Lagi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            )
+          ],
+        ),
       ),
     );
   }
