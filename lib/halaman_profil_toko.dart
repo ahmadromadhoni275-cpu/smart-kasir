@@ -1,9 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'tema.dart'; 
 import 'core/services/api_service.dart'; 
-import 'halaman_pengaturan_printer.dart'; // Import halaman pengaturan printer
 
 class HalamanProfilToko extends StatefulWidget {
   const HalamanProfilToko({super.key});
@@ -21,7 +21,6 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
 
   bool _isLoading = true;
   bool _isSaving = false;
-  String _storeId = '0'; // Menyimpan ID cabang saat ini
 
   @override
   void initState() {
@@ -29,33 +28,19 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
     _muatDataToko();
   }
 
-  @override
-  void dispose() {
-    _namaController.dispose();
-    _teleponController.dispose();
-    _alamatController.dispose();
-    super.dispose();
-  }
-
   Future<void> _muatDataToko() async {
     setState(() => _isLoading = true);
     final prefs = await SharedPreferences.getInstance();
 
     try {
-      // Ambil Store ID aktif
-      _storeId = prefs.get('store_id')?.toString() ?? '0';
-
-      // 1. Muat dari Cache Lokal (Fast Render UI)
       _namaController.text = prefs.getString('nama_toko') ?? '';
       _teleponController.text = prefs.getString('telepon_toko') ?? '';
       _alamatController.text = prefs.getString('alamat_toko') ?? '';
 
-      // 2. Tarik Data Terbaru dari Server (Single Source of Truth)
       final response = await ApiService.get('stores/current');
-      
       if (response.statusCode == 200) {
         final resData = json.decode(response.body);
-        final dataToko = resData['data']; // Sesuaikan jika backend menggunakan key lain
+        final dataToko = resData['data'];
 
         if (dataToko != null) {
           setState(() {
@@ -64,56 +49,72 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
             _alamatController.text = dataToko['address'] ?? _alamatController.text;
           });
 
-          // Update cache lokal agar sinkron dengan server
           await prefs.setString('nama_toko', _namaController.text);
           await prefs.setString('telepon_toko', _teleponController.text);
           await prefs.setString('alamat_toko', _alamatController.text);
         }
       }
     } catch (e) {
-      debugPrint("Gagal memuat profil toko dari server: $e");
-      // Tetap gunakan data cache lokal jika gagal menghubungi server
+      debugPrint("Gagal muat dari server: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  void _showNotif(String pesan, Color warna) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(pesan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: warna,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    }
+  }
+
   Future<void> _simpanProfilToko() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isSaving = true);
     
     try {
-      // Payload disesuaikan persis dengan kolom tabel `stores`
       final dataUpdate = {
         'name': _namaController.text.trim(),
         'phone': _teleponController.text.trim(),
         'address': _alamatController.text.trim(),
       };
 
-      // Tembak API
       final response = await ApiService.put('stores/current', dataUpdate);
 
       if (response.statusCode == 200) {
-        // Sinkronisasi ulang cache lokal setelah sukses update server
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('nama_toko', _namaController.text.trim());
         await prefs.setString('telepon_toko', _teleponController.text.trim());
         await prefs.setString('alamat_toko', _alamatController.text.trim());
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profil toko berhasil diperbarui!'), backgroundColor: AppColors.primaryEmerald),
-        );
+        
+        // Memunculkan popup khusus profil
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(children: [Icon(Icons.check_circle, color: AppColors.primaryEmerald), SizedBox(width: 8), Text('Berhasil', style: TextStyle(color: AppColors.primaryEmerald))]),
+              content: const Text('Profil toko berhasil diperbarui.'),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Oke', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            )
+          );
+        }
       } else {
         final res = json.decode(response.body);
         throw Exception(res['message'] ?? 'Gagal memperbarui profil toko');
       }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red),
-      );
+      _showNotif(e.toString().replaceAll('Exception: ', ''), AppColors.error);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -122,143 +123,115 @@ class _HalamanProfilTokoState extends State<HalamanProfilToko> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        title: const Text('Profil Toko', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
         elevation: 0,
-        title: const Text('Profil Toko', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 18)),
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: const IconThemeData(color: AppColors.navyActive),
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryEmerald.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.storefront, size: 48, color: AppColors.primaryEmerald),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  const Text('Informasi Dasar', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 16),
-                  
-                  TextFormField(
-                    controller: _namaController,
-                    decoration: InputDecoration(
-                      labelText: 'Nama Cabang / Toko',
-                      filled: true,
-                      fillColor: AppColors.lightGray,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      prefixIcon: const Icon(Icons.store_mall_directory_outlined, color: Colors.grey),
-                    ),
-                    validator: (val) => val == null || val.isEmpty ? 'Nama toko tidak boleh kosong' : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _teleponController,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      labelText: 'Nomor Telepon Toko',
-                      filled: true,
-                      fillColor: AppColors.lightGray,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
-                    ),
-                    validator: (val) {
-                      if (val != null && val.isNotEmpty && !RegExp(r'^[0-9+]+$').hasMatch(val)) {
-                        return 'Hanya boleh berisi angka dan simbol +';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _alamatController,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      labelText: 'Alamat Lengkap',
-                      alignLabelWithHint: true,
-                      filled: true,
-                      fillColor: AppColors.lightGray,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      prefixIcon: const Padding(
-                        padding: EdgeInsets.only(bottom: 40),
-                        child: Icon(Icons.location_on_outlined, color: Colors.grey),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryEmerald,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      onPressed: _isSaving ? null : _simpanProfilToko,
-                      child: _isSaving
-                          ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Simpan Perubahan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-                  const Divider(),
-                  const SizedBox(height: 16),
-
-                  // --- MENU PENGATURAN TAMBAHAN ---
-                  const Text('Pengaturan Tambahan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 16),
-                  
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.print, color: AppColors.primaryEmerald),
-                      ),
-                      title: const Text('Pengaturan Printer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      subtitle: const Text('Kelola printer Bluetooth, Wi-Fi, dan ukuran kertas', style: TextStyle(fontSize: 12)),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => HalamanPengaturanPrinter(
-                              storeId: _storeId,
-                              namaCabang: _namaController.text.isNotEmpty ? _namaController.text : 'Toko Cabang',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd])),
           ),
+          
+          _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+            : SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + 24, left: 16, right: 16, bottom: 40),
+                child: Form(
+                  key: _formKey,
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5), boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, 5))]),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(color: AppColors.primaryEmerald.withOpacity(0.15), shape: BoxShape.circle),
+                                child: const Icon(Icons.storefront, size: 48, color: AppColors.primaryEmerald),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+
+                            const Row(
+                              children: [
+                                Icon(Icons.info_outline, color: AppColors.navyActive, size: 20),
+                                SizedBox(width: 8),
+                                Text('Informasi Dasar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyActive)),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            
+                            TextFormField(
+                              controller: _namaController,
+                              decoration: InputDecoration(
+                                labelText: 'Nama Cabang / Toko',
+                                filled: true, fillColor: Colors.white.withOpacity(0.8),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                prefixIcon: const Icon(Icons.store_mall_directory_outlined, color: AppColors.textSecondary),
+                              ),
+                              validator: (val) => val == null || val.isEmpty ? 'Nama toko wajib diisi' : null,
+                            ),
+                            const SizedBox(height: 16),
+
+                            TextFormField(
+                              controller: _teleponController,
+                              keyboardType: TextInputType.phone,
+                              decoration: InputDecoration(
+                                labelText: 'Nomor Telepon',
+                                filled: true, fillColor: Colors.white.withOpacity(0.8),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.textSecondary),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            TextFormField(
+                              controller: _alamatController,
+                              maxLines: 3,
+                              decoration: InputDecoration(
+                                labelText: 'Alamat Lengkap',
+                                alignLabelWithHint: true,
+                                filled: true, fillColor: Colors.white.withOpacity(0.8),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                prefixIcon: const Padding(padding: EdgeInsets.only(bottom: 40), child: Icon(Icons.location_on_outlined, color: AppColors.textSecondary)),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+
+                            SizedBox(
+                              width: double.infinity, height: 55,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryEmerald,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  elevation: 4, shadowColor: AppColors.primaryEmerald.withOpacity(0.5),
+                                ),
+                                onPressed: _isSaving ? null : _simpanProfilToko,
+                                child: _isSaving
+                                    ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                                    : const Text('SIMPAN PERUBAHAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+        ],
+      ),
     );
   }
 }
