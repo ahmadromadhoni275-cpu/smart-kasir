@@ -6,7 +6,7 @@ import '../../models/transaction_detail_model.dart';
 class TransactionService {
   final Dio _dio = ApiClient().dio;
 
-  Future<List<dynamic>> getTransactions({
+  Future< Map<String, dynamic> > getTransactions({
     required String dateFrom,
     required String dateTo,
     int page = 1,

@@ -244,7 +244,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
     if (_cart.isEmpty) return;
     
-    List> appliedPayments = [
+    List< Map<String, dynamic> > appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
     bool isProcessing = false;

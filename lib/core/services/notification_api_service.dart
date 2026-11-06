@@ -7,7 +7,8 @@ class NotificationApiService {
 
   // Mendapatkan daftar notifikasi dan jumlah yang belum dibaca
   // FIX: Mengubah Future<List<dynamic>> menjadi Future>
-  Future> getNotifications() async {
+  Future<Map<String, dynamic>> getNotifications() async {
+
     try {
       final response = await _dio.get('/notifications');
       if (response.statusCode == 200 && response.data['status'] == 'success') {
