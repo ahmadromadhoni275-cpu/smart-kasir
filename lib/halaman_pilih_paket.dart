@@ -1,130 +1,131 @@
-import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import 'tema.dart';
+import 'models/plan_model.dart';
+import 'core/services/subscription_service.dart';
 import 'halaman_tagihan_langganan.dart';
 
 class HalamanPilihPaket extends StatefulWidget {
-  const HalamanPilihPaket({Key? key}) : super(key: key);
+  const HalamanPilihPaket({super.key});
 
   @override
-  _HalamanPilihPaketState createState() => _HalamanPilihPaketState();
+  State<HalamanPilihPaket> createState() => _HalamanPilihPaketState();
 }
 
 class _HalamanPilihPaketState extends State<HalamanPilihPaket> {
-  final Color navy = const Color(0xFF0F172A);
-  final Color gold = const Color(0xFFD4AF37);
-  final String baseUrl = 'https://smartkasir.shop/api';
-
-  List<dynamic> listPaket = [];
-  bool isLoading = true;
+  final SubscriptionService _subService = SubscriptionService();
+  List<PlanModel> _plans = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    fetchPlans();
+    _fetchPlans();
   }
 
-  Future<void> fetchPlans() async {
+  Future<void> _fetchPlans() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-      final storeId = prefs.getInt('store_id')?.toString() ?? '';
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/subscriptions/plans'),
-        headers: {'Authorization': 'Bearer $token', 'X-Store-Id': storeId},
-      );
-
-      if (response.statusCode == 200) {
-        final resData = json.decode(response.body);
-        setState(() {
-          listPaket = resData['data'] ?? [];
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
-      }
+      final data = await _subService.getAvailablePlans();
+      if (mounted) setState(() => _plans = data);
     } catch (e) {
-      setState(() => isLoading = false);
+      debugPrint(e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: Text('Pilih Paket Langganan', style: TextStyle(color: navy, fontWeight: FontWeight.bold)),
-        iconTheme: IconThemeData(color: navy),
+        title: const Text('Pilih Paket', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.navyActive),
       ),
-      body: isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: listPaket.length,
-            itemBuilder: (context, index) {
-              final paket = listPaket[index];
-              // Highlight paket yang harganya menengah ke atas sebagai prioritas
-              bool isHighlighted = paket['name'].toString().toLowerCase().contains('pro');
-              
-              return _buildPlanCard(
-                context, 
-                paket['plan_id'].toString(),
-                paket['name'], 
-                'Rp${paket['price']}', 
-                '${paket['duration_days']} Hari', 
-                ['Akses Cabang Terbatas', 'Laporan Penjualan'], // API dapat mengembalikan array fitur sebenarnya
-                isHighlighted
-              );
-            },
-          ),
+      body: Stack(
+        children: [
+          Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd]))),
+          
+          _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+            : ListView.builder(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + 16, left: 16, right: 16, bottom: 40),
+                itemCount: _plans.length,
+                itemBuilder: (context, index) {
+                  final PlanModel paket = _plans[index];
+                  bool isHighlighted = paket.price > 50000; // Contoh logika highlight
+                  return _buildPlanCard(paket, isHighlighted);
+                },
+              ),
+        ],
+      ),
     );
   }
 
-  Widget _buildPlanCard(BuildContext context, String planId, String name, String price, String duration, List<String> features, bool isHighlighted) {
+  Widget _buildPlanCard(PlanModel paket, bool isHighlighted) {
+    String durasi = paket.billingCycle == 'MONTHLY' ? 'Bulan' : paket.billingCycle == 'YEARLY' ? 'Tahun' : 'Selamanya';
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: isHighlighted ? navy : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isHighlighted ? gold : Colors.grey.shade300, width: isHighlighted ? 2 : 1),
+        color: isHighlighted ? AppColors.navyActive : Colors.white.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: isHighlighted ? AppColors.goldPremium : Colors.white, width: isHighlighted ? 2 : 1.5),
+        boxShadow: [BoxShadow(color: (isHighlighted ? AppColors.navyActive : AppColors.shadowBlue).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isHighlighted)
               Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(color: gold, borderRadius: BorderRadius.circular(20)),
-                child: const Text('PALING POPULER', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: AppColors.goldPremium, borderRadius: BorderRadius.circular(20)),
+                child: const Text('PALING POPULER', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
               ),
-            Text(name, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isHighlighted ? Colors.white : navy)),
+            
+            Text(paket.name, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: isHighlighted ? Colors.white : AppColors.navyActive)),
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(price, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: isHighlighted ? gold : Colors.black87)),
-                Text(' / $duration', style: TextStyle(fontSize: 14, color: isHighlighted ? Colors.white70 : Colors.grey)),
+                Text(_formatRupiah(paket.price), style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: isHighlighted ? AppColors.goldPremium : AppColors.primaryEmerald)),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4, left: 4),
+                  child: Text(' / $durasi', style: TextStyle(fontSize: 13, color: isHighlighted ? Colors.white70 : AppColors.textSecondary, fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
-            const SizedBox(height: 16),
+            
+            const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(color: AppColors.border, height: 1)),
+            
+            ...paket.features.map((fitur) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: isHighlighted ? AppColors.goldPremium : AppColors.primaryEmerald, size: 18),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(fitur, style: TextStyle(color: isHighlighted ? Colors.white : AppColors.navyActive, fontSize: 13))),
+                ],
+              ),
+            )).toList(),
+            
+            const SizedBox(height: 24),
             SizedBox(
-              width: double.infinity,
-              height: 45,
+              width: double.infinity, height: 50,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isHighlighted ? gold : navy,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanTagihanLangganan(planId: planId)));
-                },
-                child: Text('Pilih $name', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: isHighlighted ? AppColors.goldPremium : AppColors.navyActive, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanTagihanLangganan(planId: paket.planId))),
+                child: Text('PILIH ${paket.name.toUpperCase()}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
               ),
             )
           ],

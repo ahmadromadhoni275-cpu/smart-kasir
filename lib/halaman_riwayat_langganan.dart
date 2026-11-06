@@ -1,128 +1,125 @@
-import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+
+import 'tema.dart';
+import 'models/payment_history_model.dart';
+import 'core/services/subscription_service.dart';
 import 'halaman_detail_tagihan.dart';
 
 class HalamanRiwayatLangganan extends StatefulWidget {
-  const HalamanRiwayatLangganan({Key? key}) : super(key: key);
+  const HalamanRiwayatLangganan({super.key});
 
   @override
-  _HalamanRiwayatLanggananState createState() => _HalamanRiwayatLanggananState();
+  State<HalamanRiwayatLangganan> createState() => _HalamanRiwayatLanggananState();
 }
 
 class _HalamanRiwayatLanggananState extends State<HalamanRiwayatLangganan> {
-  final Color navy = const Color(0xFF0F172A);
-  final String baseUrl = 'https://smartkasir.shop/api';
-  
-  List<dynamic> listRiwayat = [];
-  bool isLoading = true;
+  final SubscriptionService _subService = SubscriptionService();
+  List<PaymentHistoryModel> _history = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    fetchHistory();
+    _fetchHistory();
   }
 
-  Future<void> fetchHistory() async {
+  Future<void> _fetchHistory() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-      final storeId = prefs.getInt('store_id')?.toString() ?? '';
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/subscriptions/history'),
-        headers: {'Authorization': 'Bearer $token', 'X-Store-Id': storeId},
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          listRiwayat = json.decode(response.body)['data'] ?? [];
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
-      }
+      final data = await _subService.getHistory();
+      if (mounted) setState(() => _history = data);
     } catch (e) {
-      setState(() => isLoading = false);
+      debugPrint(e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Fungsi untuk mendapatkan warna berdasarkan status API
+  String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
+
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'SUCCESS': return Colors.green; 
-      case 'FAILED': return Colors.red;    
-      case 'PENDING': return Colors.orange; // Menggabungkan PENDING & UNDER_REVIEW
-      default: return Colors.blue; 
+      case 'SUCCESS': return Colors.green;
+      case 'FAILED': return Colors.red;
+      case 'PENDING': return Colors.orange;
+      default: return AppColors.smartBlue; 
     }
   }
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'SUCCESS': return 'Lunas & Aktif';
+      case 'SUCCESS': return 'Lunas';
       case 'FAILED': return 'Ditolak';
       case 'PENDING': return 'Menunggu / Diperiksa';
-      default: return 'Menunggu Pembayaran';
+      default: return status;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: navy,
-        title: const Text('Riwayat Tagihan', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Riwayat Tagihan', style: TextStyle(color: AppColors.navyActive, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white.withOpacity(0.7),
+        flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.transparent))),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.navyActive),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : listRiwayat.isEmpty
-              ? const Center(child: Text('Belum ada riwayat tagihan.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: listRiwayat.length,
-                  itemBuilder: (context, index) {
-                    final item = listRiwayat[index];
-                    final statusColor = _getStatusColor(item['status']);
+      body: Stack(
+        children: [
+          Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd]))),
+          
+          _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+            : _history.isEmpty
+                ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.receipt_long, size: 60, color: Colors.grey.shade400), const SizedBox(height: 16), const Text('Belum ada riwayat tagihan', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold))]))
+                : ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + 16, left: 16, right: 16, bottom: 40),
+                    itemCount: _history.length,
+                    itemBuilder: (context, index) {
+                      final item = _history[index];
+                      final Color statusColor = _getStatusColor(item.status);
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        title: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(item['invoice_number'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            Text('Rp${item['amount']}', style: TextStyle(fontWeight: FontWeight.bold, color: navy)),
-                          ],
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white), boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          title: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(item.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navyActive, fontSize: 15)),
+                              Text(_formatRupiah(item.amount), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryEmerald, fontSize: 15)),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 8),
+                              Text('Paket: ${item.planName}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                child: Text(_getStatusText(item.status), style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                          onTap: () {
+                            Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => HalamanDetailTagihan(dataTagihan: item) // Gunakan objek Model
+                            )).then((value) { if (value == true) _fetchHistory(); });
+                          },
                         ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 8),
-                            Text('Paket: ${item['plan_name'] ?? '-'}'),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                              child: Text(_getStatusText(item['status']), style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => HalamanDetailTagihan(dataTagihan: item)
-                          )).then((value) {
-                            if (value == true) fetchHistory(); // Refresh jika ada perubahan bukti
-                          });
-                        },
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+        ],
+      ),
     );
   }
 }
