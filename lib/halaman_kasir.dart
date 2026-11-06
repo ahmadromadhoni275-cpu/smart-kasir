@@ -10,7 +10,6 @@ import 'core/services/shift_service.dart';
 import 'core/services/transaction_service.dart';
 import 'core/services/printer_service.dart';
 
-import 'models/product_model.dart';
 import 'models/transaction_item_model.dart';
 import 'models/payment_method_model.dart';
 import 'halaman_shift.dart'; 
@@ -27,7 +26,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   int? _activeShiftId; 
 
   bool _isLoading = true;
-  List<ProductModel> _products = [];
+  List<dynamic> _products = []; // FIX: Diubah ke dynamic agar tidak bentrok dengan Model
   String _searchQuery = '';
   
   final List<TransactionItemModel> _cart = [];
@@ -75,7 +74,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
       final shiftData = await _shiftService.getCurrentShift();
       if (shiftData != null && shiftData.status == 'OPEN') {
         _activeShiftId = shiftData.shiftId;
-        if (_enableProducts) _muatProduk(); // Muat produk jika diaktifkan
+        if (_enableProducts) _muatProduk(); 
         _fetchMetodePembayaran(); 
       } else {
         _activeShiftId = null;
@@ -108,7 +107,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
     setState(() => _isLoading = true);
     try {
       final res = await _productService.getProducts(search: _searchQuery);
-      if (mounted) setState(() => List<dynamic> _products = []; = res);
+      // FIX: Perbaikan syntax error pada assignment state
+      if (mounted) setState(() => _products = res);
     } catch (e) {
       debugPrint('Gagal memuat produk: $e');
     }
@@ -118,7 +118,8 @@ class _HalamanKasirState extends State<HalamanKasir> {
   String _formatRupiah(num angka) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(angka);
 
   // --- LOGIKA KERANJANG ---
-  void _addToCart(ProductModel product) {
+  // FIX: parameter product diubah ke dynamic
+  void _addToCart(dynamic product) {
     if (_activeShiftId == null) {
       _tampilNotifShiftTutup();
       return;
@@ -147,11 +148,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
           productId: product.productId,
           itemType: product.productType,
           name: product.name,
-          price: product.sellingPrice,
-          purchasePrice: product.purchasePrice,
+          price: (product.sellingPrice as num).toDouble(),
+          purchasePrice: (product.purchasePrice as num).toDouble(),
           quantity: 1,
-          maxStock: product.stock,
-          orderType: _enableOrderType ? 'DINE_IN' : 'TAKEAWAY', // Set default
+          maxStock: (product.stock as num).toInt(),
+          orderType: _enableOrderType ? 'DINE_IN' : 'TAKEAWAY', 
         ));
       }
     });
@@ -243,7 +244,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     }
     if (_cart.isEmpty) return;
     
-    List<dynamic> appliedPayments = [
+    List> appliedPayments = [
       {'method': 'CASH', 'ctrl': TextEditingController(text: _grandTotal.toInt().toString())}
     ];
     bool isProcessing = false;
@@ -377,13 +378,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
                   try {
                     final dataTransaksi = await _transactionService.createTransaction(payload);
                     
-                    Navigator.pop(ctx); 
+                    if (mounted) Navigator.pop(ctx); 
                     setState(() { _cart.clear(); _noMejaCtrl.clear(); });
                     if (_enableProducts) _muatProduk(); 
 
                     _tampilSuksesCetak(dataTransaksi);
                   } catch (e) {
-                    Navigator.pop(ctx);
+                    if (mounted) Navigator.pop(ctx);
                     _tampilPopupCantik('Gagal Membayar', e.toString().replaceAll('Exception: ', ''), Icons.warning, AppColors.error);
                   }
                 },
@@ -593,9 +594,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 180, childAspectRatio: 0.8, crossAxisSpacing: 16, mainAxisSpacing: 16),
           itemCount: _products.length,
           itemBuilder: (ctx, i) {
-            ProductModel p = _products[i];
+            // FIX: Menggunakan tipe dynamic
+            final p = _products[i];
             bool isJasa = p.productType == 'SERVICE';
-            bool habis = !isJasa && p.stock <= 0;
+            bool habis = !isJasa && (p.stock as num) <= 0;
 
             return InkWell(
               onTap: habis ? null : () => _addToCart(p),
@@ -619,9 +621,9 @@ class _HalamanKasirState extends State<HalamanKasir> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text(p.name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: habis ? Colors.grey : AppColors.navyActive)),
+                      Text(p.name.toString(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: habis ? Colors.grey : AppColors.navyActive)),
                       const SizedBox(height: 4),
-                      Text(_formatRupiah(p.sellingPrice), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
+                      Text(_formatRupiah(p.sellingPrice as num), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
                       if (isJasa)
                         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: AppColors.goldPremium.withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: AppColors.goldPremium, fontWeight: FontWeight.bold)))

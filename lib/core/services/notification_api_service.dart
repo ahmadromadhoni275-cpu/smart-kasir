@@ -6,19 +6,21 @@ class NotificationApiService {
   final Dio _dio = ApiClient().dio;
 
   // Mendapatkan daftar notifikasi dan jumlah yang belum dibaca
-  Future<List<dynamic>> getNotifications() async {
+  // FIX: Mengubah Future<List<dynamic>> menjadi Future>
+  Future> getNotifications() async {
     try {
       final response = await _dio.get('/notifications');
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        final List<dynamic> rawData = response.data['data'];
+        final List<dynamic> rawData = response.data['data'] ?? [];
         final int unreadCount = response.data['unread_count'] ?? 0;
         
         final List<NotificationModel> notifications = 
             rawData.map((json) => NotificationModel.fromJson(json)).toList();
             
-        return {'data': notifications, 'unread_count': unreadCount};
+        // FIX: Menambahkan <String, dynamic> agar tidak terjadi ambiguous literal
+        return <String, dynamic>{'data': notifications, 'unread_count': unreadCount};
       }
-      return {'data': <NotificationModel>[], 'unread_count': 0};
+      return <String, dynamic>{'data': <NotificationModel>[], 'unread_count': 0};
     } on DioException catch (e) {
       throw Exception(e.response?.data['message'] ?? 'Gagal memuat notifikasi.');
     }

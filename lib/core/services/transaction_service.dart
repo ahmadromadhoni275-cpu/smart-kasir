@@ -33,7 +33,7 @@ class TransactionService {
         // Fallback aman jika backend tidak mengirim pagination
         final pagination = data['pagination'] ?? {'total_pages': 1, 'current_page': 1};
         
-        return {
+        return <String, dynamic>{
           'transactions': records.map((e) => TransactionReport.fromJson(e)).toList(),
           'total_pages': pagination['total_pages'] ?? 1,
           'current_page': pagination['current_page'] ?? 1,
