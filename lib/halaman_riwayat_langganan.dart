@@ -111,7 +111,18 @@ class _HalamanRiwayatLanggananState extends State<HalamanRiwayatLangganan> {
                           trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                           onTap: () {
                             Navigator.push(context, MaterialPageRoute(
-                              builder: (_) => HalamanDetailTagihan(dataTagihan: item) // Gunakan objek Model
+                              builder: (_) => HalamanDetailTagihan(
+                                dataTagihan: {
+                                  'invoice_number': item.invoiceNumber,
+                                  'amount': item.amount,
+                                  'plan_name': item.planName,
+                                  'status': item.status,
+                                  'payment_expires_at': item.createdAt,
+                                  'payment_id': item.paymentId,
+                                  'notes': item.notes
+                                }
+                              )
+
                             )).then((value) { if (value == true) _fetchHistory(); });
                           },
                         ),

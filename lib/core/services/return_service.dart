@@ -38,7 +38,7 @@ class ReportService {
   }
 
   // 3. Laporan Transaksi Lengkap (Pagination)
-  Future> getTransactions({
+  Future<dynamic> getTransactions({
     required String dateFrom, 
     required String dateTo, 
     String status = '', 

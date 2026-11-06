@@ -31,7 +31,7 @@ class SupportTicketService {
     }
   }
 
-  Future> getTicketDetail(int ticketId) async {
+  Future<dynamic> getTicketDetail(int ticketId) async {
     try {
       final response = await _dio.get('/tickets/$ticketId');
       if (response.statusCode == 200) {

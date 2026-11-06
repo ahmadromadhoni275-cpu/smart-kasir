@@ -33,7 +33,7 @@ class ReferralService {
     }
   }
   
-  Future> getRewards() async {
+  Future<dynamic> getRewards() async {
     try {
       final response = await _dio.get('/referral/rewards');
       

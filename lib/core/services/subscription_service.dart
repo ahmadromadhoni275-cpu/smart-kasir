@@ -45,7 +45,7 @@ class SubscriptionService {
     }
   }
 
-  Future> getCheckoutInfo(int planId) async {
+  Future<dynamic> getCheckoutInfo(int planId) async {
     try {
       final response = await _dio.get('/subscriptions/checkout-info/$planId');
       if (response.statusCode == 200 && response.data['status'] == 'success') {

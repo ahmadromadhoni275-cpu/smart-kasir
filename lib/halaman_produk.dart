@@ -382,7 +382,6 @@ class _HalamanProdukState extends State<HalamanProduk> {
         onPressed: () => _tampilFormProduk(),
         backgroundColor: AppColors.primaryEmerald,
         elevation: 8,
-        shadowColor: AppColors.primaryEmerald.withOpacity(0.4),
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Produk Baru', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),

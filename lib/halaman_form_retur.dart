@@ -100,7 +100,7 @@ class _HalamanFormReturState extends State<HalamanFormRetur> {
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.error)));
 
     try {
-      List> itemsPayload = [];
+      List<dynamic> itemsPayload = [];
       _selectedItems.forEach((itemId, qty) {
         itemsPayload.add({
           'transaction_item_id': itemId, 

@@ -124,7 +124,7 @@ class _HalamanPilihPaketState extends State<HalamanPilihPaket> {
               width: double.infinity, height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: isHighlighted ? AppColors.goldPremium : AppColors.navyActive, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanTagihanLangganan(planId: paket.planId))),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanTagihanLangganan(planId: paket.planId.toString())
                 child: Text('PILIH ${paket.name.toUpperCase()}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
               ),
             )

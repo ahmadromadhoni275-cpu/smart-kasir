@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'tema.dart'; // File tema Anda (AppColors)
-import 'core/services/support_api_service.dart';
+import 'core/services/help_service.dart';
 
 class HalamanRiwayatBantuan extends StatefulWidget {
   const HalamanRiwayatBantuan({super.key});
@@ -11,7 +11,7 @@ class HalamanRiwayatBantuan extends StatefulWidget {
 }
 
 class _HalamanRiwayatBantuanState extends State<HalamanRiwayatBantuan> {
-  final SupportApiService _apiService = SupportApiService();
+  final HelpService _apiService = HelpService();
   
   bool _isLoading = true;
   List<dynamic> _conversations = [];

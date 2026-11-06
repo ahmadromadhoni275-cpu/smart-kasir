@@ -6,7 +6,7 @@ class NotificationApiService {
   final Dio _dio = ApiClient().dio;
 
   // Mendapatkan daftar notifikasi dan jumlah yang belum dibaca
-  Future> getNotifications() async {
+  Future<List<dynamic>> getNotifications() async {
     try {
       final response = await _dio.get('/notifications');
       if (response.statusCode == 200 && response.data['status'] == 'success') {

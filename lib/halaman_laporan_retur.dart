@@ -84,7 +84,7 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
       final data = await _service.getReturns(strDateFrom, strDateTo);
       
       final List<ReturnReportItem> parsedData = (data as List).map((e) {
-        if (e isinstance ReturnReportItem) return e as ReturnReportItem;
+        if (e is ReturnReportItem) return e;
         return ReturnReportItem.fromJson(e);
       }).toList();
       

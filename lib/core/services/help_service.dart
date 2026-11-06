@@ -35,7 +35,7 @@ class HelpService {
     }
   }
 
-  Future> sendMessage(int conversationId, String text) async {
+  Future<dynamic> sendMessage(int conversationId, String text) async {
     try {
       final response = await _dio.post('/support/conversations/$conversationId/messages', data: {'message': text});
       if (response.statusCode == 200) return response.data['data'];

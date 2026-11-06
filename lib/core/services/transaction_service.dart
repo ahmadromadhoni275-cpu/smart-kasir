@@ -6,7 +6,7 @@ import '../../models/transaction_detail_model.dart';
 class TransactionService {
   final Dio _dio = ApiClient().dio;
 
-  Future> getTransactions({
+  Future<List<dynamic>> getTransactions({
     required String dateFrom,
     required String dateTo,
     int page = 1,
@@ -59,7 +59,7 @@ class TransactionService {
     }
   }
   
-  Future> createTransaction(Map<String, dynamic> data) async {
+  Future<dynamic> createTransaction(Map<String, dynamic> data) async {
     try {
       // 1. Lakukan Checkout
       final response = await _dio.post('/transactions', data: data);

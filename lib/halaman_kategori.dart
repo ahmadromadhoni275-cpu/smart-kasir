@@ -238,7 +238,6 @@ class _HalamanKategoriState extends State<HalamanKategori> {
         onPressed: () => _tampilFormKategori(),
         backgroundColor: AppColors.primaryEmerald,
         elevation: 8,
-        shadowColor: AppColors.primaryEmerald.withOpacity(0.4),
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Kategori Baru', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),

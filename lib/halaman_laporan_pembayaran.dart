@@ -121,7 +121,7 @@ class _HalamanLaporanPembayaranState extends State<HalamanLaporanPembayaran> {
       case 'EWALLET':
         return {'icon': Icons.account_balance_wallet_outlined, 'color': Colors.purple.shade600};
       default:
-        return {'icon': Icons.credit_card_outlined, 'color': AppColors.slateGray};
+        return {'icon': Icons.credit_card_outlined, 'color': Colors.blueGrey};
     }
   }
 

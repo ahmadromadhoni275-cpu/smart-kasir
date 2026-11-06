@@ -108,7 +108,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     setState(() => _isLoading = true);
     try {
       final res = await _productService.getProducts(search: _searchQuery);
-      if (mounted) setState(() => _products = res);
+      if (mounted) setState(() => List<dynamic> _products = []; = res);
     } catch (e) {
       debugPrint('Gagal memuat produk: $e');
     }
