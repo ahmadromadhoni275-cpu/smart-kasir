@@ -103,8 +103,13 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
       final String strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final String strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
-      // Pastikan ReportService getSales sudah mengembalikan List<SalesReportItem>
-      final List<SalesReportItem> data = await _service.getSales(strDateFrom, strDateTo);
+      // PERBAIKAN: Tangkap respon sebagai dynamic dulu (List<dynamic>)
+      final dynamic rawData = await _service.getSales(strDateFrom, strDateTo);
+      
+      // PERBAIKAN: Lakukan mapping dari List<dynamic> ke List<SalesReportItem>
+      final List<SalesReportItem> data = (rawData as List).map((item) {
+        return SalesReportItem.fromJson(item as Map<String, dynamic>);
+      }).toList();
       
       // Hitung Rekapitulasi
       double tempTotal = 0;
@@ -119,6 +124,19 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
           tempDaily[dateOnly] = (tempDaily[dateOnly] ?? 0) + tx.grandTotal;
         }
       }
+
+      setState(() {
+        _transactions = data;
+        _totalSales = tempTotal;
+        _transactionCount = data.length; // Total semua record (termasuk batal)
+        _dailyRecap = tempDaily;
+      });
+    } catch (e) {
+      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
       setState(() {
         _transactions = data;

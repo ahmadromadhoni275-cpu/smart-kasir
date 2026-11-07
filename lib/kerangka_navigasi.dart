@@ -348,6 +348,7 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             children: [
                               _buildSidebarItem(Icons.home_filled, 'Dashboard', 0),
+                              _buildSidebarItem(Icons.shopping_cart, 'Kasir', 1),
                               if (_role == 'OWNER' || _role == 'MANAGER' || _role == 'KASIR') 
                                 _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
                               if (_role == 'OWNER' || _role == 'MANAGER') 
