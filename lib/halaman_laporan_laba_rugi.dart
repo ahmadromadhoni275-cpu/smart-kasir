@@ -37,18 +37,28 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
 
   void _setFilterDate(String filterType) {
     DateTime now = DateTime.now();
+    // 1. Ubah state UI tombol yang aktif
     setState(() {
       _selectedFilter = filterType;
+    });
+
+    // 2. Jika Kustom, HANYA buka kalender lalu stop proses ini
+    if (filterType == 'Kustom') {
+      _pilihTanggalKustom();
+      return; 
+    }
+
+    // 3. Jika bukan Kustom, set tanggal otomatis lalu jalankan fetch API
+    setState(() {
       if (filterType == 'Hari Ini') {
-        _dateFrom = now; _dateTo = now;
+        _dateFrom = now; 
+        _dateTo = now;
       } else if (filterType == '7 Hari') {
-        _dateFrom = now.subtract(const Duration(days: 6)); _dateTo = now;
+        _dateFrom = now.subtract(const Duration(days: 6)); 
+        _dateTo = now;
       } else if (filterType == 'Bulan Ini') {
         _dateFrom = DateTime(now.year, now.month, 1);
         _dateTo = DateTime(now.year, now.month + 1, 0);
-      } else if (filterType == 'Kustom') {
-        _pilihTanggalKustom();
-        return; 
       }
     });
     _fetchProfitLoss();
@@ -79,11 +89,14 @@ class _HalamanLaporanLabaRugiState extends State<HalamanLaporanLabaRugi> {
       final String strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final String strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
-      // Pastikan ReportService getProfitLoss mengembalikan ProfitLossData
-      final data = await _service.getProfitLoss(strDateFrom, strDateTo);
+      // PERBAIKAN 1: Tangkap respon JSON mentah (Map) ke dalam variabel rawData
+      final dynamic rawData = await _service.getProfitLoss(strDateFrom, strDateTo);
+      
+      // PERBAIKAN 2: Konversi Map JSON mentah tersebut menggunakan fungsi fromJson
+      final ProfitLossData parsedData = ProfitLossData.fromJson(rawData as Map<String, dynamic>);
       
       setState(() {
-        _plData = data;
+        _plData = parsedData;
       });
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));

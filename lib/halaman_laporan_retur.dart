@@ -40,12 +40,25 @@ class _HalamanLaporanReturState extends State<HalamanLaporanRetur> {
 
   void _setFilterDate(String filterType) {
     DateTime now = DateTime.now();
+    // 1. Ubah state UI tombol yang aktif
     setState(() {
       _selectedFilter = filterType;
+    });
+
+    // 2. Jika Kustom, HANYA buka kalender lalu stop proses ini
+    if (filterType == 'Kustom') {
+      _pilihTanggalKustom();
+      return; 
+    }
+
+    // 3. Jika bukan Kustom, set tanggal otomatis lalu jalankan fetch API
+    setState(() {
       if (filterType == 'Hari Ini') {
-        _dateFrom = now; _dateTo = now;
+        _dateFrom = now; 
+        _dateTo = now;
       } else if (filterType == '7 Hari') {
-        _dateFrom = now.subtract(const Duration(days: 6)); _dateTo = now;
+        _dateFrom = now.subtract(const Duration(days: 6)); 
+        _dateTo = now;
       } else if (filterType == 'Bulan Ini') {
         _dateFrom = DateTime(now.year, now.month, 1);
         _dateTo = DateTime(now.year, now.month + 1, 0);

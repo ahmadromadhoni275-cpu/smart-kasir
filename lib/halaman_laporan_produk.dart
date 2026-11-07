@@ -89,7 +89,7 @@ class _HalamanLaporanProdukState extends State<HalamanLaporanProduk> with Single
     }
   }
 
-  Future<void> _fetchProductSales() async {
+    Future<void> _fetchProductSales() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -99,10 +99,17 @@ class _HalamanLaporanProdukState extends State<HalamanLaporanProduk> with Single
       final String strDateFrom = DateFormat('yyyy-MM-dd').format(_dateFrom);
       final String strDateTo = DateFormat('yyyy-MM-dd').format(_dateTo);
 
-      final ProductReportData data = await _service.getProductSales(strDateFrom, strDateTo);
+      // PERBAIKAN: Tangkap respon sebagai dynamic (Map) terlebih dahulu
+      final dynamic rawData = await _service.getProductSales(strDateFrom, strDateTo);
       
-      final List<ProductPerformanceItem> parsedProducts = (data.products).map((e) => ProductPerformanceItem.fromJson(e)).toList();
-      final List<CategoryPerformanceItem> parsedCategories = (data.categories).map((e) => CategoryPerformanceItem.fromJson(e)).toList();
+      // PERBAIKAN: Konversi Map JSON mentah menjadi objek ProductReportData 
+      // menggunakan fungsi bawaan fromJson
+      final ProductReportData data = ProductReportData.fromJson(rawData as Map<String, dynamic>);
+      
+      // Karena class ProductReportData sudah menangani mapping List di dalam fungsi fromJson-nya,
+      // kita tidak perlu me-map ulang list produk dan kategori di sini.
+      final List<ProductPerformanceItem> parsedProducts = data.products;
+      final List<CategoryPerformanceItem> parsedCategories = data.categories;
       
       double tempRevenue = 0;
       int tempQty = 0;
