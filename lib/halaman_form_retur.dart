@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'core/services/return_service.dart';
-import 'models/return_model.dart';
 import 'tema.dart';
 import 'core/services/return_service.dart';
+import 'models/return_model.dart'; 
 
 class HalamanFormRetur extends StatefulWidget {
   final int transactionId;
@@ -101,7 +100,8 @@ class _HalamanFormReturState extends State<HalamanFormRetur> {
     showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.error)));
 
     try {
-      List<dynamic> itemsPayload = [];
+      // FIX: Gunakan Map yang eksplisit untuk mencegah error compiler
+      List< Map<String, dynamic> > itemsPayload = [];
       _selectedItems.forEach((itemId, qty) {
         itemsPayload.add({
           'transaction_item_id': itemId, 
@@ -119,16 +119,16 @@ class _HalamanFormReturState extends State<HalamanFormRetur> {
 
       final result = await _service.createReturn(payload);
       
-      Navigator.pop(context); // Tutup loading
+      if (mounted) Navigator.pop(context); // Tutup loading
       _tampilPopupCantik('Retur Berhasil', 'Pengajuan retur berhasil diproses dengan nomor ${result['return_number'] ?? '-'}', Icons.check_circle, AppColors.primaryEmerald, onTutup: () {
         Navigator.pop(context); // Tutup popup
         Navigator.pop(context, true); // Kembali ke list
       });
       
     } catch (e) {
-      Navigator.pop(context); // Tutup loading
+      if (mounted) Navigator.pop(context); // Tutup loading
       _tampilPopupCantik('Retur Gagal', e.toString().replaceAll('Exception: ', ''), Icons.error, AppColors.error);
-      setState(() => _isSubmitting = false);
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 

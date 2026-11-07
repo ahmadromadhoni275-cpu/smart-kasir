@@ -1,159 +1,66 @@
 import 'package:dio/dio.dart';
 import '../network/api_client.dart';
-import '../../models/report_model.dart';
-import '../../models/stock_movement_model.dart'; // Digunakan untuk laporan stok
+import '../../models/return_model.dart'; // Pastikan path model ini sesuai dengan struktur Anda
 
-class ReportService {
+class ReturnService {
   final Dio _dio = ApiClient().dio;
 
-  bool _isSuccess(dynamic status) {
-    return status == 'success' || status == true;
-  }
-
-  // 1. Ringkasan (Summary) - Dikonsumsi oleh halaman_laporan.dart
-  Future<dynamic> getSummary(String dateFrom, String dateTo) async {
+  // 1. Mendapatkan daftar item yang BISA diretur dari sebuah transaksi
+  Future< List< ReturnItem > > getReturnableItems(int transactionId) async {
     try {
-      final response = await _dio.get('/reports', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return response.data['data'] ?? {}; 
-      }
-      throw Exception('Gagal memuat ringkasan laporan');
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-  
-  // 2. Laporan Penjualan
-  Future<List<SalesReportItem>> getSales(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/sales', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
+      // Menyesuaikan dengan standar endpoint RESTful Anda
+      final response = await _dio.get('/transactions/$transactionId/returnable-items');
+      
+      if (response.statusCode == 200 && (response.data['status'] == 'success' || response.data['status'] == true)) {
         List data = response.data['data'] ?? [];
-        return data.map((e) => SalesReportItem.fromJson(e)).toList();
+        return data.map((e) => ReturnItem.fromJson(e)).toList();
       }
       return [];
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+      throw Exception(e.response?.data['message'] ?? 'Gagal memuat barang yang bisa diretur.');
     }
   }
 
-  // 3. Laporan Transaksi Lengkap (Pagination)
-  Future<dynamic> getTransactions({
-    required String dateFrom, 
-    required String dateTo, 
-    String status = '', 
-    String search = '', 
+  // 2. Mengirim data pengajuan retur baru
+  Future< Map<String, dynamic> > createReturn(Map<String, dynamic> payload) async {
+    try {
+      final response = await _dio.post('/returns', data: payload);
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Mengembalikan Map utuh agar UI bisa mengambil 'return_number'
+        return response.data['data'] ?? response.data; 
+      }
+      throw Exception('Gagal memproses pengajuan retur.');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan.');
+    }
+  }
+  
+  // 3. Mendapatkan daftar riwayat retur (Jika dibutuhkan untuk halaman riwayat retur)
+  Future< Map<String, dynamic> > getReturns({
     int page = 1, 
-    int perPage = 20
+    int perPage = 20, 
+    String search = ''
   }) async {
     try {
       final response = await _dio.get(
-        '/reports/transactions',
+        ('/returns'),
         queryParameters: {
-          'date_from': dateFrom, 'date_to': dateTo, 'status': status,
-          'search': search, 'page': page, 'per_page': perPage,
-        },
+          'page': page,
+          'per_page': perPage,
+          'search': search,
+        }
       );
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return response.data;
+      
+      if (response.statusCode == 200 && (response.data['status'] == 'success' || response.data['status'] == true)) {
+        return <String, dynamic>{
+          'returns': response.data['data'] ?? [],
+          'total_pages': response.data['meta']?['last_page'] ?? 1,
+        };
       }
-      throw Exception('Gagal memuat data transaksi');
+      throw Exception('Gagal memuat riwayat retur.');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-
-  // 4. Laporan Produk Terjual
-  Future<ProductReportData> getProductSales(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/products', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return ProductReportData.fromJson(response.data['data'] ?? {});
-      }
-      throw Exception('Gagal memuat laporan produk');
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-
-  // 5. Laporan Pembayaran
-  Future<List<PaymentReportItem>> getPayments(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/payments', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        List data = response.data['data'] ?? [];
-        return data.map((e) => PaymentReportItem.fromJson(e)).toList();
-      }
-      return [];
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-  
-  // 6. Laporan Laba Rugi
-  Future<ProfitLossData> getProfitLoss(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/profit-loss', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return ProfitLossData.fromJson(response.data['data'] ?? {});
-      }
-      throw Exception('Gagal memuat laporan laba rugi');
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-  
-  // 7. Laporan Stok Terkini
-  Future<List<dynamic>> getStockReport() async {
-    try {
-      final response = await _dio.get('/reports/stock');
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return response.data['data'] ?? [];
-      }
-      return [];
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-
-  // 8. Laporan Riwayat Pergerakan Stok
-  Future<List<StockMovementModel>> getStockMovements(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/stock-movements', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        List data = response.data['data'] ?? [];
-        return data.map((e) => StockMovementModel.fromJson(e)).toList();
-      }
-      return [];
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-  
-  // 9. Laporan Shift
-  Future<List<dynamic>> getShifts(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/shifts', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        return response.data['data'] ?? [];
-      }
-      return [];
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
-    }
-  }
-  
-  // 10. Laporan Pengembalian (Retur)
-  Future<List<ReturnReportItem>> getReturns(String dateFrom, String dateTo) async {
-    try {
-      final response = await _dio.get('/reports/returns', queryParameters: {'date_from': dateFrom, 'date_to': dateTo});
-      if (response.statusCode == 200 && _isSuccess(response.data['status'])) {
-        List data = response.data['data'] ?? [];
-        return data.map((e) => ReturnReportItem.fromJson(e)).toList();
-      }
-      return [];
-    } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan saat memuat data.');
     }
   }
 }
