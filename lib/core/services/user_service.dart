@@ -5,20 +5,31 @@ import '../../models/user_model.dart';
 class UserService {
   final Dio _dio = ApiClient().dio;
 
-  Future<List<UserModel>> getUsers({String search = '', String role = ''}) async {
+    Future<List<UserModel>> getUsers({String search = '', String role = ''}) async {
     try {
       final response = await _dio.get('/users', queryParameters: {
         'search': search,
         'role': role,
       });
       
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
+      // PERBAIKAN 1: Dukung status 'success' (String) maupun true (Boolean)
+      if (response.statusCode == 200 && (response.data['status'] == 'success' || response.data['status'] == true)) {
         List data = response.data['data'] ?? [];
-        return data.map((e) => UserModel.fromJson(e)).toList();
+        // PERBAIKAN 2: Tambahkan <UserModel> agar Dart tidak membacanya sebagai List<dynamic>
+        return data.map<UserModel>((e) => UserModel.fromJson(e as Map<String, dynamic>)).toList();
       }
       return [];
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Gagal memuat pengguna');
+      // PERBAIKAN 3: Bongkar pesan error asli dari backend (jangan disembunyikan)
+      String errorMsg = 'Gagal memuat pengguna';
+      if (e.response != null && e.response?.data is Map) {
+         errorMsg = e.response?.data['message'] ?? e.response?.data['messages']?.toString() ?? errorMsg;
+      } else if (e.message != null) {
+         errorMsg = e.message!;
+      }
+      throw Exception(errorMsg);
+    } catch (e) {
+      throw Exception('Error sistem: $e');
     }
   }
 

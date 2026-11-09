@@ -14,7 +14,13 @@ class StoreSettingService {
       }
       throw Exception('Format respons tidak valid');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Gagal memuat pengaturan toko');
+      String errorMsg = 'Gagal memuat pengaturan toko';
+      if (e.response != null && e.response?.data is Map) {
+         errorMsg = e.response?.data['message'] ?? e.response?.data['messages']?.toString() ?? errorMsg;
+      } else if (e.message != null) {
+         errorMsg = e.message!;
+      }
+      throw Exception(errorMsg);
     }
   }
 
@@ -25,7 +31,14 @@ class StoreSettingService {
         throw Exception(response.data['message'] ?? 'Gagal memperbarui pengaturan');
       }
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Terjadi kesalahan jaringan');
+      // PERBAIKAN: Ekstrak pesan error asli secara dinamis agar tidak ditutupi "kesalahan jaringan"
+      String errorMsg = 'Terjadi kesalahan jaringan';
+      if (e.response != null && e.response?.data is Map) {
+         errorMsg = e.response?.data['message'] ?? e.response?.data['messages']?.toString() ?? errorMsg;
+      } else if (e.message != null) {
+         errorMsg = e.message!;
+      }
+      throw Exception(errorMsg);
     }
   }
 }
