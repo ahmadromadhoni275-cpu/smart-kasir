@@ -34,6 +34,7 @@ Future<void> main() async {
 
   runApp(const SmartKasirApp());
 }
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class SmartKasirApp extends StatefulWidget {
   const SmartKasirApp({super.key});
@@ -43,7 +44,6 @@ class SmartKasirApp extends StatefulWidget {
 }
 
 class _SmartKasirAppState extends State<SmartKasirApp> {
-  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
