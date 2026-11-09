@@ -36,7 +36,7 @@ class KerangkaNavigasi extends StatefulWidget {
 class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
   int _currentIndex = 0;
   String _tokoAktif = 'Toko Utama';
-  String _namaPetugas = 'Ahmad Romadhoni';
+  String _namaPetugas = 'Petugas';
   String _role = 'KASIR'; 
   bool _isLoading = true;
 
