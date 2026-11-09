@@ -162,21 +162,27 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                   if (_role == 'OWNER' || _role == 'MANAGER') ...[
                     _buildMobileMenuItem(Icons.receipt_long, 'Transaksi', 4),
                     _buildMobileMenuItem(Icons.swap_horiz, 'Shift Kasir', 8),
-                    _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
                   ],
-                  if (_role == 'OWNER') _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
+                  
+                  // Menu Kategori Produk tersedia untuk semua Role (sesuai Desktop)
+                  _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
+                  
+                  if (_role == 'OWNER') 
+                    _buildMobileMenuItem(Icons.storefront, 'Pengaturan Toko & Cabang', 5),
+                  
                   if (_role == 'OWNER' || _role == 'MANAGER') ...[
                     _buildMobileMenuItem(Icons.people_outline, 'Karyawan & Akses', 6),
                     _buildMobileMenuItem(Icons.payment, 'Metode Pembayaran', 9),
                   ],
+                  
                   if (_role == 'OWNER') ...[
                     _buildMobileMenuItem(Icons.card_giftcard, 'Referral', 10),
-                    _buildMobileMenuItem(Icons.diamond_outlined, 'Langganan', 11),
+                    _buildMobileMenuItem(Icons.workspace_premium_outlined, 'Langganan', 11),
                   ],
-                  if (_role == 'KASIR') ...[
+                  
+                  if (_role == 'KASIR') 
                     _buildMobileMenuItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
-                    _buildMobileMenuItem(Icons.category_outlined, 'Kategori Produk', 7),
-                  ],
+                    
                   _buildMobileMenuItem(Icons.person_outline, 'Profil Akun', 12),
                   const SizedBox(height: 24),
                 ],
@@ -341,28 +347,48 @@ class _KerangkaNavigasiState extends State<KerangkaNavigasi> {
                             ],
                           ),
                         ),
-                        
-                        // MENU UTAMA 
+                                                                        // MENU UTAMA 
                         Expanded(
                           child: ListView(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             children: [
                               _buildSidebarItem(Icons.home_filled, 'Dashboard', 0),
                               _buildSidebarItem(Icons.shopping_cart, 'Kasir', 1),
+                              
                               if (_role == 'OWNER' || _role == 'MANAGER' || _role == 'KASIR') 
                                 _buildSidebarItem(Icons.receipt_long, 'Transaksi', 4),
+                              
+                              if (_role == 'OWNER' || _role == 'MANAGER' || _role == 'KASIR') 
+                                _buildSidebarItem(Icons.swap_horiz, 'Shift Kasir', 8),
+                              
                               if (_role == 'OWNER' || _role == 'MANAGER') 
                                 _buildSidebarItem(Icons.view_list_rounded, 'Stok', 2),
+                              
+                              if (_role == 'KASIR') 
+                                _buildSidebarItem(Icons.inventory_2_outlined, 'Lihat Produk', 2),
+                              
+                              _buildSidebarItem(Icons.category_outlined, 'Kategori Produk', 7),
+                              
                               if (_role == 'OWNER' || _role == 'MANAGER') 
                                 _buildSidebarItem(Icons.insert_chart_rounded, 'Laporan', 3), 
+                              
                               if (_role == 'OWNER' || _role == 'MANAGER') 
                                 _buildSidebarItem(Icons.person_outline, 'Pengguna', 6),
+                              
                               if (_role == 'OWNER') 
-                                _buildSidebarItem(Icons.settings_outlined, 'Pengaturan Toko', 5), 
+                                _buildSidebarItem(Icons.storefront, 'Pengaturan Toko', 5), 
+                              
                               if (_role == 'OWNER' || _role == 'MANAGER') 
                                 _buildSidebarItem(Icons.payment, 'Metode Pembayaran', 9),
+                              
+                              if (_role == 'OWNER') 
+                                _buildSidebarItem(Icons.card_giftcard, 'Referral', 10),
+                              
                               if (_role == 'OWNER') 
                                 _buildSidebarItem(Icons.workspace_premium_outlined, 'Langganan', 11),
+                              
+                              _buildSidebarItem(Icons.person_outline, 'Profil Akun', 12),
+                              
                               _buildSidebarItem(Icons.help_outline, 'Bantuan', 13), 
                             ],
                           ),
