@@ -33,7 +33,7 @@ class SupportTicketService {
 
   Future<dynamic> getTicketDetail(int ticketId) async {
     try {
-      final response = await _dio.get('/tickets/$ticketId');
+      final response = await _dio.get('/support/tickets/$ticketId');
       if (response.statusCode == 200) {
         return {
           'ticket': SupportTicketModel.fromJson(response.data['data']['ticket']),
