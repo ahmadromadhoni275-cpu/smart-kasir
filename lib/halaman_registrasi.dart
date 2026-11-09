@@ -215,6 +215,39 @@ class _HalamanRegistrasiState extends State<HalamanRegistrasi> {
                                       : const Text('Daftar Sekarang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                 ),
                               ),
+                              
+                              const SizedBox(height: 24), // Jarak antara tombol dan link login
+
+                              // LINK LOGIN DI SINI
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text(
+                                    'Sudah punya akun?',
+                                    style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      // Karena halaman ini biasanya dibuka dari Halaman Login, 
+                                      // cukup gunakan pop() untuk kembali ke layar sebelumnya.
+                                      Navigator.pop(context);
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text(
+                                      'Masuk di sini',
+                                      style: TextStyle(
+                                        color: AppColors.smartBlue,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
