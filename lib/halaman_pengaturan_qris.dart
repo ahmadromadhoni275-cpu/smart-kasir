@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'tema.dart';
 import 'core/services/payment_method_service.dart';
 
@@ -15,6 +17,9 @@ class _HalamanPengaturanQrisState extends State<HalamanPengaturanQris> {
   final _nameCtrl = TextEditingController();
   bool _isActive = true;
   bool _isLoading = false;
+  
+  File? _selectedImage;
+  String? _existingImageUrl;
 
   @override
   void initState() {
@@ -22,20 +27,44 @@ class _HalamanPengaturanQrisState extends State<HalamanPengaturanQris> {
     if (widget.data != null) {
       _nameCtrl.text = widget.data['name'] ?? '';
       _isActive = widget.data['status'] == 'ACTIVE';
+      _existingImageUrl = widget.data['qris_image']; 
     } else {
       _nameCtrl.text = 'QRIS Toko';
     }
   }
 
+  // Fungsi untuk membuka galeri HP
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
+  }
+
   void _simpan() async {
     if (_nameCtrl.text.trim().isEmpty) return;
+    
+    // Validasi saat membuat QRIS baru (wajib ada gambar)
+    if (widget.data == null && _selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Harap unggah gambar QRIS terlebih dahulu.'), backgroundColor: AppColors.error));
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      await _service.savePaymentMethod({
-        'method': 'QRIS', // Sesuai kolom database
-        'name': _nameCtrl.text.trim(),
-        'status': _isActive ? 'ACTIVE' : 'INACTIVE',
-      }, id: widget.data != null ? int.parse(widget.data['payment_method_id'].toString()) : null);
+      await _service.savePaymentMethod(
+        {
+          'method': 'QRIS',
+          'name': _nameCtrl.text.trim(),
+          'status': _isActive ? 'ACTIVE' : 'INACTIVE',
+        }, 
+        id: widget.data != null ? int.parse(widget.data['payment_method_id'].toString()) : null,
+        imageFile: _selectedImage // Kirim file fisik ke service
+      );
       if (mounted) Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error));
@@ -58,16 +87,24 @@ class _HalamanPengaturanQrisState extends State<HalamanPengaturanQris> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(
-                  child: Container(
-                    height: 200, width: 200,
-                    decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.border, style: BorderStyle.solid)),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.qr_code_2, size: 80, color: Colors.grey),
-                        SizedBox(height: 8),
-                        Text('Ketuk untuk unggah QRIS\n(Segera Hadir)', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12))
-                      ],
+                  child: GestureDetector(
+                    onTap: _pickImage, // Panggil fungsi saat kotak ditekan
+                    child: Container(
+                      height: 200, width: 200,
+                      clipBehavior: Clip.hardEdge,
+                      decoration: BoxDecoration(color: AppColors.lightGray, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.border, style: BorderStyle.solid)),
+                      child: _selectedImage != null
+                          ? Image.file(_selectedImage!, fit: BoxFit.cover)
+                          : (_existingImageUrl != null && _existingImageUrl!.isNotEmpty)
+                              ? Image.network('https://smartkasir.shop/$_existingImageUrl', fit: BoxFit.cover, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey, size: 50))
+                              : const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.qr_code_2, size: 80, color: Colors.grey),
+                                    SizedBox(height: 8),
+                                    Text('Ketuk untuk unggah QRIS', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12))
+                                  ],
+                                ),
                     ),
                   ),
                 ),

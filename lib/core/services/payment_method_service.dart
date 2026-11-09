@@ -16,11 +16,26 @@ class PaymentMethodService {
     }
   }
 
-  Future<void> savePaymentMethod(Map<String, dynamic> data, {int? id}) async {
+  Future<void> savePaymentMethod(Map<String, dynamic> data, {int? id, File? imageFile}) async {
     try {
-      final response = id == null 
-          ? await _dio.post('/payment-methods', data: data)
-          : await _dio.put('/payment-methods/$id', data: data);
+      FormData formData = FormData.fromMap(data);
+
+      // Jika ada file gambar yang dipilih, tambahkan ke FormData
+      if (imageFile != null) {
+        formData.files.add(MapEntry(
+          'qris_image',
+          await MultipartFile.fromFile(imageFile.path, filename: imageFile.path.split('/').last),
+        ));
+      }
+
+      Response response;
+      if (id == null) {
+        response = await _dio.post('/payment-methods', data: formData);
+      } else {
+        // Trik khusus untuk CodeIgniter: Gunakan POST tapi beri tahu CI4 bahwa ini adalah PUT
+        formData.fields.add(const MapEntry('_method', 'PUT')); 
+        response = await _dio.post('/payment-methods/$id', data: formData);
+      }
           
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception(response.data['message'] ?? 'Gagal menyimpan metode pembayaran');
