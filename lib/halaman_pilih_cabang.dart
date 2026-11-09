@@ -209,6 +209,9 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      // Cek apakah cabang yang diklik adalah cabang yang sama dengan saat ini
+      bool isSameStore = store.storeId == _currentStoreId;
 
       await prefs.setInt('store_id', store.storeId);
       await prefs.setString('nama_toko', store.name);
@@ -216,7 +219,8 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
 
       if (!mounted) return;
 
-      if (!isAuto) {
+      // Hanya tampilkan notifikasi jika benar-benar "beralih" ke cabang lain
+      if (!isAuto && !isSameStore) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Berhasil beralih ke ${store.name}'),
@@ -453,6 +457,8 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
         ),
       ),
       child: ListTile(
+        // PERBAIKAN: Buat seluruh kartu bisa diklik baik aktif maupun tidak
+        onTap: _isSelecting ? null : () => _gantiCabang(store),
         contentPadding: const EdgeInsets.all(16),
         leading: CircleAvatar(
           radius: 25,
@@ -536,9 +542,11 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
           ],
         ),
         trailing: isCurrent
+            // Tampilan ikon centang dipertahankan, namun fungsi klik sudah ditangani oleh onTap ListTile
             ? const Icon(
                 Icons.check_circle,
                 color: AppColors.smartBlue,
+                size: 28,
               )
             : ElevatedButton(
                 onPressed: _isSelecting
@@ -558,7 +566,6 @@ class _HalamanPilihCabangState extends State<HalamanPilihCabang> {
       ),
     );
   }
-
   // ============================================================
   // KONDISI KOSONG
   // ============================================================
