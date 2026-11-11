@@ -51,9 +51,9 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/images/app_icon.png"
 
 flutter_native_splash:
-  color: "#F8F9FA"       
+  background_image: "assets/images/splash_bg.png"     
   image: "assets/images/logo_smart_kasir.png" # Path logo loading Anda
   android_12:
-    color: "#F8F9FA"
+    background_image: "assets/images/splash_bg.png"
     image: "assets/images/logo_smart_kasir.png"
   fullscreen: true               # Supaya tampil penuh satu layar
