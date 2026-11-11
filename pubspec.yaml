@@ -44,7 +44,7 @@ flutter:
     - assets/images/logo_smart_kasir.png
 
 flutter_launcher_icons:
-  android: "launcher_icon"
+  android: "ic_launcher"
   ios: true
   image_path: "assets/images/app_icon.png" # Sesuaikan dengan nama file logo Anda di assets
   adaptive_icon_background: "#F8F9FA" # Warna latar belakang biru sesuai tema aplikasi
