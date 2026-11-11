@@ -108,8 +108,8 @@ class _HalamanLaporanProdukState extends State<HalamanLaporanProduk> with Single
       
       // Karena class ProductReportData sudah menangani mapping List di dalam fungsi fromJson-nya,
       // kita tidak perlu me-map ulang list produk dan kategori di sini.
-      final List<ProductPerformanceItem> parsedProducts = data.products;
-      final List<CategoryPerformanceItem> parsedCategories = data.categories;
+      final List<ProductPerformanceItem> parsedProducts = (data.products as List).map((e) => e as ProductPerformanceItem).toList();
+      final List<CategoryPerformanceItem> parsedCategories = (data.categories as List).map((e) => e as CategoryPerformanceItem).toList();
       
       double tempRevenue = 0;
       int tempQty = 0;

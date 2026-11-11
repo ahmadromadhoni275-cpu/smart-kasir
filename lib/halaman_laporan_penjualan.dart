@@ -137,20 +137,7 @@ class _HalamanLaporanPenjualanState extends State<HalamanLaporanPenjualan> {
       setState(() => _isLoading = false);
     }
   }
-
-      setState(() {
-        _transactions = data;
-        _totalSales = tempTotal;
-        _transactionCount = data.length; // Total semua record (termasuk batal)
-        _dailyRecap = tempDaily;
-      });
-    } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
+  
   String _formatCurrency(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0).format(amount);
   }
