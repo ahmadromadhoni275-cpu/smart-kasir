@@ -43,17 +43,17 @@ flutter:
     - assets/images/app_icon.png
     - assets/images/logo_smart_kasir.png
 
-flutter_icons:
+flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   image_path: "assets/images/app_icon.png" # Sesuaikan dengan nama file logo Anda di assets
-  adaptive_icon_background: "#2D68F8" # Warna latar belakang biru sesuai tema aplikasi
+  adaptive_icon_background: "#F8F9FA" # Warna latar belakang biru sesuai tema aplikasi
   adaptive_icon_foreground: "assets/images/app_icon.png"
 
 flutter_native_splash:
-  color: "#448AFF"               # Warna background biru (sama dengan blueAccent)
+  color: "#F8F9FA"       
   image: "assets/images/logo_smart_kasir.png" # Path logo loading Anda
   android_12:
-    color: "#448AFF"
+    color: "#F8F9FA"
     image: "assets/images/logo_smart_kasir.png"
   fullscreen: true               # Supaya tampil penuh satu layar
