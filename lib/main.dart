@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tema.dart';
+import 'dart:ui';
 import 'kerangka_navigasi.dart';
 import 'halaman_login.dart';
 import 'halaman_notifikasi.dart';
@@ -19,12 +20,18 @@ import 'halaman_keamanan.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'halaman_pilih_cabang.dart';
 
+// Import Helper Pemaksaan Izin yang baru kita buat
+import 'core/utils/permission_helper.dart';
+
 // 1. Handler Notifikasi Background
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("Notifikasi background masuk: ${message.messageId}");
 }
+
+// 2. Kunci Navigasi Global (diletakkan di luar agar bisa diakses oleh interceptor & background)
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +41,6 @@ Future<void> main() async {
 
   runApp(const SmartKasirApp());
 }
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class SmartKasirApp extends StatefulWidget {
   const SmartKasirApp({super.key});
@@ -44,7 +50,6 @@ class SmartKasirApp extends StatefulWidget {
 }
 
 class _SmartKasirAppState extends State<SmartKasirApp> {
-
   @override
   void initState() {
     super.initState();
@@ -70,7 +75,7 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
                   Text(message.notification!.body ?? ''),
                 ],
               ),
-              backgroundColor: AppColors.smartBlue, // PERUBAHAN: Emerald -> smartBlue
+              backgroundColor: AppColors.smartBlue, 
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 4),
               action: message.data['action_route'] != null &&
@@ -121,11 +126,11 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
       theme: ThemeData(
         fontFamily: 'Inter',
         scaffoldBackgroundColor: AppColors.background,
-        primaryColor: AppColors.smartBlue, // PERUBAHAN: Menyesuaikan tema utama
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.smartBlue), // PERUBAHAN: Menyesuaikan seed
+        primaryColor: AppColors.smartBlue, 
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.smartBlue),
       ),
 
-      // CEK OTENTIKASI SECARA DINAMIS SAAT APLIKASI DIBUKA
+      // CEK OTENTIKASI & IZIN SECARA DINAMIS SAAT APLIKASI DIBUKA
       home: const AuthChecker(),
 
       routes: {
@@ -147,10 +152,25 @@ class _SmartKasirAppState extends State<SmartKasirApp> {
 }
 
 // =================================================================
-// WIDGET PENGECEK STATUS LOGIN (AUTH CHECKER)
+// WIDGET PENGECEK STATUS LOGIN & IZIN PERANGKAT (AUTH CHECKER)
 // =================================================================
-class AuthChecker extends StatelessWidget {
+class AuthChecker extends StatefulWidget {
   const AuthChecker({super.key});
+
+  @override
+  State<AuthChecker> createState() => _AuthCheckerState();
+}
+
+class _AuthCheckerState extends State<AuthChecker> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // Meminta dan memeriksa izin perangkat (Bluetooth & Lokasi) saat layar ini dimuat
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PermissionHelper.checkAndRequestPermissions(context);
+    });
+  }
 
   Future<dynamic> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
@@ -158,6 +178,9 @@ class AuthChecker extends StatelessWidget {
     final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
     final String? token = prefs.getString('jwt_token');
     final int storeId = prefs.getInt('store_id') ?? 0;
+
+    // Jeda buatan (1.5 detik) agar pengguna bisa melihat layar loading yang cantik
+    await Future.delayed(const Duration(milliseconds: 1500));
 
     return {
       'is_logged_in': isLoggedIn && token != null && token.isNotEmpty,
@@ -171,11 +194,62 @@ class AuthChecker extends StatelessWidget {
       future: _checkLoginStatus(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: AppColors.background,
-            body: Center(
-              // PERUBAHAN: Menyesuaikan indikator loading dengan tema Crystal
-              child: CircularProgressIndicator(color: AppColors.smartBlue), 
+          // =======================================================
+          // TAMPILAN LOADING / SPLASH SCREEN (CRYSTAL GLASS UI)
+          // =======================================================
+          return Scaffold(
+            body: Stack(
+              children: [
+                // 1. Background Gradient
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.backgroundGradientStart, AppColors.background, AppColors.backgroundGradientEnd],
+                    ),
+                  ),
+                ),
+                
+                // 2. Ornamen Blob Cahaya
+                Positioned(
+                  top: -100,
+                  right: -50,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+                    child: Container(width: 300, height: 300, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.skyBlue)),
+                  ),
+                ),
+                Positioned(
+                  bottom: -50,
+                  left: -100,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+                    child: Container(width: 300, height: 300, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.smartBlue)),
+                  ),
+                ),
+
+                // 3. Logo dan Loading
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        'assets/images/logo_smart_kasir.png',
+                        height: 120, // Sedikit lebih besar dari halaman login
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(height: 32),
+                      const CircularProgressIndicator(color: AppColors.smartBlue, strokeWidth: 3),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Memuat Sistem...', 
+                        style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           );
         }

@@ -40,22 +40,20 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/logo.png
-    - assets/logo2.png
-    - assets/logo_loading.png
+    - assets/images/app_icon.png
     - assets/images/logo_smart_kasir.png
 
 flutter_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/ic_launcher.png" # Sesuaikan dengan nama file logo Anda di assets
+  image_path: "assets/images/app_icon.png" # Sesuaikan dengan nama file logo Anda di assets
   adaptive_icon_background: "#2D68F8" # Warna latar belakang biru sesuai tema aplikasi
-  adaptive_icon_foreground: "assets/ic_launcher.png"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
 
 flutter_native_splash:
   color: "#448AFF"               # Warna background biru (sama dengan blueAccent)
-  image: "assets/logo_loading.png" # Path logo loading Anda
+  image: "assets/images/logo_smart_kasir.png" # Path logo loading Anda
   android_12:
     color: "#448AFF"
-    image: "assets/logo_loading.png"
+    image: "assets/images/logo_smart_kasir.png"
   fullscreen: true               # Supaya tampil penuh satu layar
