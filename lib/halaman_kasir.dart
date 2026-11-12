@@ -67,7 +67,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
     });
   }
 
-  // --- 1. PROTEKSI SHIFT AKTIF ---
+   // --- 1. PROTEKSI SHIFT AKTIF ---
   Future<void> _cekShiftAktif() async {
     setState(() => _isCheckingShift = true);
     try {
@@ -78,11 +78,17 @@ class _HalamanKasirState extends State<HalamanKasir> {
         _fetchMetodePembayaran(); 
       } else {
         _activeShiftId = null;
-        if (mounted) _tampilNotifShiftTutup();
+        if (mounted) {
+          setState(() => _cart.clear()); 
+          _tampilNotifShiftTutup();
+        }
       }
     } catch (e) {
       _activeShiftId = null;
-      if (mounted) _tampilNotifShiftTutup();
+      if (mounted) {
+        setState(() => _cart.clear()); 
+        _tampilNotifShiftTutup();
+      }
     }
     if (mounted) setState(() => _isCheckingShift = false);
   }
@@ -90,11 +96,11 @@ class _HalamanKasirState extends State<HalamanKasir> {
   Future<void> _fetchMetodePembayaran() async {
     try {
       final methods = await _paymentService.getActiveMethods();
+  
+      if (!mounted) return;
+  
       setState(() {
-        _paymentMethods = [
-          PaymentMethodModel(type: 'CASH', name: 'Tunai (Cash)'),
-          ...methods
-        ];
+        _paymentMethods = methods;
       });
     } catch (e) {
       debugPrint('Gagal memuat metode bayar: $e');
@@ -317,7 +323,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
                               ),
                             ),
                             if (appliedPayments.length > 1)
-                              IconButton(icon: const Icon(Icons.remove_circle, color: AppColors.error), onPressed: () => setModalState(() => appliedPayments.removeAt(idx)))
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle, color: AppColors.error), 
+                                onPressed: () {
+                                  setModalState(() {
+                                    appliedPayments.removeAt(idx);
+                                  });
+                                }
+                              )
                           ],
                         ),
                       );
@@ -355,7 +368,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
               TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryEmerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), elevation: 4),
-                onPressed: isProcessing ? null : () async {
+                                onPressed: isProcessing ? null : () async {
                   if (totalBayarInput < _grandTotal) {
                     _tampilPopupCantik('Pembayaran Kurang!', 'Uang yang diinput belum menutupi total tagihan.', Icons.error_outline, AppColors.error);
                     return;
@@ -379,10 +392,14 @@ class _HalamanKasirState extends State<HalamanKasir> {
                     final dataTransaksi = await _transactionService.createTransaction(payload);
                     
                     if (mounted) Navigator.pop(ctx); 
+                    
+                    // Panggil fungsi cetak dulu SEBELUM membersihkan state keranjang
+                    _tampilSuksesCetak(dataTransaksi);
+
+                    // Bersihkan state SETELAH pop-up struk muncul
                     setState(() { _cart.clear(); _noMejaCtrl.clear(); });
                     if (_enableProducts) _muatProduk(); 
-
-                    _tampilSuksesCetak(dataTransaksi);
+                    
                   } catch (e) {
                     if (mounted) Navigator.pop(ctx);
                     _tampilPopupCantik('Gagal Membayar', e.toString().replaceAll('Exception: ', ''), Icons.warning, AppColors.error);
@@ -570,7 +587,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
   }
 
 
-  Widget _buildProductGrid() {
+    Widget _buildProductGrid() {
     if (!_enableProducts) {
       return Center(
         child: Column(
@@ -594,10 +611,10 @@ class _HalamanKasirState extends State<HalamanKasir> {
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 180, childAspectRatio: 0.8, crossAxisSpacing: 16, mainAxisSpacing: 16),
           itemCount: _products.length,
           itemBuilder: (ctx, i) {
-            // FIX: Menggunakan tipe dynamic
             final p = _products[i];
             bool isJasa = p.productType == 'SERVICE';
-            bool habis = !isJasa && (p.stock as num) <= 0;
+            int stock = int.tryParse(p.stock.toString()) ?? 0;
+            bool habis = !isJasa && stock <= 0;
 
             return InkWell(
               onTap: habis ? null : () => _addToCart(p),
@@ -606,7 +623,7 @@ class _HalamanKasirState extends State<HalamanKasir> {
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: habis ? Colors.red.shade200 : Colors.white),
+                  border: Border.all(color: habis ? Colors.red.shade200 : Colors.transparent),
                   boxShadow: [BoxShadow(color: AppColors.shadowBlue.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]
                 ),
                 child: Padding(
@@ -623,12 +640,13 @@ class _HalamanKasirState extends State<HalamanKasir> {
                       const SizedBox(height: 12),
                       Text(p.name.toString(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: habis ? Colors.grey : AppColors.navyActive)),
                       const SizedBox(height: 4),
-                      Text(_formatRupiah(p.sellingPrice as num), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
+                      
+                      Text(_formatRupiah(double.tryParse(p.sellingPrice.toString()) ?? 0), style: TextStyle(color: habis ? Colors.grey : AppColors.primaryEmerald, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
                       if (isJasa)
                         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: AppColors.goldPremium.withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: const Text('JASA', style: TextStyle(fontSize: 10, color: AppColors.goldPremium, fontWeight: FontWeight.bold)))
                       else
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: habis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(12)), child: Text(habis ? 'HABIS' : 'Stok: ${p.stock}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? Colors.red : Colors.grey.shade700))),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: habis ? Colors.red.shade50 : AppColors.lightGray, borderRadius: BorderRadius.circular(12)), child: Text(habis ? 'HABIS' : 'Stok: $stock', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: habis ? Colors.red : Colors.grey.shade700))),
                     ],
                   ),
                 ),

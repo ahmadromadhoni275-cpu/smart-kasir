@@ -4,6 +4,37 @@ import '../network/api_client.dart';
 
 class PaymentMethodService {
   final Dio _dio = ApiClient().dio;
+  
+  Future<List<PaymentMethodModel>> getActiveMethods() async {
+      try {
+        final response = await _dio.get('/payment-methods/active');
+  
+        if (response.statusCode == 200 &&
+            response.data['status'] == 'success') {
+          final List data = response.data['data'] ?? [];
+  
+          return data
+              .map((e) => PaymentMethodModel.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ))
+              .toList();
+        }
+  
+        throw Exception(
+          response.data['message'] ?? 'Gagal memuat metode pembayaran.',
+        );
+      } on DioException catch (e) {
+        final data = e.response?.data;
+        final message = data is Map
+            ? data['message']?.toString()
+            : null;
+  
+        throw Exception(
+          message ?? 'Terjadi kesalahan jaringan saat memuat pembayaran.',
+        );
+      }
+    }
+  }
 
   Future<List<dynamic>> getPaymentMethods() async {
     try {

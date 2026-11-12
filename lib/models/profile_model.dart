@@ -19,13 +19,16 @@ class ProfileModel {
 
   factory ProfileModel.fromJson(Map<String, dynamic>? json) {
     if (json == null) {
-      return ProfileModel(userId: 0, name: '', email: '', phone: '', globalRole: 'USER', status: 'UNVERIFIED');
+      return ProfileModel(userId: 0, name: 'Memuat...', email: '', phone: '', globalRole: 'USER', status: 'UNVERIFIED');
     }
+    
+    String rawPhone = json['phone']?.toString() ?? '';
+    
     return ProfileModel(
       userId: int.tryParse(json['user_id']?.toString() ?? '0') ?? 0,
-      name: json['name']?.toString() ?? 'Belum ada nama',
-      email: json['email']?.toString() ?? 'Belum ada email',
-      phone: json['phone']?.toString() ?? 'Belum ada nomor HP',
+      name: json['name']?.toString() ?? 'Pengguna',
+      email: json['email']?.toString() ?? '-',
+      phone: rawPhone.isEmpty ? '-' : rawPhone,
       globalRole: json['global_role']?.toString().toUpperCase() ?? 'USER',
       status: json['status']?.toString().toUpperCase() ?? 'ACTIVE',
       referralCode: json['referral_code']?.toString(),

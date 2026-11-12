@@ -66,20 +66,25 @@ class _HalamanProfilAkunState extends State<HalamanProfilAkun> {
       ),
     );
 
-    if (confirm == true) {
-      if (mounted) {
-        showDialog(
-          context: context, 
-          barrierDismissible: false, 
-          builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
-        );
+        if (confirm == true) {
+      if (!mounted) return;
+      showDialog(
+        context: context, 
+        barrierDismissible: false, 
+        builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primaryEmerald))
+      );
+      
+      try {
+        await ProfileService.logout();
+      } catch (e) {
+        // Tetap paksa keluar meskipun koneksi internet ke server gagal
       }
       
-      await ProfileService.logout();
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       
       if (mounted) {
+        Navigator.pop(context); // Tutup dialog loading
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
       }
     }
